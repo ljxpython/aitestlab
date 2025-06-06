@@ -1,0 +1,36 @@
+[project]
+name = "aitestlab"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "ljxpython",email = "1030470148@qq.com"}
+]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pre-commit (>=4.2.0,<5.0.0)",
+    "black (>=25.1.0,<26.0.0)",
+    "isort (>=6.0.1,<7.0.0)",
+    "llama-index-embeddings-huggingface (>=0.5.4,<0.6.0)",
+    "llama-index-embeddings-instructor (>=0.3.0,<0.4.0)",
+    "llama-index-embeddings-ollama (>=0.6.0,<0.7.0)",
+    "asyncpg (>=0.30.0,<0.31.0)",
+    "pydantic-ai (>=0.2.14,<0.3.0)",
+    "duckduckgo-search (>=8.0.2,<9.0.0)",
+    "autogen-ext[docker] (>=0.6.0,<0.7.0)",
+    "pytest-html (>=4.1.1,<5.0.0)",
+    "pytest-json-report (>=1.5.0,<2.0.0)",
+    "allure-pytest (>=2.14.2,<3.0.0)",
+    "faker (>=37.3.0,<38.0.0)",
+    "autogen-agentchat (>=0.6.0,<0.7.0)",
+    "fastapi (>=0.115.12,<0.116.0)",
+    "loguru (>=0.7.3,<0.8.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.dependencies]
+python = ">=3.12,<4.0"
