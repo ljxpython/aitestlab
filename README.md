@@ -229,11 +229,14 @@ AutoTestPlatform-AI-Chat/
 #### 方式一：使用启动脚本（推荐）
 
 ```bash
-# 给脚本执行权限
-chmod +x start.sh
+# 安装依赖
+make install
 
 # 启动应用
-./start.sh
+make start
+
+# 停止应用
+make stop
 ```
 
 #### 方式二：手动启动

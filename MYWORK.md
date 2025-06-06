@@ -203,7 +203,7 @@ F12调试
 
 这个问题,我们可以自己修改,也可以让AI修改,但是本次的挑战是尽量让AI帮忙生成代码,因此,我们把问题抛给AI让AI来帮忙解决
 
-这里先说一下我的思路,问题的出在这里,这里的`name=f"assistant_{conversation_id}"`不可复用,而且使用完成后我也没看到销毁agent的地方,这里应该有隐患,就是最后的内存泄漏发生(尽管`clear_conversation`函数中有销毁agent的逻辑)也就是说我还需要让服务可以自己回收agent
+这里先说一下我的思路,问题的出在这里,这里的`name=f"assistant_{conversation_id}"`命名不符合Python的语法,而且使用完成后我也没看到销毁agent的地方,这里应该有隐患,可能导致内存泄漏发生(尽管`clear_conversation`函数中有销毁agent的逻辑)也就是说我还需要让服务可以自己回收销毁agent
 
 ```
  agent = AssistantAgent(
@@ -449,4 +449,4 @@ makefile中停止后端服务的逻辑优化,通过ps -ef | grep xxx的方式查
 
 
 
-提交本次代码,完成本次开发任务
+提交代码,完成本次开发任务
