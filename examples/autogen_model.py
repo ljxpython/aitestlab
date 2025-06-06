@@ -3,10 +3,12 @@ import asyncio
 from autogen_core.models import ModelFamily, SystemMessage, UserMessage
 from autogen_ext.models.openai import OpenAIChatCompletionClient
 
+from examples.conf.config import settings
+
 openai_model_client = OpenAIChatCompletionClient(
-    model="deepseek-chat",
-    base_url="https://api.deepseek.com/v1",
-    api_key="sk-df84fdd419bc469ab8c0f868f4f86374",
+    model=settings.aimodel.model,
+    base_url=settings.aimodel.base_url,
+    api_key=settings.aimodel.api_key,
     model_info={
         "vision": False,
         "function_calling": True,

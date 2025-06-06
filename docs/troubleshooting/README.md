@@ -21,11 +21,16 @@
 - **主要内容**: 前端图标问题修复、依赖管理
 - **适用场景**: 图标导入错误、页面显示异常
 
+### [后端进程管理优化](./BACKEND_PROCESS_MANAGEMENT.md)
+- **目标用户**: 开发者、运维人员
+- **主要内容**: 后端进程管理优化、强制清理功能
+- **适用场景**: 后端进程卡死、进程残留、服务异常
+
 ## 🚀 快速诊断
 
 ### 常见问题分类
-- **后端问题**: [AutoGen 修复](./AUTOGEN_FIXES.md)
-- **进程问题**: [进程管理](./PROCESS_MANAGEMENT.md)
+- **后端问题**: [AutoGen 修复](./AUTOGEN_FIXES.md)、[后端进程管理](./BACKEND_PROCESS_MANAGEMENT.md)
+- **进程问题**: [进程管理](./PROCESS_MANAGEMENT.md)、[后端进程管理](./BACKEND_PROCESS_MANAGEMENT.md)
 - **前端问题**: [图标修复](./FRONTEND_ICON_FIX.md)
 
 ### 问题排查流程
@@ -48,8 +53,9 @@
 
 ### 后端服务异常
 1. 查看 [AutoGen 修复](./AUTOGEN_FIXES.md)
-2. 检查后端日志
-3. 重启后端服务
+2. 使用 [后端进程管理](./BACKEND_PROCESS_MANAGEMENT.md) 强制清理
+3. 检查后端日志
+4. 重启后端服务
 
 ## 🔗 相关文档
 - [项目设置](../setup/) - 环境配置和架构

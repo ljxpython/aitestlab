@@ -25,6 +25,8 @@ help:
 	@echo "  make logs            - 查看后端日志"
 	@echo "  make clean           - 清理临时文件"
 	@echo "  make force-clean     - 强制清理所有进程"
+	@echo "  make force-clean-backend  - 强制清理后端进程"
+	@echo "  make force-clean-frontend - 强制清理前端进程"
 	@echo "  make show-processes  - 显示所有相关进程"
 	@echo "  make test-config     - 测试配置"
 	@echo ""
@@ -117,17 +119,39 @@ stop: stop-backend stop-frontend
 # 停止后端服务
 stop-backend:
 	@echo "🛑 停止后端服务..."
+	@# 首先尝试通过 PID 文件停止
 	@if [ -f "backend.pid" ]; then \
 		PID=$$(cat backend.pid); \
 		if kill -0 $$PID 2>/dev/null; then \
 			kill $$PID; \
-			echo "✅ 后端服务已停止 (PID: $$PID)"; \
+			echo "✅ 后端主进程已停止 (PID: $$PID)"; \
 		else \
-			echo "⚠️  后端进程不存在"; \
+			echo "⚠️  PID 文件中的进程不存在"; \
 		fi; \
 		rm -f backend.pid; \
+	fi
+	@# 查找并停止所有相关进程
+	@echo "🔍 查找所有后端相关进程..."
+	@PIDS=$$(ps -ef | grep -E "([Pp]ython.*main\.py|uvicorn.*main|fastapi.*main)" | grep -v grep | awk '{print $$2}' | tr '\n' ' '); \
+	if [ -n "$$PIDS" ]; then \
+		echo "发现后端进程: $$PIDS"; \
+		for pid in $$PIDS; do \
+			if kill -0 $$pid 2>/dev/null; then \
+				kill $$pid; \
+				echo "✅ 已停止进程 $$pid"; \
+			fi; \
+		done; \
+		sleep 2; \
+		REMAINING=$$(ps -ef | grep -E "([Pp]ython.*main\.py|uvicorn.*main|fastapi.*main)" | grep -v grep | awk '{print $$2}' | tr '\n' ' '); \
+		if [ -n "$$REMAINING" ]; then \
+			echo "⚠️  强制停止剩余进程: $$REMAINING"; \
+			for pid in $$REMAINING; do \
+				kill -9 $$pid 2>/dev/null; \
+			done; \
+		fi; \
+		echo "✅ 所有后端服务已停止"; \
 	else \
-		echo "⚠️  后端服务未运行"; \
+		echo "⚠️  未发现运行中的后端服务"; \
 	fi
 
 # 停止前端服务
@@ -190,31 +214,57 @@ clean:
 	@rm -rf .pytest_cache
 	@echo "✅ 清理完成"
 
+# 强制清理后端进程
+force-clean-backend:
+	@echo "🧹 强制清理所有后端进程..."
+	@BACKEND_PIDS=$$(ps -ef | grep -E "([Pp]ython.*main\.py|uvicorn.*main|fastapi.*main)" | grep -v grep | awk '{print $$2}' | tr '\n' ' '); \
+	if [ -n "$$BACKEND_PIDS" ]; then \
+		echo "发现后端进程: $$BACKEND_PIDS"; \
+		for pid in $$BACKEND_PIDS; do \
+			if ps -p $$pid > /dev/null 2>&1; then \
+				echo "强制停止后端进程: $$pid"; \
+				kill -9 $$pid 2>/dev/null; \
+			fi; \
+		done; \
+		echo "✅ 所有后端进程已清理"; \
+	else \
+		echo "⚠️  未发现运行中的后端进程"; \
+	fi
+	@rm -f backend.pid backend.log
+	@echo "✅ 后端进程强制清理完成"
+
+# 强制清理前端进程
+force-clean-frontend:
+	@echo "🧹 强制清理所有前端进程..."
+	@FRONTEND_PIDS=$$(ps -ef | grep -E "(npm run dev|vite|esbuild|node.*frontend)" | grep -v grep | awk '{print $$2}' | tr '\n' ' '); \
+	if [ -n "$$FRONTEND_PIDS" ]; then \
+		echo "发现前端进程: $$FRONTEND_PIDS"; \
+		for pid in $$FRONTEND_PIDS; do \
+			if ps -p $$pid > /dev/null 2>&1; then \
+				echo "强制停止前端进程: $$pid"; \
+				kill -9 $$pid 2>/dev/null; \
+			fi; \
+		done; \
+		echo "✅ 所有前端进程已清理"; \
+	else \
+		echo "⚠️  未发现运行中的前端进程"; \
+	fi
+	@rm -f frontend.pid frontend.log
+	@echo "✅ 前端进程强制清理完成"
+
 # 强制清理所有进程
 force-clean:
 	@echo "🧹 强制清理所有相关进程..."
-	@# 停止后端进程
-	@BACKEND_PIDS=$$(ps -ef | grep -E "(python.*main.py|uvicorn)" | grep -v grep | awk '{print $$2}' | tr '\n' ' '); \
-	if [ -n "$$BACKEND_PIDS" ]; then \
-		echo "停止后端进程: $$BACKEND_PIDS"; \
-		for pid in $$BACKEND_PIDS; do kill -9 $$pid 2>/dev/null; done; \
-	fi
-	@# 停止前端进程
-	@FRONTEND_PIDS=$$(ps -ef | grep -E "(npm run dev|vite|esbuild|node.*frontend)" | grep -v grep | awk '{print $$2}' | tr '\n' ' '); \
-	if [ -n "$$FRONTEND_PIDS" ]; then \
-		echo "停止前端进程: $$FRONTEND_PIDS"; \
-		for pid in $$FRONTEND_PIDS; do kill -9 $$pid 2>/dev/null; done; \
-	fi
-	@# 清理文件
-	@rm -f *.pid *.log
-	@echo "✅ 强制清理完成"
+	@$(MAKE) force-clean-backend
+	@$(MAKE) force-clean-frontend
+	@echo "✅ 所有进程强制清理完成"
 
 # 显示所有相关进程
 show-processes:
 	@echo "📊 当前运行的相关进程:"
 	@echo ""
 	@echo "🔧 后端进程:"
-	@ps -ef | grep -E "(python.*main.py|uvicorn)" | grep -v grep || echo "  无后端进程"
+	@ps -ef | grep -E "([Pp]ython.*main\.py|uvicorn.*main|fastapi.*main)" | grep -v grep || echo "  无后端进程"
 	@echo ""
 	@echo "🎨 前端进程:"
 	@ps -ef | grep -E "(npm run dev|vite|esbuild)" | grep -v grep || echo "  无前端进程"
