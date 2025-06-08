@@ -11,13 +11,14 @@ import {
   CodeOutlined,
   EditOutlined,
   FileTextOutlined,
-  HistoryOutlined
+  HistoryOutlined,
 } from '@ant-design/icons';
 import { v4 as uuidv4 } from 'uuid';
 import ChatMessage from '@/components/ChatMessage';
 import ChatInput from '@/components/ChatInput';
 import ConversationHistory from '@/components/ConversationHistory';
 import SettingsPanel from '@/components/SettingsPanel';
+import PageLayout from '@/components/PageLayout';
 import { ChatMessage as ChatMessageType, StreamChunk } from '@/types/chat';
 import { chatApi } from '@/services/api';
 
@@ -232,35 +233,29 @@ const ChatPage: React.FC = () => {
   ];
 
   return (
-    <div className="gemini-gradient" style={{ minHeight: '100vh', position: 'relative' }}>
-      {/* 背景装饰 */}
-      <div style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'radial-gradient(circle at 20% 80%, rgba(120, 119, 198, 0.3) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(255, 255, 255, 0.15) 0%, transparent 50%)',
-        pointerEvents: 'none'
-      }} />
+    <PageLayout
+      background="#f5f5f5"
+      padding="0"
+    >
+      <div style={{ minHeight: 'calc(100vh - 64px)', position: 'relative', background: 'transparent' }}>
 
-      <div style={{
-        height: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        maxWidth: '1200px',
-        margin: '0 auto',
-        padding: '0 20px',
-        position: 'relative',
-        zIndex: 1
-      }}>
+        <div style={{
+          height: 'calc(100vh - 64px)',
+          display: 'flex',
+          flexDirection: 'column',
+          maxWidth: '1200px',
+          margin: '0 auto',
+          padding: '20px',
+          position: 'relative',
+          zIndex: 1
+        }}>
         {/* Gemini 风格头部 */}
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
           padding: '20px 0',
-          borderBottom: messages.length > 0 ? '1px solid rgba(255, 255, 255, 0.1)' : 'none'
+          borderBottom: messages.length > 0 ? '1px solid #e8e8e8' : 'none'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{
@@ -278,10 +273,10 @@ const ChatPage: React.FC = () => {
               G
             </div>
             <div>
-              <Title level={3} style={{ margin: 0, color: 'white', fontWeight: 400 }}>
+              <Title level={3} style={{ margin: 0, color: '#262626', fontWeight: 500 }}>
                 测试助手
               </Title>
-              <Text style={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: 14 }}>
+              <Text style={{ color: '#8c8c8c', fontSize: 14 }}>
                 自动化测试平台 AI 模块
               </Text>
             </div>
@@ -292,8 +287,8 @@ const ChatPage: React.FC = () => {
               type="text"
               icon={<MoreOutlined />}
               style={{
-                color: 'white',
-                border: '1px solid rgba(255, 255, 255, 0.2)',
+                color: '#595959',
+                border: '1px solid #d9d9d9',
                 borderRadius: 20
               }}
               className="gemini-hover"
@@ -319,18 +314,18 @@ const ChatPage: React.FC = () => {
                 animation: 'geminiSlideIn 0.8s cubic-bezier(0.4, 0, 0.2, 1)'
               }}>
                 <Title level={1} style={{
-                  color: 'white',
+                  color: '#262626',
                   fontSize: 48,
                   fontWeight: 300,
                   marginBottom: 16,
-                  background: 'linear-gradient(135deg, #ffffff 0%, rgba(255,255,255,0.8) 100%)',
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                   WebkitBackgroundClip: 'text',
                   WebkitTextFillColor: 'transparent'
                 }}>
                   你好，我是测试助手
                 </Title>
                 <Text style={{
-                  color: 'rgba(255, 255, 255, 0.9)',
+                  color: '#595959',
                   fontSize: 18,
                   display: 'block',
                   marginBottom: 8
@@ -338,7 +333,7 @@ const ChatPage: React.FC = () => {
                   我可以帮助您生成测试用例、编写自动化脚本、诊断问题等
                 </Text>
                 <Text style={{
-                  color: 'rgba(255, 255, 255, 0.7)',
+                  color: '#8c8c8c',
                   fontSize: 14
                 }}>
                   选择下面的测试场景开始对话，或者直接描述您的测试需求
@@ -386,7 +381,7 @@ const ChatPage: React.FC = () => {
                         {card.icon}
                       </div>
                       <Text style={{
-                        color: 'white',
+                        color: '#262626',
                         fontWeight: 500,
                         fontSize: 16
                       }}>
@@ -394,7 +389,7 @@ const ChatPage: React.FC = () => {
                       </Text>
                     </div>
                     <Text style={{
-                      color: 'rgba(255, 255, 255, 0.8)',
+                      color: '#595959',
                       fontSize: 14,
                       lineHeight: 1.5
                     }}>
@@ -410,9 +405,8 @@ const ChatPage: React.FC = () => {
               flex: 1,
               display: 'flex',
               flexDirection: 'column',
-              backgroundColor: 'rgba(255, 255, 255, 0.95)',
+              backgroundColor: 'white',
               borderRadius: '20px 20px 0 0',
-              backdropFilter: 'blur(10px)',
               overflow: 'hidden'
             }}>
               {/* 消息列表 */}
@@ -432,8 +426,7 @@ const ChatPage: React.FC = () => {
 
           {/* 输入区域 - 始终显示 */}
           <div style={{
-            backgroundColor: messages.length > 0 ? 'rgba(255, 255, 255, 0.95)' : 'transparent',
-            backdropFilter: messages.length > 0 ? 'blur(10px)' : 'none',
+            backgroundColor: messages.length > 0 ? 'white' : 'white',
             borderRadius: messages.length > 0 ? '0 0 20px 20px' : '20px'
           }}>
             <ChatInput
@@ -462,7 +455,8 @@ const ChatPage: React.FC = () => {
         visible={settingsVisible}
         onClose={() => setSettingsVisible(false)}
       />
-    </div>
+      </div>
+    </PageLayout>
   );
 };
 

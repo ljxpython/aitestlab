@@ -9,23 +9,20 @@ from fastapi.middleware import Middleware
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
+from backend.api.auth import router as auth_router
 from backend.api.chat import router as chat_router
+from backend.api.testcase import router as testcase_router
 
 
 async def init_data():
     """Initialize application data"""
     logger.info("开始初始化应用数据...")
 
-    # 这里可以添加数据库初始化、缓存预热等逻辑
     try:
-        # 示例：初始化数据库连接
-        logger.debug("初始化数据库连接...")
+        # 使用database.py中的统一初始化函数
+        from backend.core.database import init_data as db_init_data
 
-        # 示例：预热缓存
-        logger.debug("预热应用缓存...")
-
-        # 示例：检查外部服务连接
-        logger.debug("检查外部服务连接...")
+        await db_init_data()
 
         logger.success("🚀 应用数据初始化完成")
     except Exception as e:
@@ -117,9 +114,17 @@ def register_routers(app: FastAPI, prefix: str = ""):
     """Register application routers"""
     logger.info("注册应用路由...")
 
+    # 注册认证路由
+    app.include_router(auth_router)
+    logger.debug("认证路由注册完成")
+
     # 注册聊天路由
     app.include_router(chat_router)
     logger.debug("聊天路由注册完成")
+
+    # 注册测试用例路由
+    app.include_router(testcase_router)
+    logger.debug("测试用例路由注册完成")
 
     # 注册基础路由
     @app.get("/")

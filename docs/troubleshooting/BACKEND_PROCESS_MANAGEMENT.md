@@ -12,7 +12,7 @@
 
 ## 🔧 优化内容
 
-### 1. 增强的停止后端逻辑
+### 1. 增强的停止后端逻辑（包含端口清理）
 
 #### 优化前
 ```bash
@@ -27,7 +27,7 @@ stop-backend:
 
 #### 优化后
 ```bash
-# 多层次的进程清理
+# 多层次的进程清理 + 端口清理
 stop-backend:
 	@# 首先尝试通过 PID 文件停止
 	@if [ -f "backend.pid" ]; then \
@@ -44,6 +44,14 @@ stop-backend:
 		for pid in $$PIDS; do \
 			kill $$pid; \
 		done; \
+	fi
+	@# 检查并杀掉占用 8000 端口的进程
+	@PORT_PIDS=$$(lsof -ti:8000 2>/dev/null); \
+	if [ -n "$$PORT_PIDS" ]; then \
+		for pid in $$PORT_PIDS; do \
+			kill -9 $$pid 2>/dev/null; \
+		done; \
+		echo "✅ 8000 端口已释放"; \
 	fi
 ```
 
@@ -91,12 +99,30 @@ force-clean-frontend:
 	# 清理逻辑...
 ```
 
+#### `make clean-ports`
+专门清理端口占用：
+```bash
+clean-ports:
+	@echo "🌐 清理端口占用..."
+	@# 清理后端端口 8000
+	@PORT_PIDS=$$(lsof -ti:8000 2>/dev/null); \
+	if [ -n "$$PORT_PIDS" ]; then \
+		for pid in $$PORT_PIDS; do kill -9 $$pid; done; \
+	fi
+	@# 清理前端端口 3000
+	@PORT_PIDS=$$(lsof -ti:3000 2>/dev/null); \
+	if [ -n "$$PORT_PIDS" ]; then \
+		for pid in $$PORT_PIDS; done; \
+	fi
+```
+
 #### `make force-clean`
-清理所有进程（调用上述两个命令）：
+清理所有进程（调用上述命令）：
 ```bash
 force-clean:
 	@$(MAKE) force-clean-backend
 	@$(MAKE) force-clean-frontend
+	@$(MAKE) clean-ports
 ```
 
 ## 📋 命令使用指南
@@ -113,6 +139,7 @@ force-clean:
 |------|------|----------|
 | `make force-clean-backend` | 强制清理后端 | 后端进程卡死或异常 |
 | `make force-clean-frontend` | 强制清理前端 | 前端进程残留 |
+| `make clean-ports` | 清理端口占用 | 端口被占用无法启动 |
 | `make force-clean` | 强制清理所有 | 系统重置或故障恢复 |
 
 ### 监控命令
@@ -146,6 +173,17 @@ make force-clean
 # 解决：清理文件并重新启动
 make clean
 make start-backend
+```
+
+#### 4. 端口占用问题
+```bash
+# 问题：端口被占用，无法启动服务
+# 解决：清理端口占用
+make clean-ports
+
+# 或者手动检查端口
+lsof -i:8000  # 检查后端端口
+lsof -i:3000  # 检查前端端口
 ```
 
 ### 手动排查
@@ -223,6 +261,7 @@ fi
 - ✅ 多层次进程清理
 - ✅ 智能进程查找
 - ✅ 强制清理功能
+- ✅ 端口占用清理
 - ✅ 跨平台兼容性
 - ✅ 详细的状态反馈
 
@@ -231,6 +270,7 @@ fi
 |------|--------|--------|
 | 进程清理成功率 | 70% | 95% |
 | 残留进程处理 | 不支持 | 支持 |
+| 端口占用清理 | 不支持 | 支持 |
 | 跨平台兼容性 | 一般 | 良好 |
 | 错误处理 | 基础 | 完善 |
 

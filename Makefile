@@ -20,6 +20,12 @@ help:
 	@echo "  make stop-backend    - 停止后端服务"
 	@echo "  make stop-frontend   - 停止前端服务"
 	@echo ""
+	@echo "🗄️ 数据库管理:"
+	@echo "  make init-db         - 初始化数据库"
+	@echo "  make migrate         - 运行数据库迁移"
+	@echo "  make makemigrations  - 创建新的迁移文件"
+	@echo "  make reset-db        - 重置数据库"
+	@echo ""
 	@echo "🔧 其他:"
 	@echo "  make status          - 查看服务状态"
 	@echo "  make logs            - 查看后端日志"
@@ -27,6 +33,7 @@ help:
 	@echo "  make force-clean     - 强制清理所有进程"
 	@echo "  make force-clean-backend  - 强制清理后端进程"
 	@echo "  make force-clean-frontend - 强制清理前端进程"
+	@echo "  make clean-ports     - 清理端口占用"
 	@echo "  make show-processes  - 显示所有相关进程"
 	@echo "  make test-config     - 测试配置"
 	@echo ""
@@ -153,7 +160,26 @@ stop-backend:
 	else \
 		echo "⚠️  未发现运行中的后端服务"; \
 	fi
-
+	@# 检查并杀掉占用 8000 端口的进程
+	@echo "🔍 检查 8000 端口占用情况..."
+	@PORT_PIDS=$$(lsof -ti:8000 2>/dev/null | tr '\n' ' '); \
+	if [ -n "$$PORT_PIDS" ]; then \
+		echo "发现占用 8000 端口的进程: $$PORT_PIDS"; \
+		for pid in $$PORT_PIDS; do \
+			if kill -0 $$pid 2>/dev/null; then \
+				kill $$pid; \
+				echo "✅ 已停止占用端口的进程 $$pid"; \
+				sleep 1; \
+				if kill -0 $$pid 2>/dev/null; then \
+					echo "⚠️  强制停止进程 $$pid"; \
+					kill -9 $$pid 2>/dev/null; \
+				fi; \
+			fi; \
+		done; \
+		echo "✅ 8000 端口已释放"; \
+	else \
+		echo "✅ 8000 端口未被占用"; \
+	fi
 # 停止前端服务
 stop-frontend:
 	@echo "🛑 停止前端服务..."
@@ -230,6 +256,16 @@ force-clean-backend:
 	else \
 		echo "⚠️  未发现运行中的后端进程"; \
 	fi
+	@# 检查并强制杀掉占用 8000 端口的进程
+	@echo "🔍 强制清理 8000 端口占用..."
+	@PORT_PIDS=$$(lsof -ti:8000 2>/dev/null | tr '\n' ' '); \
+	if [ -n "$$PORT_PIDS" ]; then \
+		echo "强制停止占用 8000 端口的进程: $$PORT_PIDS"; \
+		for pid in $$PORT_PIDS; do \
+			kill -9 $$pid 2>/dev/null; \
+		done; \
+		echo "✅ 8000 端口已强制释放"; \
+	fi
 	@rm -f backend.pid backend.log
 	@echo "✅ 后端进程强制清理完成"
 
@@ -252,11 +288,41 @@ force-clean-frontend:
 	@rm -f frontend.pid frontend.log
 	@echo "✅ 前端进程强制清理完成"
 
+# 清理端口占用
+clean-ports:
+	@echo "🌐 清理端口占用..."
+	@echo "🔍 检查后端端口 8000..."
+	@PORT_PIDS=$$(lsof -ti:8000 2>/dev/null | tr '\n' ' '); \
+	if [ -n "$$PORT_PIDS" ]; then \
+		echo "发现占用 8000 端口的进程: $$PORT_PIDS"; \
+		for pid in $$PORT_PIDS; do \
+			echo "停止进程 $$pid"; \
+			kill -9 $$pid 2>/dev/null; \
+		done; \
+		echo "✅ 8000 端口已释放"; \
+	else \
+		echo "✅ 8000 端口未被占用"; \
+	fi
+	@echo "🔍 检查前端端口 3000..."
+	@PORT_PIDS=$$(lsof -ti:3000 2>/dev/null | tr '\n' ' '); \
+	if [ -n "$$PORT_PIDS" ]; then \
+		echo "发现占用 3000 端口的进程: $$PORT_PIDS"; \
+		for pid in $$PORT_PIDS; do \
+			echo "停止进程 $$pid"; \
+			kill -9 $$pid 2>/dev/null; \
+		done; \
+		echo "✅ 3000 端口已释放"; \
+	else \
+		echo "✅ 3000 端口未被占用"; \
+	fi
+	@echo "✅ 端口清理完成"
+
 # 强制清理所有进程
 force-clean:
 	@echo "🧹 强制清理所有相关进程..."
 	@$(MAKE) force-clean-backend
 	@$(MAKE) force-clean-frontend
+	@$(MAKE) clean-ports
 	@echo "✅ 所有进程强制清理完成"
 
 # 显示所有相关进程
@@ -271,6 +337,12 @@ show-processes:
 	@echo ""
 	@echo "📁 PID 文件:"
 	@ls -la *.pid 2>/dev/null || echo "  无 PID 文件"
+	@echo ""
+	@echo "🌐 端口占用情况:"
+	@echo "  后端端口 8000:"
+	@lsof -i:8000 2>/dev/null | head -10 || echo "    端口未被占用"
+	@echo "  前端端口 3000:"
+	@lsof -i:3000 2>/dev/null | head -10 || echo "    端口未被占用"
 
 # 检查服务状态
 status:
@@ -341,3 +413,47 @@ remove-dep:
 	fi
 	@poetry remove $(DEP)
 	@echo "✅ 依赖 $(DEP) 移除完成"
+
+# 数据库管理命令
+init-db:
+	@echo "🗄️ 初始化数据库..."
+	@poetry run python scripts/init_db.py
+	@echo "✅ 数据库初始化完成"
+
+migrate:
+	@echo "🔄 运行数据库迁移..."
+	@poetry run aerich upgrade
+	@echo "✅ 数据库迁移完成"
+
+makemigrations:
+	@echo "📝 创建新的迁移文件..."
+	@if [ -z "$(MSG)" ]; then \
+		poetry run aerich migrate; \
+	else \
+		poetry run aerich migrate --name "$(MSG)"; \
+	fi
+	@echo "✅ 迁移文件创建完成"
+
+reset-db:
+	@echo "⚠️  重置数据库..."
+	@read -p "确定要重置数据库吗？这将删除所有数据 (y/N): " confirm; \
+	if [ "$$confirm" = "y" ] || [ "$$confirm" = "Y" ]; then \
+		rm -rf migrations/; \
+		rm -f backend/data/aitestlab.db*; \
+		echo "🗑️  已删除数据库文件和迁移文件"; \
+		$(MAKE) init-db; \
+	else \
+		echo "❌ 操作已取消"; \
+	fi
+
+# 测试命令
+test:
+	@echo "🧪 运行测试..."
+	@poetry run pytest tests/ -v
+	@echo "✅ 测试完成"
+
+test-coverage:
+	@echo "🧪 运行测试并生成覆盖率报告..."
+	@poetry run pytest tests/ --cov=backend --cov-report=html --cov-report=term
+	@echo "✅ 测试覆盖率报告生成完成"
+	@echo "📊 查看详细报告: open htmlcov/index.html"

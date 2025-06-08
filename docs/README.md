@@ -1,108 +1,101 @@
-# 📖 项目文档中心
+# AI测试实验室 - 文档中心
 
 [← 返回主项目](../README.md)
 
-欢迎来到自动化测试平台 AI 对话模块的文档中心！这里包含了模块的所有技术文档、使用指南和问题排查资料。
+欢迎来到AI测试实验室的文档中心！这里包含了项目的完整文档，帮助您快速了解和使用本平台。
 
-## 🗂️ 文档目录结构
+## 📚 文档导航
 
-```
-docs/
-├── README.md                    # 文档中心主页 (当前页面)
-├── DOCS_INDEX.md               # 完整文档导航索引
-├── DOCUMENTATION_SUMMARY.md    # 文档体系建设总结
-├── setup/                      # 项目设置和架构
-│   ├── MAKEFILE_GUIDE.md      # Makefile 使用指南
-│   └── FACTORY_PATTERN.md     # 工厂模式架构说明
-├── development/                # 开发指南
-│   ├── LOGGING_GUIDE.md       # 日志系统使用指南
-│   ├── LOGGING_IMPLEMENTATION.md # 日志系统实现总结
-│   └── MARKDOWN_RENDERER.md   # Markdown 渲染器实现
-├── troubleshooting/           # 问题排查
-│   ├── AUTOGEN_FIXES.md       # AutoGen 问题修复
-│   ├── PROCESS_MANAGEMENT.md  # 进程管理优化
-│   └── FRONTEND_ICON_FIX.md   # 前端图标修复
-└── design/                    # 设计文档
-    ├── GEMINI_FEATURES_COMPARISON.md # Gemini 功能对比
-    └── MARKDOWN_TEST_EXAMPLES.md     # Markdown 测试示例
-```
+### 🚀 快速开始
+- [项目概述](./overview/PROJECT_OVERVIEW.md) - 了解项目背景、目标和核心功能
+- [开发环境搭建](./development/DEVELOPMENT_SETUP.md) - 快速搭建开发环境
+- [Makefile使用指南](./setup/MAKEFILE_GUIDE.md) - 项目管理命令详解
 
-## 🚀 快速开始
+### 🏗️ 系统架构
+- [系统架构概览](./architecture/SYSTEM_ARCHITECTURE.md) - 整体架构设计
+- [AI模块架构](./architecture/AI_MODULES.md) - AI智能体协作架构
+- [用户系统架构](./architecture/USER_SYSTEM.md) - 用户认证和权限管理
 
-### 新用户入门
-1. **项目概览**: [主 README](../README.md) - 了解项目基本信息
-2. **环境搭建**: [Makefile 使用指南](./setup/MAKEFILE_GUIDE.md) - 学习项目管理命令
-3. **问题调试**: [日志系统使用指南](./development/LOGGING_GUIDE.md) - 掌握调试技能
+### 💻 开发指南
+- [开发环境配置](./development/README.md) - 开发环境详细配置
+- [前后端集成](./development/FRONTEND_BACKEND_INTEGRATION.md) - API集成和数据流
+- [测试用例后端实现](./development/TESTCASE_BACKEND_IMPLEMENTATION.md) - AI测试用例生成实现
+- [代码重构总结](./development/CODE_REFACTORING_SUMMARY.md) - 代码优化记录
+- [日志系统](./development/LOGGING_GUIDE.md) - 日志配置和使用
+- [Markdown渲染器](./development/MARKDOWN_RENDERER.md) - 前端Markdown支持
 
-### 开发者指南
-1. **架构理解**: [工厂模式架构说明](./setup/FACTORY_PATTERN.md) - 深入了解后端架构
-2. **功能开发**: [开发指南目录](./development/) - 查看所有开发相关文档
-3. **问题排查**: [故障排除目录](./troubleshooting/) - 解决常见问题
+### 🎨 UI设计
+- [UI设计指南](./ui-design/UI_DESIGN_GUIDE.md) - 设计规范和组件库
+- [导航系统](./ui-design/NAVIGATION_SYSTEM.md) - 导航栏和侧边栏设计
+- [测试用例页面优化](./ui-design/TESTCASE_PAGE_OPTIMIZATION.md) - 页面设计优化
 
-## 📚 按类别浏览
+### 🔧 项目配置
+- [Factory模式配置](./setup/FACTORY_PATTERN.md) - FastAPI应用工厂模式
+- [项目配置说明](./setup/README.md) - 配置文件和环境变量
 
-### 🛠️ [项目设置 (setup/)](./setup/)
-- 项目管理和部署相关文档
-- 架构设计和系统配置
+### 🗄️ 数据库
+- [数据库设计](./database/DATABASE_DESIGN.md) - 数据模型和关系设计
+- [迁移管理](./database/MIGRATION_GUIDE.md) - Aerich迁移使用指南
+- [数据初始化](./database/DATA_INITIALIZATION.md) - 默认数据和种子数据
 
-### 💻 [开发指南 (development/)](./development/)
-- 开发工具和技术实现
-- 代码规范和最佳实践
+### 🧪 测试
+- [测试指南](./testing/TESTING_GUIDE.md) - 单元测试和集成测试
+- [测试覆盖率](./testing/COVERAGE_REPORT.md) - 测试覆盖率报告
+- [API测试](./testing/API_TESTING.md) - API接口测试
 
-### 🔧 [问题排查 (troubleshooting/)](./troubleshooting/)
-- 常见问题解决方案
-- 系统故障排除指南
+### 🚨 故障排除
+- [常见问题](./troubleshooting/README.md) - 常见问题和解决方案
+- [进程管理](./troubleshooting/PROCESS_MANAGEMENT.md) - 服务进程管理
+- [AutoGen修复](./troubleshooting/AUTOGEN_FIXES.md) - AutoGen相关问题
+- [前端图标修复](./troubleshooting/FRONTEND_ICON_FIX.md) - 前端图标问题
 
-### 🎨 [设计文档 (design/)](./design/)
-- UI/UX 设计说明
-- 功能对比和测试用例
+### 📋 API文档
+- [API接口文档](./api/API_REFERENCE.md) - 完整的API接口说明
+- [认证接口](./api/AUTH_API.md) - 用户认证相关接口
+- [聊天接口](./api/CHAT_API.md) - AI聊天功能接口
+- [测试用例接口](./api/TESTCASE_API.md) - 测试用例生成接口
 
-## 🔍 按需求查找
+### 🔄 部署运维
+- [部署指南](./deployment/DEPLOYMENT_GUIDE.md) - 生产环境部署
+- [Docker部署](./deployment/DOCKER_DEPLOYMENT.md) - 容器化部署
+- [监控和日志](./deployment/MONITORING.md) - 系统监控和日志管理
 
-| 我想要... | 推荐文档 |
-|-----------|----------|
-| 快速启动项目 | [主 README](../README.md) → [Makefile 指南](./setup/MAKEFILE_GUIDE.md) |
-| 了解项目架构 | [工厂模式架构](./setup/FACTORY_PATTERN.md) |
-| 调试问题 | [日志使用指南](./development/LOGGING_GUIDE.md) |
-| 解决具体问题 | [问题排查目录](./troubleshooting/) |
-| 了解设计思路 | [Gemini 功能对比](./design/GEMINI_FEATURES_COMPARISON.md) |
-| 深入开发 | [开发指南目录](./development/) |
+## 📖 文档说明
 
-## 📖 完整导航
+### 文档组织原则
+- **分类清晰**: 按功能模块和使用场景分类
+- **层次分明**: 从概览到详细，从入门到进阶
+- **双向链接**: 文档间相互引用，便于导航
+- **持续更新**: 随项目发展同步更新
 
-如果您需要查看所有文档的详细分类和说明，请访问：
-
-**[📖 完整文档导航索引](./DOCS_INDEX.md)**
-
-## 🆘 获取帮助
-
-### 文档问题
-- 如果发现文档错误或过时信息，请及时反馈
-- 建议新增文档内容，请提出需求
-
-### 技术问题
-- 查看 [问题排查目录](./troubleshooting/) 寻找解决方案
-- 使用 [日志系统](./development/LOGGING_GUIDE.md) 进行问题诊断
-
-### 开发问题
-- 参考 [开发指南](./development/) 了解技术实现
-- 查看 [架构文档](./setup/FACTORY_PATTERN.md) 理解系统设计
-
-## 📝 文档维护
-
-### 文档更新原则
-1. **及时性**: 代码变更时同步更新文档
-2. **准确性**: 确保文档内容与实际实现一致
-3. **完整性**: 覆盖所有重要功能和使用场景
-4. **易读性**: 使用清晰的结构和示例
+### 文档格式规范
+- 使用Markdown格式编写
+- 统一的标题层级和格式
+- 清晰的代码示例和配置说明
+- 丰富的图表和流程图
 
 ### 贡献指南
-- 新增文档请放在合适的分类目录下
-- 更新文档时请同步更新相关链接
-- 保持文档格式的一致性
+- 新增功能时同步更新相关文档
+- 遵循现有的文档结构和格式
+- 提供清晰的示例和说明
+- 及时更新过时的信息
+
+## 🔗 相关链接
+
+- [项目主页](../README.md) - 返回项目根目录
+- [在线API文档](http://localhost:8000/docs) - FastAPI自动生成的API文档
+- [前端应用](http://localhost:3000) - 前端应用访问地址
+
+## 📞 获取帮助
+
+如果您在使用过程中遇到问题：
+
+1. 首先查看[故障排除](./troubleshooting/README.md)文档
+2. 搜索相关的文档和示例
+3. 查看项目的Issue和讨论
+4. 联系项目维护者
 
 ---
 
-💡 **提示**: 建议将此页面加入书签，方便快速访问项目文档！
-
-📧 **反馈**: 如有文档相关问题或建议，欢迎随时反馈。
+**最后更新**: 2024年12月
+**文档版本**: v1.0.0

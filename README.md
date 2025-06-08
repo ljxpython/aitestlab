@@ -168,12 +168,12 @@ AI 对话模块是自动化测试平台的智能助手组件，为测试人员�
 
 📖 **[文档中心](./docs/)** - 项目完整文档库
 
-| 分类 | 描述 | 主要文档 |
-|------|------|----------|
-| **[项目设置](./docs/setup/)** | 环境搭建和架构 | [Makefile 指南](./docs/setup/MAKEFILE_GUIDE.md)、[架构说明](./docs/setup/FACTORY_PATTERN.md) |
-| **[开发指南](./docs/development/)** | 开发工具和实现 | [日志系统](./docs/development/LOGGING_GUIDE.md)、[Markdown 渲染](./docs/development/MARKDOWN_RENDERER.md) |
-| **[问题排查](./docs/troubleshooting/)** | 故障排除方案 | [AutoGen 修复](./docs/troubleshooting/AUTOGEN_FIXES.md)、[进程管理](./docs/troubleshooting/PROCESS_MANAGEMENT.md)、[后端进程管理](./docs/troubleshooting/BACKEND_PROCESS_MANAGEMENT.md) |
-| **[设计文档](./docs/design/)** | UI/UX 设计 | [Gemini 对比](./docs/design/GEMINI_FEATURES_COMPARISON.md)、[测试示例](./docs/design/MARKDOWN_TEST_EXAMPLES.md) |
+| 分类                                    | 描述           | 主要文档                                                     |
+| --------------------------------------- | -------------- | ------------------------------------------------------------ |
+| **[项目设置](./docs/setup/)**           | 环境搭建和架构 | [Makefile 指南](./docs/setup/MAKEFILE_GUIDE.md)、[架构说明](./docs/setup/FACTORY_PATTERN.md) |
+| **[开发指南](./docs/development/)**     | 开发工具和实现 | [日志系统](./docs/development/LOGGING_GUIDE.md)、[Markdown 渲染](./docs/development/MARKDOWN_RENDERER.md) |
+| **[问题排查](./docs/troubleshooting/)** | 故障排除方案   | [AutoGen 修复](./docs/troubleshooting/AUTOGEN_FIXES.md)、[进程管理](./docs/troubleshooting/PROCESS_MANAGEMENT.md)、[后端进程管理](./docs/troubleshooting/BACKEND_PROCESS_MANAGEMENT.md) |
+| **[设计文档](./docs/design/)**          | UI/UX 设计     | [Gemini 对比](./docs/design/GEMINI_FEATURES_COMPARISON.md)、[测试示例](./docs/design/MARKDOWN_TEST_EXAMPLES.md) |
 
 **快速导航**：
 - 🚀 新手入门：[文档中心](./docs/) → [Makefile 指南](./docs/setup/MAKEFILE_GUIDE.md)
@@ -403,3 +403,172 @@ docs/
 ### 📋 项目记录
 - [工程搭建记录](./MYWORK.md) - 项目搭建过程记录
 - [项目定位调整](./docs/PROJECT_REPOSITIONING.md) - 从通用 AI 助手调整为测试平台模块
+
+---
+
+## 🏗️ 工程搭建记录
+
+### 项目发展历程
+
+#### 🎯 第一阶段：基础架构搭建
+- **技术选型**: FastAPI + React + AutoGen 0.5.7
+- **项目结构**: 前后端分离架构设计
+- **开发环境**: Poetry + Vite + Makefile工具链
+- **基础功能**: 用户认证、路由配置、基础UI框架
+
+#### 🤖 第二阶段：AI模块开发
+- **AI聊天系统**: 基于AutoGen的多智能体对话
+- **流式响应**: SSE实时数据推送
+- **UI优化**: Gemini风格界面设计
+- **用户体验**: 动态渐变背景、Markdown渲染
+
+#### 📋 第三阶段：测试用例生成模块
+- **智能体协作**: 需求分析 → 用例生成 → 质量评审
+- **文件解析**: 支持PDF、Word、Excel等多格式
+- **交互优化**: 最多3轮用户反馈迭代
+- **专业输出**: 标准化测试用例格式
+
+#### 🗄️ 第四阶段：数据库系统完善
+- **Aerich集成**: 数据库迁移管理工具
+- **数据模型**: 完整的业务数据模型设计
+- **自动化脚本**: 一键数据库初始化
+- **默认数据**: 管理员账户和模板数据
+
+#### 📚 第五阶段：文档体系建设
+- **文档重组**: 按功能模块分类整理
+- **导航中心**: 统一的文档索引和导航
+- **专项文档**: 数据库、API、测试等专项文档
+- **双向链接**: 文档间相互引用系统
+
+#### 🧪 第六阶段：测试体系完善
+- **测试结构**: 单元测试、集成测试、端到端测试
+- **测试工具**: pytest + coverage + 自动化测试
+- **测试文档**: 完整的测试指南和规范
+- **CI/CD**: 持续集成和测试流程
+
+### 当前开发状态
+
+#### ✅ 已完成功能
+- **用户系统**: 注册、登录、权限管理
+- **AI聊天**: 多智能体对话、流式响应
+- **测试用例生成**: 完整的AI驱动测试用例生成流程
+- **数据库**: Aerich迁移管理、完整数据模型
+- **文档**: 完整的文档体系和导航
+- **测试**: 规范的测试结构和工具
+
+#### 🚧 开发中功能
+- **用户个人资料**: 头像上传、信息编辑
+- **系统设置**: 配置管理、主题切换
+- **数据统计**: 使用统计、性能监控
+- **API扩展**: 更多AI模型支持
+
+#### 📋 计划功能
+- **团队协作**: 多用户协作、权限分级
+- **模板管理**: 自定义测试用例模板
+- **导出功能**: 测试用例导出为多种格式
+- **集成接口**: 与第三方测试工具集成
+
+### 技术架构演进
+
+#### 初始架构
+```
+简单的前后端分离
+├── FastAPI 后端
+├── React 前端
+└── SQLite 数据库
+```
+
+#### 当前架构
+```
+完整的AI驱动测试平台
+├── 后端服务层
+│   ├── FastAPI + Tortoise ORM
+│   ├── AutoGen 多智能体系统
+│   ├── Aerich 数据库迁移
+│   └── JWT 认证授权
+├── 前端应用层
+│   ├── React 18 + TypeScript
+│   ├── Ant Design Pro UI
+│   ├── 流式数据处理
+│   └── 响应式设计
+├── 数据存储层
+│   ├── SQLite 主数据库
+│   ├── 文件存储系统
+│   └── 缓存机制
+└── 工具支撑层
+    ├── Poetry 依赖管理
+    ├── Makefile 自动化
+    ├── pytest 测试框架
+    └── 完整文档体系
+```
+
+### 核心技术亮点
+
+#### 🤖 AI智能体协作
+```mermaid
+graph LR
+    A[需求分析智能体] --> B[测试用例生成智能体]
+    B --> C[用户反馈处理]
+    C --> D[质量评审智能体]
+    D --> E[最终优化智能体]
+```
+
+#### 🔄 数据流架构
+```mermaid
+graph TD
+    A[用户输入] --> B[文件解析]
+    B --> C[需求分析]
+    C --> D[用例生成]
+    D --> E[用户反馈]
+    E --> F{是否满意?}
+    F -->|否| G[反馈处理]
+    G --> D
+    F -->|是| H[质量评审]
+    H --> I[最终输出]
+```
+
+### 开发规范
+
+#### 代码规范
+- **Python**: Black + isort + flake8
+- **TypeScript**: ESLint + Prettier
+- **提交规范**: Conventional Commits
+- **分支策略**: Git Flow
+
+#### 文档规范
+- **API文档**: OpenAPI 3.0 自动生成
+- **代码注释**: 详细的函数和类注释
+- **变更日志**: 版本变更记录
+- **用户手册**: 完整的使用指南
+
+#### 测试规范
+- **测试覆盖率**: 目标 > 80%
+- **测试分类**: 单元测试、集成测试、E2E测试
+- **测试数据**: 标准化的测试数据集
+- **性能测试**: 负载测试、压力测试
+
+### 最新优化记录
+
+#### 🎨 UI/UX 优化
+- **登录界面**: 移除测试账户提示，提升专业度
+- **侧边栏**: 移除帮助和滚动测试菜单项
+- **折叠按钮**: 修复右侧显示问题，确保正确定位
+
+#### 🗄️ 数据库系统
+- **Aerich集成**: 完整的数据库迁移管理
+- **数据模型**: 7个核心业务表设计
+- **自动化**: 一键初始化脚本和默认数据
+
+#### 📚 文档体系
+- **结构重组**: 按功能模块分类整理
+- **导航优化**: 统一的文档索引中心
+- **专项文档**: 数据库、测试、API等专项文档
+
+#### 🧪 测试体系
+- **目录整理**: 测试文件统一移至tests/目录
+- **分类管理**: unit/integration/e2e分类
+- **工具集成**: pytest + coverage + Makefile命令
+
+---
+
+⭐ 如果这个项目对您有帮助，请给我们一个星标！
