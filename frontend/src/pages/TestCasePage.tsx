@@ -38,14 +38,14 @@ import type { UploadFile } from 'antd';
 import FileUpload from '@/components/FileUpload';
 import AgentMessage from '@/components/AgentMessage';
 import PageLayout from '@/components/PageLayout';
+// 使用新的请求模块
 import {
-  generateTestCaseStream,
-  uploadFiles,
-  convertFilesToUploads,
+  useTestCaseGeneration,
+  TestCaseAPI,
   TestCaseRequest,
-  AgentMessage as APIAgentMessage,
-  TestCaseStreamChunk
-} from '@/services/testcase';
+  StreamResponse,
+  request
+} from '../api';
 
 const { Content } = Layout;
 const { TextArea } = Input;
@@ -55,7 +55,7 @@ const { Step } = Steps;
 interface AgentMessageData {
   id: string;
   content: string;
-  agentType: 'requirement_agent' | 'testcase_agent' | 'user_proxy';
+  agentType: string;
   agentName: string;
   timestamp: string;
   roundNumber: number;
@@ -72,7 +72,17 @@ interface TestCase {
 }
 
 const TestCasePage: React.FC = () => {
-  const [loading, setLoading] = useState(false);
+  // 使用新的测试用例生成Hook
+  const {
+    messages: streamMessages,
+    loading,
+    error,
+    generate,
+    stop,
+    clear
+  } = useTestCaseGeneration();
+
+  // 本地状态
   const [currentStep, setCurrentStep] = useState(0);
   const [conversationId, setConversationId] = useState<string>('');
   const [roundNumber, setRoundNumber] = useState(1);
@@ -87,9 +97,175 @@ const TestCasePage: React.FC = () => {
 
   const maxRounds = 3;
 
+  // 智能体显示相关的辅助函数
+  const getAgentDisplayName = (agentType: string, agentName: string): string => {
+    console.log('获取智能体显示名称:', { agentType, agentName });
+
+    switch (agentName) {
+      case 'testcase_generator':
+        return '测试用例生成器';
+      case 'user_proxy':
+        return '用户代理';
+      case 'requirement_analyst':
+        return '需求分析师';
+      case 'feedback_processor':
+        return '反馈处理器';
+      case 'system':
+        return '系统';
+      default:
+        // 根据类型返回默认名称
+        switch (agentType) {
+          case 'testcase_agent':
+            return '测试用例智能体';
+          case 'requirement_agent':
+            return '需求分析智能体';
+          case 'user_proxy':
+            return '用户代理';
+          default:
+            return agentName || '未知智能体';
+        }
+    }
+  };
+
+  const getAgentColor = (agentType: string, agentName: string): string => {
+    switch (agentName) {
+      case 'testcase_generator':
+        return '#52c41a';
+      case 'user_proxy':
+        return '#1890ff';
+      case 'requirement_analyst':
+        return '#722ed1';
+      case 'feedback_processor':
+        return '#fa8c16';
+      case 'system':
+        return '#8c8c8c';
+      default:
+        switch (agentType) {
+          case 'testcase_agent':
+            return '#52c41a';
+          case 'requirement_agent':
+            return '#722ed1';
+          case 'user_proxy':
+            return '#1890ff';
+          default:
+            return '#8c8c8c';
+        }
+    }
+  };
+
+  const getAgentBackground = (agentType: string, agentName: string): string => {
+    switch (agentName) {
+      case 'testcase_generator':
+        return '#f6ffed';
+      case 'user_proxy':
+        return '#e6f7ff';
+      case 'requirement_analyst':
+        return '#f9f0ff';
+      case 'system':
+        return '#f5f5f5';
+      default:
+        switch (agentType) {
+          case 'testcase_agent':
+            return '#f6ffed';
+          case 'requirement_agent':
+            return '#f9f0ff';
+          case 'user_proxy':
+            return '#e6f7ff';
+          default:
+            return '#f5f5f5';
+        }
+    }
+  };
+
+  const getAgentBorderColor = (agentType: string, agentName: string): string => {
+    switch (agentName) {
+      case 'testcase_generator':
+        return '#b7eb8f';
+      case 'user_proxy':
+        return '#91d5ff';
+      case 'requirement_analyst':
+        return '#d3adf7';
+      case 'system':
+        return '#d9d9d9';
+      default:
+        switch (agentType) {
+          case 'testcase_agent':
+            return '#b7eb8f';
+          case 'requirement_agent':
+            return '#d3adf7';
+          case 'user_proxy':
+            return '#91d5ff';
+          default:
+            return '#d9d9d9';
+        }
+    }
+  };
+
+  const getAgentTagColor = (agentType: string, agentName: string): string => {
+    switch (agentName) {
+      case 'testcase_generator':
+        return 'green';
+      case 'user_proxy':
+        return 'blue';
+      case 'requirement_analyst':
+        return 'purple';
+      case 'system':
+        return 'default';
+      default:
+        switch (agentType) {
+          case 'testcase_agent':
+            return 'green';
+          case 'requirement_agent':
+            return 'purple';
+          case 'user_proxy':
+            return 'blue';
+          default:
+            return 'default';
+        }
+    }
+  };
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
+
+  // 处理流式消息
+  useEffect(() => {
+    if (streamMessages.length > 0) {
+      const newMessages: AgentMessageData[] = streamMessages.map((msg: StreamResponse) => ({
+        id: `${msg.agent_name}_${msg.timestamp}_${Math.random()}`,
+        content: msg.content,
+        agentType: msg.agent_type,
+        agentName: msg.agent_name,
+        timestamp: msg.timestamp,
+        roundNumber: msg.round_number
+      }));
+
+      setAgentMessages(newMessages);
+
+      // 更新对话ID
+      if (streamMessages[0]?.conversation_id && !conversationId) {
+        setConversationId(streamMessages[0].conversation_id);
+      }
+
+      // 检查是否完成
+      const lastMessage = streamMessages[streamMessages.length - 1];
+      if (lastMessage?.is_complete || lastMessage?.is_final) {
+        setIsComplete(true);
+        setCurrentStep(2);
+        setAnalysisProgress(100);
+        message.success('测试用例生成完成！');
+      }
+    }
+  }, [streamMessages, conversationId]);
+
+  // 处理错误
+  useEffect(() => {
+    if (error) {
+      message.error(`生成失败: ${error}`);
+      setAnalysisProgress(0);
+    }
+  }, [error]);
 
   useEffect(() => {
     scrollToBottom();
@@ -109,91 +285,56 @@ const TestCasePage: React.FC = () => {
       return;
     }
 
-    setLoading(true);
     setCurrentStep(1);
-    setAgentMessages([]);
     setAnalysisProgress(0);
-
-    // 进度更新函数
-    const updateProgress = (progress: number) => {
-      setAnalysisProgress(progress);
-    };
+    clear(); // 清空之前的消息
 
     try {
       let uploadedConversationId = conversationId;
 
       // 如果有文件，先上传文件
       if (selectedFiles.length > 0) {
-        updateProgress(10);
+        setAnalysisProgress(10);
         const files = selectedFiles.map(file => file.originFileObj as File).filter(Boolean);
 
-        const uploadResult = await uploadFiles(files, textContent, conversationId);
-        uploadedConversationId = uploadResult.conversation_id;
-        setConversationId(uploadedConversationId);
+        // 使用新的请求模块上传文件
+        const formData = new FormData();
+        files.forEach(file => formData.append('files', file));
+        if (textContent) formData.append('text_content', textContent);
+        if (conversationId) formData.append('conversation_id', conversationId);
 
-        message.success(`成功上传 ${files.length} 个文件`);
-        updateProgress(30);
+        try {
+          const uploadResponse = await request.post('/file/upload', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+          });
+          uploadedConversationId = uploadResponse.data.conversation_id;
+          setConversationId(uploadedConversationId);
+          message.success(`成功上传 ${files.length} 个文件`);
+        } catch (uploadError) {
+          console.error('文件上传失败:', uploadError);
+          message.error('文件上传失败，将仅使用文本内容');
+        }
+
+        setAnalysisProgress(30);
       }
 
       // 准备请求数据
-      const fileUploads = selectedFiles.length > 0
-        ? await convertFilesToUploads(selectedFiles.map(file => file.originFileObj as File).filter(Boolean))
-        : undefined;
-
-      const request: TestCaseRequest = {
+      const requestData: TestCaseRequest = {
         conversation_id: uploadedConversationId,
-        files: fileUploads,
         text_content: textContent.trim() || undefined,
         round_number: roundNumber
       };
 
-      updateProgress(40);
+      setAnalysisProgress(40);
 
-      // 使用流式API生成测试用例
-      await generateTestCaseStream(
-        request,
-        (chunk: TestCaseStreamChunk) => {
-          // 处理流式响应
-          const newMessage: AgentMessageData = {
-            id: Date.now().toString() + Math.random(),
-            content: chunk.content,
-            agentType: chunk.agent_type,
-            agentName: chunk.agent_name,
-            timestamp: chunk.timestamp || new Date().toISOString(),
-            roundNumber: chunk.round_number
-          };
-
-          setAgentMessages(prev => [...prev, newMessage]);
-          setConversationId(chunk.conversation_id);
-
-          // 更新进度
-          updateProgress(Math.min(90, 40 + (agentMessages.length * 10)));
-
-          if (chunk.is_complete) {
-            setCurrentStep(2);
-            setIsComplete(chunk.round_number >= 3);
-            updateProgress(100);
-            message.success('测试用例生成完成！');
-          }
-        },
-        (error: Error) => {
-          console.error('生成测试用例失败:', error);
-          message.error(`生成测试用例失败: ${error.message}`);
-          setCurrentStep(0);
-        },
-        () => {
-          updateProgress(100);
-          setCurrentStep(2);
-        }
-      );
+      // 使用新的Hook生成测试用例
+      await generate(requestData);
 
     } catch (error: any) {
       console.error('生成测试用例失败:', error);
       message.error(`生成测试用例失败: ${error.message || '请重试'}`);
       setCurrentStep(0);
-      updateProgress(0);
-    } finally {
-      setLoading(false);
+      setAnalysisProgress(0);
     }
   };
 
@@ -208,15 +349,15 @@ const TestCasePage: React.FC = () => {
       return;
     }
 
-    setLoading(true);
-
     try {
-      // 使用API服务提交反馈
-      const { submitFeedback: submitFeedbackAPI } = await import('@/services/testcase');
+      // 使用新的API服务提交反馈
+      const result = await TestCaseAPI.submitFeedback({
+        conversation_id: conversationId,
+        feedback: userFeedback,
+        round_number: roundNumber
+      });
 
-      const result = await submitFeedbackAPI(conversationId, userFeedback, roundNumber);
-
-      if (result.max_rounds_reached) {
+      if (result.data?.max_rounds_reached) {
         message.info('已达到最大交互轮次');
         setIsComplete(true);
         setCurrentStep(3);
@@ -225,49 +366,36 @@ const TestCasePage: React.FC = () => {
       }
 
       // 使用反馈重新生成测试用例
-      const request: TestCaseRequest = {
+      const requestData: TestCaseRequest = {
         conversation_id: conversationId,
         user_feedback: userFeedback,
-        round_number: result.next_round
+        round_number: result.data?.next_round || roundNumber + 1
       };
 
-      await generateTestCaseStream(
-        request,
-        (chunk: TestCaseStreamChunk) => {
-          const newMessage: AgentMessageData = {
-            id: Date.now().toString() + Math.random(),
-            content: chunk.content,
-            agentType: chunk.agent_type,
-            agentName: chunk.agent_name,
-            timestamp: chunk.timestamp || new Date().toISOString(),
-            roundNumber: chunk.round_number
-          };
-
-          setAgentMessages(prev => [...prev, newMessage]);
-
-          if (chunk.is_complete) {
-            setIsComplete(chunk.round_number >= maxRounds);
-            setCurrentStep(chunk.round_number >= maxRounds ? 3 : 2);
-            setRoundNumber(chunk.round_number);
-          }
-        },
-        (error: Error) => {
-          console.error('处理反馈失败:', error);
-          message.error(`处理反馈失败: ${error.message}`);
-        }
-      );
+      // 使用新的Hook重新生成测试用例
+      await generate(requestData);
 
       setUserFeedback('');
+      setRoundNumber(prev => prev + 1);
       message.success('反馈提交成功，正在生成改进的测试用例...');
     } catch (error) {
       console.error('提交反馈失败:', error);
       message.error('提交反馈失败，请重试');
-    } finally {
-      setLoading(false);
     }
   };
 
+  const stopGeneration = () => {
+    stop();
+    setCurrentStep(0);
+    setAnalysisProgress(0);
+    message.info('已停止生成');
+  };
+
   const resetConversation = () => {
+    // 使用Hook的clear方法
+    clear();
+
+    // 重置本地状态
     setAgentMessages([]);
     setConversationId('');
     setRoundNumber(1);
@@ -553,7 +681,26 @@ const TestCasePage: React.FC = () => {
                         fontWeight: 600
                       }}
                     >
-                      AI智能分析
+                      {loading ? '正在生成...' : 'AI智能分析'}
+                    </Button>
+                  )}
+
+                  {loading && (
+                    <Button
+                      danger
+                      icon={<ReloadOutlined />}
+                      onClick={stopGeneration}
+                      size="large"
+                      style={{
+                        width: '100%',
+                        height: 48,
+                        fontSize: 16,
+                        fontWeight: 600,
+                        borderRadius: 8,
+                        marginTop: 12
+                      }}
+                    >
+                      停止生成
                     </Button>
                   )}
                 </div>
@@ -633,21 +780,21 @@ const TestCasePage: React.FC = () => {
                           alignItems: 'center',
                           marginBottom: 12,
                           padding: '8px 12px',
-                          background: msg.agentType === 'requirement_agent' ? '#e6f7ff' : '#f6ffed',
+                          background: getAgentBackground(msg.agentType, msg.agentName),
                           borderRadius: 6,
-                          border: `1px solid ${msg.agentType === 'requirement_agent' ? '#91d5ff' : '#b7eb8f'}`
+                          border: `1px solid ${getAgentBorderColor(msg.agentType, msg.agentName)}`
                         }}>
                           <RobotOutlined style={{
-                            color: msg.agentType === 'requirement_agent' ? '#1890ff' : '#52c41a',
+                            color: getAgentColor(msg.agentType, msg.agentName),
                             marginRight: 8
                           }} />
                           <Text strong style={{
-                            color: msg.agentType === 'requirement_agent' ? '#1890ff' : '#52c41a'
+                            color: getAgentColor(msg.agentType, msg.agentName)
                           }}>
-                            {msg.agentName === 'requirement_analyst' ? '需求分析师' : '测试用例生成器'}
+                            {getAgentDisplayName(msg.agentType, msg.agentName)}
                           </Text>
                           <Tag
-                            color={msg.agentType === 'requirement_agent' ? 'blue' : 'green'}
+                            color={getAgentTagColor(msg.agentType, msg.agentName)}
                             style={{ marginLeft: 'auto' }}
                           >
                             第 {msg.roundNumber} 轮
@@ -661,16 +808,30 @@ const TestCasePage: React.FC = () => {
                           borderRadius: 8,
                           border: '1px solid #f0f0f0',
                           whiteSpace: 'pre-wrap',
-                          lineHeight: 1.6
+                          lineHeight: 1.6,
+                          minHeight: 60
                         }}>
-                          <AgentMessage
-                            agentType={msg.agentType}
-                            agentName={msg.agentName}
-                            content={msg.content}
-                            timestamp={msg.timestamp}
-                            roundNumber={msg.roundNumber}
-                            isExpanded={true}
-                          />
+                          {msg.content ? (
+                            <AgentMessage
+                              agentType={msg.agentType}
+                              agentName={msg.agentName}
+                              content={msg.content}
+                              timestamp={msg.timestamp}
+                              roundNumber={msg.roundNumber}
+                              isExpanded={true}
+                            />
+                          ) : (
+                            <div style={{
+                              color: '#8c8c8c',
+                              fontStyle: 'italic',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              minHeight: 40
+                            }}>
+                              正在生成内容...
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}

@@ -1,0 +1,90 @@
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from app.api.v1.agent.llms import model_client
+from autogen_agentchat.messages import ModelClientStreamingChunkEvent, TextMessage
+from autogen_agentchat.base import TaskResult
+from autogen_core.models import UserMessage, SystemMessage
+
+from typing import List
+import logging
+import json
+
+# 配置日志
+logger = logging.getLogger("chat_api")
+
+router = APIRouter()
+
+# 存储所有活跃的WebSocket连接
+active_connections: List[WebSocket] = []
+
+@router.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """
+    WebSocket聊天端点
+    """
+    await websocket.accept()
+    active_connections.append(websocket)
+    logger.info("新的WebSocket连接已建立")
+
+    try:
+        while True:
+            # 接收客户端消息
+            data = await websocket.receive_text()
+            data_json = json.loads(data)
+            user_message = data_json.get("message", "")
+
+            if not user_message:
+                await websocket.send_json({"status": "error", "message": "消息不能为空"})
+                continue
+
+            logger.info(f"WebSocket收到消息: {user_message}...")
+
+            # 发送处理中状态
+            await websocket.send_json({"status": "processing"})
+
+            try:
+                # 使用model_client处理聊天
+                response =  model_client.create_stream(
+                    [SystemMessage(content="你是一个友好、专业的AI助手，用中文回答问题。"), UserMessage(content=f"{user_message}", source="user")]
+                )
+                logger.info(f"开始处理消息")
+
+
+                # 完整的响应内容
+                full_response = ""
+
+                # 流式发送AI响应
+                async for message in response:
+                    logger.info(message)
+                    if isinstance(message, ModelClientStreamingChunkEvent):
+                        logger.info(message.content)
+                    elif isinstance(message, TextMessage) and message.models_usage is not None:
+                        logger.info(message.models_usage.completion_tokens)
+                    elif isinstance(message, TaskResult):
+                        logger.info(message.messages[-1].content)
+                        full_response = message.messages[-1].content
+
+
+                # 发送完成响应
+                await websocket.send_json({
+                    "status": "complete",
+                    "response": full_response
+                })
+
+                logger.info(f"WebSocket聊天响应完成")
+
+            except Exception as e:
+                error_msg = f"处理消息出错: {str(e)}"
+                logger.error(error_msg)
+                await websocket.send_json({
+                    "status": "error",
+                    "message": error_msg
+                })
+
+    except WebSocketDisconnect:
+        if websocket in active_connections:
+            active_connections.remove(websocket)
+        logger.info("WebSocket客户端断开连接")
+    except Exception as e:
+        if websocket in active_connections:
+            active_connections.remove(websocket)
+        logger.error(f"WebSocket错误: {str(e)}")

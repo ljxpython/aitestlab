@@ -129,17 +129,86 @@ export const generateTestCaseStream = async (
       buffer = lines.pop() || '';
 
       for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          try {
-            const data = JSON.parse(line.slice(6));
-            onChunk(data);
+        // 清理行数据，移除多余的空白字符
+        const cleanLine = line.trim();
 
-            if (data.is_complete) {
+        if (cleanLine.startsWith('data: ')) {
+          try {
+            // 提取JSON数据部分，处理可能的重复前缀
+            let jsonStr = cleanLine.slice(6); // 移除 'data: '
+
+            // 检查是否还有重复的 'data: ' 前缀
+            if (jsonStr.startsWith('data: ')) {
+              jsonStr = jsonStr.slice(6);
+            }
+
+            // 再次清理可能的空白字符
+            jsonStr = jsonStr.trim();
+
+            console.log('准备解析的JSON字符串:', jsonStr);
+
+            const data = JSON.parse(jsonStr);
+            console.log('接收到SSE数据:', data);
+
+            // 转换后端数据格式为前端期望的格式
+            const chunk: TestCaseStreamChunk = {
+              content: data.content || '',
+              agent_type: data.agent_type || 'user_proxy',
+              agent_name: data.source || data.agent_name || 'unknown',
+              conversation_id: data.conversation_id || '',
+              round_number: data.round_number || 1,
+              is_complete: data.is_complete || data.is_final || false,
+              timestamp: data.timestamp || new Date().toISOString()
+            };
+
+            console.log('转换后的数据:', chunk);
+            onChunk(chunk);
+
+            if (chunk.is_complete) {
+              console.log('流式处理完成');
               onComplete?.();
               return;
             }
           } catch (e) {
             console.error('解析SSE数据失败:', e);
+            console.error('原始行数据:', line);
+            console.error('清理后的行数据:', cleanLine);
+
+            // 尝试从错误的数据中提取有效的JSON
+            try {
+              // 查找第一个 '{' 和最后一个 '}' 来提取JSON
+              const firstBrace = cleanLine.indexOf('{');
+              const lastBrace = cleanLine.lastIndexOf('}');
+
+              if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+                const extractedJson = cleanLine.substring(firstBrace, lastBrace + 1);
+                console.log('尝试提取的JSON:', extractedJson);
+
+                const data = JSON.parse(extractedJson);
+                console.log('成功解析提取的数据:', data);
+
+                const chunk: TestCaseStreamChunk = {
+                  content: data.content || '',
+                  agent_type: data.agent_type || 'user_proxy',
+                  agent_name: data.source || data.agent_name || 'unknown',
+                  conversation_id: data.conversation_id || '',
+                  round_number: data.round_number || 1,
+                  is_complete: data.is_complete || data.is_final || false,
+                  timestamp: data.timestamp || new Date().toISOString()
+                };
+
+                onChunk(chunk);
+
+                if (chunk.is_complete) {
+                  console.log('流式处理完成');
+                  onComplete?.();
+                  return;
+                }
+              }
+            } catch (extractError) {
+              console.error('JSON提取也失败:', extractError);
+              // 忽略这个数据块，继续处理下一个
+            }
           }
         }
       }
@@ -181,6 +250,8 @@ export const submitFeedback = async (
   next_round: number;
   max_rounds_reached: boolean;
 }> => {
+  console.log('提交反馈:', { conversationId, feedback, roundNumber });
+
   const response = await fetch(`${API_BASE_URL}/feedback`, {
     method: 'POST',
     headers: {
@@ -188,16 +259,25 @@ export const submitFeedback = async (
     },
     body: JSON.stringify({
       conversation_id: conversationId,
-      feedback,
+      feedback: feedback,
       round_number: roundNumber,
     }),
   });
 
   if (!response.ok) {
-    throw new Error(`提交反馈失败: ${response.status}`);
+    const errorText = await response.text();
+    console.error('反馈提交失败:', errorText);
+    try {
+      const errorJson = JSON.parse(errorText);
+      throw new Error(`提交反馈失败: ${errorJson.detail || errorText}`);
+    } catch {
+      throw new Error(`提交反馈失败: ${response.status} - ${errorText}`);
+    }
   }
 
-  return response.json();
+  const result = await response.json();
+  console.log('反馈提交成功:', result);
+  return result;
 };
 
 /**

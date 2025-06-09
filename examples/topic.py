@@ -83,7 +83,7 @@ class WriteStoryAgent(RoutedAgent):
             model_client_stream=True,
         )
         # 等到用户输入需求
-        # print("请输入你需要生成的古诗")
+        print("请输入你需要生成的古诗")
         # req = UserProxyAgent(
         #     name='story_content',
         #     input_func=input

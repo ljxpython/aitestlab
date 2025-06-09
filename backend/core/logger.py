@@ -25,6 +25,7 @@ class LoggerConfig:
         rotation: str = "10 MB",
         retention: str = "7 days",
         compression: str = "zip",
+        force_no_color: bool = False,
     ):
         """
         配置日志器
@@ -35,19 +36,48 @@ class LoggerConfig:
             rotation: 日志轮转大小
             retention: 日志保留时间
             compression: 压缩格式
+            force_no_color: 强制禁用颜色输出
         """
         # 移除默认的控制台处理器
         logger.remove()
 
-        # 添加控制台输出（带颜色）
+        # 检测终端是否支持颜色
+        import os
+
+        supports_color = (
+            not force_no_color
+            and hasattr(sys.stdout, "isatty")
+            and sys.stdout.isatty()
+            and os.getenv("TERM") != "dumb"
+            and os.getenv("NO_COLOR") is None
+            and os.getenv("FORCE_NO_COLOR") is None
+        )
+
+        # 添加控制台输出（根据环境决定是否使用颜色）
+        if supports_color:
+            # 支持颜色的格式
+            console_format = (
+                "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
+                "<level>{level: <8}</level> | "
+                "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | "
+                "<level>{message}</level>"
+            )
+            colorize = True
+        else:
+            # 不支持颜色的格式（纯文本）
+            console_format = (
+                "{time:YYYY-MM-DD HH:mm:ss} | "
+                "{level: <8} | "
+                "{name}:{function}:{line} | "
+                "{message}"
+            )
+            colorize = False
+
         logger.add(
             sys.stdout,
             level=log_level,
-            format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
-            "<level>{level: <8}</level> | "
-            "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | "
-            "<level>{message}</level>",
-            colorize=True,
+            format=console_format,
+            colorize=colorize,
         )
 
         # 添加文件输出
@@ -87,9 +117,9 @@ log_config = LoggerConfig()
 
 
 # 设置默认日志配置
-def setup_logging(log_level: str = "INFO"):
+def setup_logging(log_level: str = "INFO", force_no_color: bool = False):
     """设置日志配置"""
-    return log_config.setup_logger(log_level=log_level)
+    return log_config.setup_logger(log_level=log_level, force_no_color=force_no_color)
 
 
 # 获取日志器实例

@@ -892,6 +892,317 @@ AI用例智能体的前端请仿照图中平台的进行优化
 代码做好注释及log打印
 ```
 
+上述生成代码不理想,返回调整聊天再次和AI进行对话
+```
+后端基于Fastapi提供接口，使用sse协议进行流式输出，代码放到backend目录
+使用autogen0.5.7 实现与大模型对话，先阅读整体代码的逻辑
+修改backend/services/testcase_service.py  文件下TestCaseService类中的generate_testcase_stream的逻辑,参照examples/testcase_agents.py中 UserProxyAgent和RoundRobinGroupChat的使用 team = RoundRobinGroupChat([testcase_generator_agent, user_proxy], termination_condition=termination_en | termination_zh, )
+终止条件为询问用户三次或者用户回复同意,终止条件的代码参考:https://microsoft.github.io/autogen/stable//user-guide/agentchat-user-guide/tutorial/termination.html
+这个过程,每个智能体的输出的内容都返回到前端,且告知哪个智能体的输出
+代码做好注释及log打印
+解析上传文件的代码参考如下
+from llama_index.core import Document, SimpleDirectoryReader
+    async def get_document_from_files(self, files: list[str]) -> str:
+        """获取文件内容"""
+        try:
+            data = SimpleDirectoryReader(input_files=files).load_data()
+            doc = Document(text="\n\n".join([d.text for d in data[0:]]))
+            return doc.text
+        except Exception as e:
+            raise Exception(f"文件读取失败: {str(e)}")
+
+    async def get_document_from_llm_files(self, files: list[str]) -> str:
+        """获取文件内容，支持图片、流程图、表格等数据"""
+        extract_contents = ""
+        for file in files:
+            contents = extract_text_from_llm(file)
+            extract_contents += contents + "\n\n--------------\n\n"
+        return extract_contents
+```
+
+
+
+![image-20250609114319953](./assets/image-20250609114319953.png)
+
+AI助手整理思路如下:
+
+![image-20250609114532989](./assets/image-20250609114532989.png)
+
+
+
+代码完成后调试
+
+![image-20250609115909226](./assets/image-20250609115909226.png)
+
+前端并为输出,但是后端其实是把内容输出到前端了,需要修改前端
+
+### 解决前端不实时输出的问题
+
+再次和AI进行对话
+
+```
+修复问题:
+后端的日志更加的细粒度,需要打印每个智能体输出的详细日志
+测试用例生成的模块的前端不能实时输出智能体的消息(需要告知是哪个智能体的回复)
+```
+
+![image-20250609125030739](./assets/image-20250609125030739.png)
+
+
+
+这次优化后,前端问题没有修复,后端日志更加详细了
+
+![image-20250609125945899](./assets/image-20250609125945899.png)
+
+需要再次和AI明确内容:
+
+```
+测试用例生成模块的前端并不能正确实时输出智能体的内容,请修改前端代码,让智能体的内容展示到页面的AI分析结果中
+
+```
+
+
+
+优化后,前端还是报错
+
+![image-20250609130846531](./assets/image-20250609130846531.png)
+
+
+
+前端的错误问题,我们一般让AI来帮忙修复
+
+```
+修复frontend/src/pages/TestCasePage.tsx的错误
+testcase.ts:157 解析SSE数据失败: SyntaxError: Unexpected token 'd', "data: {"so"... is not valid JSON
+    at JSON.parse (<anonymous>)
+    at generateTestCaseStream (testcase.ts:134:31)
+    at async Object.generateTestCase [as onClick] (TestCasePage.tsx:277:7) 原始数据: data: data: {"source": "testcase_generator", "content": "AT", "agent_type": "testcase_agent", "agent_name": "testcase_generator", "conversation_id": "81d79d3e-42df-4339-9ff8-565f8ecf4e2b", "round_number": 1, "is_complete": false, "is_final": false, "timestamp": "2025-06-09T13:08:16.198405"}
+```
+
+![image-20250609135525248](./assets/image-20250609135525248.png)优化后的结果:
+
+![image-20250609135441287](./assets/image-20250609135441287.png)
+
+问题:
+
+用户反馈的地方会存在问题
+
+![image-20250609135625073](./assets/image-20250609135625073.png)
+
+
+
+另外,智能体返回的内容最好也使用markdown来进行一下美化
+
+继续和AI进行对话
+
+```
+前端用户反馈意见的部分,api/testcase/feedback 接口调用报错如下,请修复
+传入内容:
+{
+  "conversation_id": "96eedbe8-2275-4883-a73a-789dae0eca79",
+  "feedback": "增加性能测试",
+  "round_number": 1
+}
+结果报错:
+[
+  {
+    "type": "missing",
+    "loc": [
+      "query",
+      "conversation_id"
+    ],
+    "msg": "Field required",
+    "input": null
+  },
+  {
+    "type": "missing",
+    "loc": [
+      "query",
+      "feedback"
+    ],
+    "msg": "Field required",
+    "input": null
+  },
+  {
+    "type": "missing",
+    "loc": [
+      "query",
+      "round_number"
+    ],
+    "msg": "Field required",
+    "input": null
+  }
+]
+```
+
+
+
+### 优化智能体
+
+看了整体的智能体逻辑没有按照我当时规定的`SingleThreadedAgentRuntime` 运行时来完成相关代码, 而且导入的一些代码也`from examples.llms import openai_model_client`也都不正确,一步步来
+
+```
+参考examples/topic.py中 SingleThreadedAgentRuntime 的使用,改写backend/services/testcase_service.py 每个智能体使用RoutedAgent,收集消息返回到前端使用ClosureAgent完成
+https://microsoft.github.io/autogen/stable/user-guide/core-user-guide/framework/agent-and-agent-runtime.html 中的例子也可以拿来参照
+```
+
+
+
+![image-20250609143307157](./assets/image-20250609143307157.png)
+
+
+
+改写完成
+
+![image-20250609143942960](./assets/image-20250609143942960.png)
+
+
+
+运行时报错,这个问题让AI来修复即可
+
+```
+2025-06-09 14:40:32 | ERROR    | backend.services.testcase_service:generate_testcase_stream:273 | 生成测试用例失败 | 对话ID: f6258cfb-7d33-4b3f-82af-79cba76b0a1f | 错误: Closure must have 4 arguments
+
+```
+
+继续和AI进行对话
+
+```
+2025-06-09 14:40:32 | ERROR    | backend.services.testcase_service:generate_testcase_stream:273 | 生成测试用例失败 | 对话ID: f6258cfb-7d33-4b3f-82af-79cba76b0a1f | 错误: Closure must have 4 arguments
+代码报错,请修复
+```
+
+
+
+![image-20250609144914121](./assets/image-20250609144914121.png)
+
+
+
+
+
+但是运行报相同的错误,对于这种后端问题,需要自己来修改代码了,具体错误应该是如下
+
+![image-20250609145519113](./assets/image-20250609145519113.png)
+
+ClosureAgent的代码使用可以参考如下:
+
+https://microsoft.github.io/autogen/stable/user-guide/core-user-guide/cookbook/extracting-results-with-an-agent.html
+
+`backend/services/testcase_service.py`有问题的代码
+
+```
+    async def _collect_result(
+        self, runtime, id, payload: AgentResultMessage, ctx: MessageContext
+    ) -> None:
+```
+
+
+
+### 问题修复
+
+日志一直有乱码的情况
+
+![image-20250609175603134](./assets/image-20250609175603134.png)
+
+继续和AI进行对话
+
+```
+[32m2025-06-09 17:53:02[0m | [31m[1mERROR   [0m | [36mbackend.api.testcase[0m:[36mgenerate[0m:[36m155[0m | [31m[1m[API错误] 对话ID: 559af4e4-b1bb-44d4-8b7f-adbce341b236 | 错误数据: {'source': 'system', 'content': '生成过程中出错: Closure must have 4 arguments', 'agent_type': 'user_proxy', 'agent_name': 'system', 'conversation_id': '559af4e4-b1bb-44d4-8b7f-adbce341b236', 'round_number': 1, 'is_complete': True, 'is_final': True, 'timestamp': '2025-06-09T17:53:02.477444'}[0m
+后端的日志中一直有这种乱码的日志情况,请修复
+```
+
+![image-20250609181840997](./assets/image-20250609181840997.png)
+
+
+
+
+
+###  修复 Closure must have 4 arguments的问题
+
+输出的日志如下
+
+![image-20250609181957776](./assets/image-20250609181957776.png)
+
+上述日志可以查看到,在注册智能体的代码块内没有注册完成
+
+结合`Closure must have 4 arguments`的异常
+
+定位到,这个AI生成了需要传入request,而request的内容为`{'source': 'system', 'content': '生成过程中出错: Closure must have 4 arguments', 'agent_type': 'user_proxy', 'agent_name': 'system', 'conversation_id': '51ee344a-7a9c-4bfa-8e69-5e314a8d248c', 'round_number': 1, 'is_complete': True, 'is_final': True, 'timestamp': '2025-06-09T18:07:38.704597'}`
+
+![image-20250609182248079](./assets/image-20250609182248079.png)
+
+但request的结构为
+
+![image-20250609182351468](./assets/image-20250609182351468.png)
+
+该处的代码去掉request即可
+
+更新后测试代码依然报错,报错原因相同
+
+继续和AI进行对话
+
+```
+backend/services/testcase_service.py中将ClosureAgent用RoutedAgent来进行替代,修改代码
+```
+
+![image-20250609195146452](./assets/image-20250609195146452.png)
+
+
+
+修复后
+
+![image-20250609200341802](./assets/image-20250609200341802.png)
+
+当前的问题,所有的消息都是一次性的返回的,而且需求分析师的返回内容还没有正确解析
+
+继续和AI进行对话
+
+```
+问题修复:
+	前端: frontend/src/pages/TestCasePage.tsx的前端页面布局存在问题,AI分析结果表中,展示的流式输出不完整
+	收到的需求分析师的数据解析不正常
+	前后端问题:当前输出不是sse的方式输出,所有的内容一起输出
+```
+
+
+
+![image-20250609201045605](./assets/image-20250609201045605.png)
+
+
+
+```
+examples/agent/testcase.py 为fastapi的接口,examples/agent/testcase_agents.py为多智能体模块,这是websocket的实现,请仿照着这两个代码文件,实现本项目的逻辑,注意,本项目使用SSE而非websocket,可以借鉴两个代码中ClosureAgent(用来将消息返回到前端)和UserProxyAgent(用来和用户交互获取用户的需求)的用法,改写本项目backend/api/testcase.py和backend/services/testcase_service.py
+```
+
+
+
+
+
+代码修复后,再次遇到报错
+
+```
+backend/services/testcase_service.py 有大量的报错,请修复,比如File "/Users/bytedance/PycharmProjects/my_best/AITestLab/backend/core/init_app.py", line 14, in <module>
+    from backend.api.testcase import router as testcase_router
+  File "/Users/bytedance/PycharmProjects/my_best/AITestLab/backend/api/testcase.py", line 27, in <module>
+    from backend.services.testcase_service import (
+  File "/Users/bytedance/PycharmProjects/my_best/AITestLab/backend/services/testcase_service.py", line 660, in <module>
+    @type_subscription(topic_type=USER_FEEDBACK_TOPIC)
+                                  ^^^^^^^^^^^^^^^^^^^
+NameError: name 'USER_FEEDBACK_TOPIC' is not defined
+```
+
+
+
+改来改去,都有问题,有点气人啊,我打算自己手写这块的代码了,不管了,手撸这块代码
+
+
+
+
+
+
+
+
+
 
 
 ### 杂项优化
@@ -919,7 +1230,6 @@ AI用例智能体的前端请仿照图中平台的进行优化
 去掉侧边栏的帮助和滚动测试
 修复侧边栏的折叠按钮,右边未展示的问题
 根据当前开发的内容,重新对根目录下README.md进行优化,优化内容放到README.md下的工程搭建记录章节后,上面的内容不要删除,整合当前开发的内容
-
 ```
 
 
@@ -955,3 +1265,59 @@ readme文档也是增加相应的功能
 
 
 测试文件夹放到一个测试目录下
+
+
+
+
+
+### 手撸后端代码
+
+逻辑:
+
+```
+运行时内:
+	需求解析智能体
+	用例生成智能体
+	用例评审智能体
+	用户反馈(嵌入在评审中)
+	结构化智能体
+	入库智能体
+
+用户发送消息 -> SSE接口 -> 运行时 -> 返回给前端 (交互) -> 最终落库后,结构化呈献到前端
+
+
+
+
+```
+
+在这里发起了分析请求
+
+![image-20250609212936428](./assets/image-20250609212936428.png)
+
+看得我真是头疼,我先写后端吧,到时候在让AI生成前端
+
+后面再让AI封装一个api把,接口统一一下吧,否则太难找接口了
+
+```
+前端封装一个请求模块,要求支持后端SSE接口接入,前后端统一规范,方便接入
+```
+
+
+
+
+
+
+
+
+
+#### 前端的代码调用哪些接口
+
+分析`frontend/src/pages/TestCasePage.tsx`
+
+好久没看react,看得我有点头疼
+
+
+
+```对后端接口
+查看前端frontend/src/pages/TestCasePage.tsx代码对后端用例接口进行梳理,删除后端backend/api/testcase.py中没有用的接口
+```

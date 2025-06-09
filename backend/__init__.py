@@ -17,10 +17,22 @@ from backend.core.init_app import (
 from backend.core.logger import setup_logging
 
 try:
+    import os
+
     from backend.conf.config import settings
 
+    # 检测是否在生产环境或需要禁用颜色
+    force_no_color = (
+        os.getenv("FORCE_NO_COLOR") is not None
+        or os.getenv("NO_COLOR") is not None
+        or not hasattr(os.sys.stdout, "isatty")
+        or not os.sys.stdout.isatty()
+    )
+
     # 初始化日志系统
-    setup_logging(log_level=getattr(settings, "LOG_LEVEL", "INFO"))
+    setup_logging(
+        log_level=getattr(settings, "LOG_LEVEL", "INFO"), force_no_color=force_no_color
+    )
 
     # 验证配置
     validate_settings(settings)
