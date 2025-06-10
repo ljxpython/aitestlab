@@ -38,20 +38,14 @@ import type { UploadFile } from 'antd';
 import FileUpload from '@/components/FileUpload';
 import AgentMessage from '@/components/AgentMessage';
 import PageLayout from '@/components/PageLayout';
-// 使用新的请求模块
-import {
-  useTestCaseGeneration,
-  TestCaseAPI,
-  TestCaseRequest,
-  StreamResponse,
-  request
-} from '../api';
+import MarkdownRenderer from '@/components/MarkdownRenderer';
 
 const { Content } = Layout;
 const { TextArea } = Input;
 const { Title, Text } = Typography;
 const { Step } = Steps;
 
+// 简单的类型定义
 interface AgentMessageData {
   id: string;
   content: string;
@@ -71,18 +65,36 @@ interface TestCase {
   category: string;
 }
 
-const TestCasePage: React.FC = () => {
-  // 使用新的测试用例生成Hook
-  const {
-    messages: streamMessages,
-    loading,
-    error,
-    generate,
-    stop,
-    clear
-  } = useTestCaseGeneration();
+// SSE消息类型
+interface SSEMessage {
+  type: string;
+  source: string;
+  content: string;
+  conversation_id?: string;
+  message_type?: string;
+  timestamp?: string;
+  is_complete?: boolean;
+}
 
-  // 本地状态
+// 根据智能体名称获取类型
+const getAgentTypeFromSource = (source: string): 'requirement_agent' | 'testcase_agent' | 'user_proxy' => {
+  if (source.includes('需求分析')) {
+    return 'requirement_agent';
+  } else if (source.includes('测试用例') || source.includes('优化') || source.includes('结构化')) {
+    return 'testcase_agent';
+  } else {
+    return 'user_proxy';
+  }
+};
+
+const TestCasePage: React.FC = () => {
+  // 简化的状态管理
+  const [streamingContent, setStreamingContent] = useState<string>('');
+  const [currentAgent, setCurrentAgent] = useState<string>('');
+  const [loading, setLoading] = useState<boolean>(false);
+  const [streamError, setStreamError] = useState<string | null>(null);
+
+  // 基础状态
   const [currentStep, setCurrentStep] = useState(0);
   const [conversationId, setConversationId] = useState<string>('');
   const [roundNumber, setRoundNumber] = useState(1);
@@ -91,7 +103,6 @@ const TestCasePage: React.FC = () => {
   const [agentMessages, setAgentMessages] = useState<AgentMessageData[]>([]);
   const [userFeedback, setUserFeedback] = useState('');
   const [isComplete, setIsComplete] = useState(false);
-  const [generatedTestCases, setGeneratedTestCases] = useState<TestCase[]>([]);
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -229,47 +240,30 @@ const TestCasePage: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // 处理流式消息
-  useEffect(() => {
-    if (streamMessages.length > 0) {
-      const newMessages: AgentMessageData[] = streamMessages.map((msg: StreamResponse) => ({
-        id: `${msg.agent_name}_${msg.timestamp}_${Math.random()}`,
-        content: msg.content,
-        agentType: msg.agent_type,
-        agentName: msg.agent_name,
-        timestamp: msg.timestamp,
-        roundNumber: msg.round_number
-      }));
-
-      setAgentMessages(newMessages);
-
-      // 更新对话ID
-      if (streamMessages[0]?.conversation_id && !conversationId) {
-        setConversationId(streamMessages[0].conversation_id);
-      }
-
-      // 检查是否完成
-      const lastMessage = streamMessages[streamMessages.length - 1];
-      if (lastMessage?.is_complete || lastMessage?.is_final) {
-        setIsComplete(true);
-        setCurrentStep(2);
-        setAnalysisProgress(100);
-        message.success('测试用例生成完成！');
-      }
-    }
-  }, [streamMessages, conversationId]);
+  // 移除Hook依赖的useEffect，现在直接在SSE处理中更新状态
 
   // 处理错误
   useEffect(() => {
-    if (error) {
-      message.error(`生成失败: ${error}`);
+    if (streamError) {
+      message.error(`生成失败: ${streamError}`);
       setAnalysisProgress(0);
     }
-  }, [error]);
+  }, [streamError]);
 
   useEffect(() => {
     scrollToBottom();
   }, [agentMessages]);
+
+  // 监控流式状态变化
+  useEffect(() => {
+    console.log('🔥 流式状态变化:', {
+      currentAgent,
+      streamingContentLength: streamingContent.length,
+      streamingContent: streamingContent.substring(0, 50) + '...',
+      shouldShowStreaming: !!currentAgent,
+      streamingContentExists: !!streamingContent
+    });
+  }, [currentAgent, streamingContent]);
 
   const handleFilesChange = (files: UploadFile[]) => {
     setSelectedFiles(files);
@@ -279,62 +273,140 @@ const TestCasePage: React.FC = () => {
     }
   };
 
+  // 简单的SSE处理函数
+  const processSSEStream = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+
+      if (done) {
+        console.log('✅ SSE流处理完成');
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (!line.trim() || !line.startsWith('data: ')) {
+          continue;
+        }
+
+        const jsonStr = line.slice(6).trim();
+        if (!jsonStr || !jsonStr.startsWith('{')) {
+          continue;
+        }
+
+        try {
+          const data: SSEMessage = JSON.parse(jsonStr);
+          console.log('📤 收到SSE消息:', data.type, data.source, data.content);
+
+          if (data.type === 'streaming_chunk') {
+            // 实时显示流式输出
+            setCurrentAgent(data.source);
+            setStreamingContent(prev => prev + data.content);
+          } else if (data.type === 'text_message') {
+            // 完整消息
+            const newMessage: AgentMessageData = {
+              id: `${data.source}_${Date.now()}_${Math.random()}`,
+              content: data.content,
+              agentType: getAgentTypeFromSource(data.source),
+              agentName: data.source,
+              timestamp: data.timestamp || new Date().toISOString(),
+              roundNumber: roundNumber
+            };
+            setAgentMessages(prev => [...prev, newMessage]);
+            setStreamingContent('');
+            setCurrentAgent('');
+          } else if (data.type === 'task_result') {
+            // 任务完成
+            setIsComplete(true);
+            setCurrentStep(2);
+            setAnalysisProgress(100);
+            message.success('测试用例生成完成！');
+            break;
+          } else if (data.type === 'error') {
+            // 错误处理
+            setStreamError(data.content);
+            message.error('生成过程中出现错误');
+            break;
+          }
+        } catch (e) {
+          console.error('❌ 解析SSE数据失败:', e, '原始数据:', jsonStr);
+        }
+      }
+    }
+  };
+
   const generateTestCase = async () => {
     if (!textContent.trim() && selectedFiles.length === 0) {
       message.warning('请输入文本内容或上传文件');
       return;
     }
 
+    setLoading(true);
     setCurrentStep(1);
     setAnalysisProgress(0);
-    clear(); // 清空之前的消息
+    setStreamError(null);
+    setStreamingContent('');
+    setCurrentAgent('');
+    setAgentMessages([]);
 
     try {
-      let uploadedConversationId = conversationId;
-
-      // 如果有文件，先上传文件
-      if (selectedFiles.length > 0) {
-        setAnalysisProgress(10);
-        const files = selectedFiles.map(file => file.originFileObj as File).filter(Boolean);
-
-        // 使用新的请求模块上传文件
-        const formData = new FormData();
-        files.forEach(file => formData.append('files', file));
-        if (textContent) formData.append('text_content', textContent);
-        if (conversationId) formData.append('conversation_id', conversationId);
-
-        try {
-          const uploadResponse = await request.post('/file/upload', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' }
-          });
-          uploadedConversationId = uploadResponse.data.conversation_id;
-          setConversationId(uploadedConversationId);
-          message.success(`成功上传 ${files.length} 个文件`);
-        } catch (uploadError) {
-          console.error('文件上传失败:', uploadError);
-          message.error('文件上传失败，将仅使用文本内容');
-        }
-
-        setAnalysisProgress(30);
-      }
-
-      // 准备请求数据
-      const requestData: TestCaseRequest = {
-        conversation_id: uploadedConversationId,
+      // 简化的请求数据
+      const requestData = {
+        conversation_id: conversationId || undefined,
         text_content: textContent.trim() || undefined,
-        round_number: roundNumber
+        files: selectedFiles.map(file => ({
+          filename: file.name,
+          content_type: file.type,
+          size: file.size,
+          content: ''
+        })),
+        round_number: roundNumber,
+        enable_streaming: true
       };
 
       setAnalysisProgress(40);
+      console.log('🚀 开始生成测试用例:', requestData);
 
-      // 使用新的Hook生成测试用例
-      await generate(requestData);
+      // 发送请求
+      const response = await fetch('/api/testcase/generate/streaming', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestData),
+      });
+
+      if (!response.ok) {
+        throw new Error(`请求失败: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('无法获取响应流');
+      }
+
+      // 处理SSE流
+      await processSSEStream(reader);
+
+      // 更新对话ID（如果是新对话）
+      if (!conversationId && response.headers.get('X-Conversation-Id')) {
+        setConversationId(response.headers.get('X-Conversation-Id') || '');
+      }
 
     } catch (error: any) {
       console.error('生成测试用例失败:', error);
       message.error(`生成测试用例失败: ${error.message || '请重试'}`);
       setCurrentStep(0);
       setAnalysisProgress(0);
+      setStreamError(error.message || '网络请求失败');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -349,53 +421,73 @@ const TestCasePage: React.FC = () => {
       return;
     }
 
+    if (!conversationId) {
+      message.error('没有有效的对话ID');
+      return;
+    }
+
+    setLoading(true);
+    setStreamError(null);
+    setStreamingContent('');
+    setCurrentAgent('');
+
     try {
-      // 使用新的API服务提交反馈
-      const result = await TestCaseAPI.submitFeedback({
+      // 简化的反馈数据
+      const feedbackData = {
         conversation_id: conversationId,
-        feedback: userFeedback,
-        round_number: roundNumber
-      });
-
-      if (result.data?.max_rounds_reached) {
-        message.info('已达到最大交互轮次');
-        setIsComplete(true);
-        setCurrentStep(3);
-        setUserFeedback('');
-        return;
-      }
-
-      // 使用反馈重新生成测试用例
-      const requestData: TestCaseRequest = {
-        conversation_id: conversationId,
-        user_feedback: userFeedback,
-        round_number: result.data?.next_round || roundNumber + 1
+        feedback: userFeedback.trim(),
+        round_number: roundNumber,
+        previous_testcases: agentMessages
+          .filter(msg => msg.agentName.includes('测试用例') || msg.agentName.includes('优化'))
+          .map(msg => msg.content)
+          .join('\n\n')
       };
 
-      // 使用新的Hook重新生成测试用例
-      await generate(requestData);
+      console.log('🔄 提交反馈:', userFeedback.trim());
+
+      const response = await fetch('/api/testcase/feedback/streaming', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(feedbackData),
+      });
+
+      if (!response.ok) {
+        throw new Error(`反馈请求失败: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('无法获取反馈响应流');
+      }
+
+      // 处理反馈的SSE流
+      await processSSEStream(reader);
 
       setUserFeedback('');
       setRoundNumber(prev => prev + 1);
-      message.success('反馈提交成功，正在生成改进的测试用例...');
-    } catch (error) {
+      message.success('反馈提交成功！');
+    } catch (error: any) {
       console.error('提交反馈失败:', error);
-      message.error('提交反馈失败，请重试');
+      message.error(`提交反馈失败: ${error.message || '请重试'}`);
+      setStreamError(error.message || '反馈提交失败');
+    } finally {
+      setLoading(false);
     }
   };
 
   const stopGeneration = () => {
-    stop();
+    setLoading(false);
     setCurrentStep(0);
     setAnalysisProgress(0);
+    setStreamingContent('');
+    setCurrentAgent('');
     message.info('已停止生成');
   };
 
   const resetConversation = () => {
-    // 使用Hook的clear方法
-    clear();
-
-    // 重置本地状态
+    // 重置所有状态
     setAgentMessages([]);
     setConversationId('');
     setRoundNumber(1);
@@ -404,13 +496,24 @@ const TestCasePage: React.FC = () => {
     setSelectedFiles([]);
     setUserFeedback('');
     setIsComplete(false);
-    setGeneratedTestCases([]);
     setAnalysisProgress(0);
+    setStreamingContent('');
+    setCurrentAgent('');
+    setLoading(false);
+    setStreamError(null);
     message.info('已重置对话');
   };
 
   return (
     <PageLayout background="#f8f9fa">
+      <style>
+        {`
+          @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+          }
+        `}
+      </style>
       <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
         {/* 页面标题 */}
         <div style={{
@@ -727,7 +830,7 @@ const TestCasePage: React.FC = () => {
                 <Text type="secondary">根据需求内容生成的测试用例</Text>
               </div>
 
-              {generatedTestCases.length > 0 && (
+              {agentMessages.length > 0 && (
                 <Space>
                   <Button icon={<DownloadOutlined />} type="text">
                     导出
@@ -741,7 +844,7 @@ const TestCasePage: React.FC = () => {
 
             {/* 内容区域 */}
             <div style={{ flex: 1, padding: 24, overflow: 'auto' }}>
-              {agentMessages.length === 0 ? (
+              {agentMessages.length === 0 && !currentAgent ? (
                 <div style={{
                   display: 'flex',
                   flexDirection: 'column',
@@ -771,6 +874,59 @@ const TestCasePage: React.FC = () => {
                 </div>
               ) : (
                 <div>
+                  {/* 流式内容显示 */}
+                  {currentAgent && (
+                    <div style={{ marginBottom: 24 }}>
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        marginBottom: 12,
+                        padding: '8px 12px',
+                        background: '#e6f7ff',
+                        borderRadius: 6,
+                        border: '1px solid #91d5ff'
+                      }}>
+                        <RobotOutlined style={{
+                          color: '#1890ff',
+                          marginRight: 8
+                        }} />
+                        <Text strong style={{ color: '#1890ff' }}>
+                          {currentAgent}
+                        </Text>
+                        <Tag color="processing" style={{ marginLeft: 'auto' }}>
+                          正在输出...
+                        </Tag>
+                      </div>
+
+                      <div style={{
+                        marginLeft: 0,
+                        padding: 16,
+                        background: 'white',
+                        borderRadius: 8,
+                        border: '1px solid #f0f0f0',
+                        whiteSpace: 'pre-wrap',
+                        lineHeight: 1.6,
+                        minHeight: 60
+                      }}>
+                        {streamingContent ? (
+                          <MarkdownRenderer content={streamingContent} />
+                        ) : (
+                          <span style={{ color: '#8c8c8c', fontStyle: 'italic' }}>
+                            正在等待输出...
+                          </span>
+                        )}
+                        <span style={{
+                          display: 'inline-block',
+                          width: 8,
+                          height: 16,
+                          background: '#1890ff',
+                          animation: 'blink 1s infinite',
+                          marginLeft: 4
+                        }} />
+                      </div>
+                    </div>
+                  )}
+
                   {/* AI生成的消息列表 */}
                   <div style={{ marginBottom: 24 }}>
                     {agentMessages.map((msg, index) => (

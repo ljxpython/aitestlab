@@ -14,7 +14,7 @@ export type { UseSSEOptions, UseSSEReturn } from '../hooks/useSSE';
 export * from './types';
 
 // 导出API服务
-export { default as TestCaseAPI, useTestCaseSSE, useTestCaseGeneration } from './testcase';
+export { TestCaseAPI, useTestCaseStreaming, useTestCaseGeneration } from './testcase';
 export { default as ChatAPI, useChatSSE, useChat } from './chat';
 
 // 导出常量

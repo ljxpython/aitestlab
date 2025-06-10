@@ -53,8 +53,16 @@ export interface TestCaseRequest {
   conversation_id?: string;
   text_content?: string;
   files?: FileUpload[];
+  round_number?: number;
+  enable_streaming?: boolean;
+}
+
+// 用户反馈请求接口
+export interface FeedbackRequest {
+  conversation_id: string;
+  feedback: string;
   round_number: number;
-  user_feedback?: string;
+  previous_testcases?: string;
 }
 
 // 测试用例响应接口
@@ -68,17 +76,63 @@ export interface TestCaseResponse {
   timestamp: string;
 }
 
-// SSE流式响应接口
+// SSE流式响应接口 - 重新设计版本
 export interface StreamResponse {
+  type: 'streaming_chunk' | 'text_message' | 'task_result' | 'error';
   source: string;
   content: string;
-  agent_type: string;
-  agent_name: string;
   conversation_id: string;
-  round_number: number;
-  is_complete: boolean;
-  is_final: boolean;
+  message_type?: string;
+  is_complete?: boolean;
   timestamp: string;
+  // streaming_chunk 特有字段
+  chunk_index?: number;
+  // task_result 特有字段
+  messages?: any[];
+  task_complete?: boolean;
+  // error 特有字段
+  max_rounds_reached?: boolean;
+}
+
+// 流式输出块消息
+export interface StreamingChunkMessage {
+  type: 'streaming_chunk';
+  source: string;
+  content: string;
+  conversation_id: string;
+  message_type: string;
+  chunk_index: number;
+  timestamp: string;
+}
+
+// 智能体完整消息
+export interface TextMessage {
+  type: 'text_message';
+  source: string;
+  content: string;
+  conversation_id: string;
+  message_type: string;
+  is_complete: boolean;
+  timestamp: string;
+}
+
+// 任务结果消息
+export interface TaskResultMessage {
+  type: 'task_result';
+  messages: any[];
+  conversation_id: string;
+  task_complete: boolean;
+  timestamp: string;
+}
+
+// 错误消息
+export interface ErrorMessage {
+  type: 'error';
+  source: string;
+  content: string;
+  conversation_id: string;
+  timestamp: string;
+  max_rounds_reached?: boolean;
 }
 
 // 聊天消息接口

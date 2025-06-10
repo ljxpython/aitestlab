@@ -1321,3 +1321,367 @@ readme文档也是增加相应的功能
 ```对后端接口
 查看前端frontend/src/pages/TestCasePage.tsx代码对后端用例接口进行梳理,删除后端backend/api/testcase.py中没有用的接口
 ```
+
+
+
+#### sse编写代码的核心逻辑
+
+##### 基础
+
+请求头实现
+
+```
+response.headers["Content-Type"] = "text/event-stream"
+response.headers["Cache-Control"] = "no-cache"
+response.headers["Connection"] = "keep-alive"
+```
+
+数据格式
+
+```
+yield f"data: {json.dumps(data)}\n\n"
+
+```
+
+SSE要求每条消息以"data: "开头，以两个换行符"\n\n"结束。
+
+使用`async def`和`yield`创建异步生成器，避免阻塞。
+
+异步变成的使用:
+
+```
+def generate_stock_data():
+    stocks = ["AAPL", "GOOGL", "MSFT", "AMZN", "TSLA"]
+    while True:
+        stock = random.choice(stocks)
+        price = round(random.uniform(100, 500), 2)
+        change = round(random.uniform(-10, 10), 2)
+        change_percent = round((change / price) * 100, 2)
+        yield {
+            "symbol": stock,
+            "price": price,
+            "change": change,
+            "change_percent": change_percent,
+            "timestamp": time.time()
+        }
+        time.sleep(1)  # 每秒更新一次
+
+调用:
+async def main():
+    # async for data in generate_stock_data():
+    #     print(data)
+    data = generate_stock_data()
+    async for i in data:
+        print(i)
+```
+
+
+
+
+
+一个demo
+
+fastapi的接口内一个异步迭代器
+
+```
+@router.post("/stream")
+async def chat_stream(request: ChatRequest):
+    """流式聊天接口"""
+    conversation_id = request.conversation_id or str(uuid.uuid4())
+    logger.info(
+        f"收到流式聊天请求 | 对话ID: {conversation_id} | 消息: {request.message[:50]}..."
+    )
+
+    try:
+
+        async def generate():
+            try:
+                logger.debug(f"开始生成流式响应 | 对话ID: {conversation_id}")
+                chunk_count = 0
+
+                async for chunk in autogen_service.chat_stream(
+                    message=request.message,
+                    conversation_id=conversation_id,
+                    system_message=request.system_message or "你是一个有用的AI助手",
+                ):
+                    chunk_count += 1
+                    logger.debug(
+                        f"生成第 {chunk_count} 个数据块 | 内容长度: {len(chunk)}"
+                    )
+
+                    # 发送内容块
+                    chunk_data = StreamChunk(
+                        content=chunk,
+                        is_complete=False,
+                        conversation_id=conversation_id,
+                    )
+                    yield f"data: {chunk_data.model_dump_json()}\n\n"
+
+                # 发送完成信号
+                final_chunk = StreamChunk(
+                    content="", is_complete=True, conversation_id=conversation_id
+                )
+                yield f"data: {final_chunk.model_dump_json()}\n\n"
+                logger.success(
+                    f"流式响应完成 | 对话ID: {conversation_id} | 总块数: {chunk_count}"
+                )
+
+            except Exception as e:
+                logger.error(
+                    f"流式响应生成失败 | 对话ID: {conversation_id} | 错误: {e}"
+                )
+                error_chunk = StreamChunk(
+                    content=f"错误: {str(e)}",
+                    is_complete=True,
+                    conversation_id=conversation_id,
+                )
+                yield f"data: {error_chunk.model_dump_json()}\n\n"
+
+        return StreamingResponse(
+            generate(),
+            media_type="text/plain",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "Content-Type": "text/event-stream",
+            },
+        )
+
+    except Exception as e:
+        logger.error(f"流式聊天接口异常 | 对话ID: {conversation_id} | 错误: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+```
+
+Autogen内的异步迭代器
+
+```
+    async def chat_stream(
+        self,
+        message: str,
+        conversation_id: Optional[str] = None,
+        system_message: str = "你是一个有用的AI助手",
+    ) -> AsyncGenerator[str, None]:
+        """流式聊天"""
+        if not conversation_id:
+            conversation_id = str(uuid.uuid4())
+
+        logger.info(
+            f"开始流式聊天 | 对话ID: {conversation_id} | 消息: {message[:100]}..."
+        )
+
+        # 执行自动清理
+        self._auto_cleanup()
+
+        agent = self.create_agent(conversation_id, system_message)
+
+        try:
+            # 获取流式响应
+            logger.debug(f"调用 Agent 流式响应 | 对话ID: {conversation_id}")
+            result = agent.run_stream(task=message)
+
+            chunk_count = 0
+            async for item in result:
+                if isinstance(item, ModelClientStreamingChunkEvent):
+                    if item.content:
+                        chunk_count += 1
+                        logger.debug(
+                            f"收到流式数据块 {chunk_count} | 对话ID: {conversation_id} | 内容: {item.content[:50]}..."
+                        )
+                        yield item.content
+
+            logger.success(
+                f"流式聊天完成 | 对话ID: {conversation_id} | 总块数: {chunk_count}"
+            )
+
+        except Exception as e:
+            logger.error(f"流式聊天失败 | 对话ID: {conversation_id} | 错误: {e}")
+            yield f"错误: {str(e)}
+```
+
+
+
+### 本项目代码核心
+
+```
+ClosureAgent 负责把消息传送给前端
+
+重新设计用例生成模块的后端: backend/api/testcase.py和backend/services/testcase_service.py
+/generate/sse 接口,实现需求分析,初步用例生成   (需求分析智能体+用例生成智能体) 发布消息: 需求分析
+/feedback  接口,用户根据反馈再次生成优化用例 当输入意见时  (用户反馈 + 用例评审优化智能体) 发布消息: 用例优化
+当输入同意时 返回最终的结果  -完成数据库落库  (结构化 + 入库智能体) 发布消息:用例结果
+相当于用这两个接口来触发运行时的消息发布
+封装一个类
+
+	实现: 根据对话的id记录历史消息,历史消息实现参考:https://microsoft.github.io/autogen/stable/user-guide/agentchat-user-guide/memory.html
+	初始化一个运行时:注册上述智能体
+	可以根据接口,发布运行时的消息,运行时的代码参考:https://microsoft.github.io/autogen/stable/user-guide/core-user-guide/framework/agent-and-agent-runtime.html
+	和用户交互使用UserProxyAgent,代码参考:https://microsoft.github.io/autogen/stable/user-guide/agentchat-user-guide/tutorial/human-in-the-loop.html
+	提取测试结果给到前端使用ClosureAgent代码参考: https://microsoft.github.io/autogen/stable/user-guide/core-user-guide/cookbook/extracting-results-with-an-agent.html
+	其他相关代码还可以借鉴examples/agent/testcase.py  examples/agent/testcase_agents.py的实现
+
+
+
+
+之前使用websocket,相当于在一个长连接内,实现上述三个接口的
+
+
+```
+
+把上述逻辑返回给AI,在AI的基础上进行优化和封装
+
+
+
+```
+backend/api/testcase.py和backend/services/testcase_service.py 日志的输出尽量要全,比如,打印出什么智能体在什么阶段出了是什么事件事件的内容,每一个步骤都详细的打印出来,两份代码进行给出详细的注释
+```
+
+
+
+```
+backend/api/testcase.py  backend/services/testcase_service.py
+接口修改:输出的内容,不仅仅要最后的结果,还需要流式输出的所有内容,然后到前端,之后前端做流式输出
+接口都为修改为post请求
+前端的页面为frontend/src/pages/TestCasePage.tsx
+from autogen_agentchat.messages import ModelClientStreamingChunkEvent, TextMessage
+    async for event in stream:
+        if isinstance(
+            event, ModelClientStreamingChunkEvent
+        ):  #  输出流，根据source属性判断是哪个agent的输出
+            print(event.content, end="", flush=True)
+        if isinstance(event, TextMessage) and event.source == "primary":
+            print(event.content)  # 表示primary智能体最终的完整输出
+            # break
+        if isinstance(event, TextMessage) and event.source == "critic":
+            print(event.content)  # 表示critic智能体最终的完整输出
+            # break
+
+        if isinstance(event, TaskResult):  # 包含所有智能体的输出，包括用户的输入
+            print(
+                event.messages
+            )  # 列表存储，每个元素是一个TextMessage，代表是每个智能体的输出
+```
+
+
+
+
+
+```
+            logger.success(f"✅ [测试用例生成智能体] 测试用例生成执行完成 | 对话ID: {conversation_id}")
+            logger.info(f"   📄 生成结果长度: {len(testcases)} 字符")
+            logger.debug(f"   📝 生成结果预览: {testcases[:200]}...")日志尽量合并成一条,打印出流式日志的完成内容,不需要进行省略
+```
+
+
+
+```
+frontend/src/pages/TestCasePage.tsx 前端代码未和后端接口进行适配,请修改前端代码
+```
+
+
+
+
+
+```
+问题修复:
+1. 日志中打印的消息不正确,完整消息不是智能体返回的流式消息
+日志样例如下:2025-06-10 19:50:31 | INFO     | backend.api.testcase:generate:187 |    📝 完整消息: 需求分析智能体
+2025-06-10 19:50:31 | INFO     | backend.services.testcase_service:_generate_streaming_output:696 | 📤 [流式输出] 处理消息 3 | 智能体: 测试用例生成智能体
+2025-06-10 19:50:31 | INFO     | backend.api.testcase:generate:176 | 📤 [流式SSE生成器] 发送流式数据 #42
+2025-06-10 19:50:31 | INFO     | backend.api.testcase:generate:177 |    🏷️  类型: streaming_chunk
+2025-06-10 19:50:31 | INFO     | backend.api.testcase:generate:178 |    🤖 来源: 测试用例生成智能体
+2025-06-10 19:50:31 | INFO     | backend.api.testcase:generate:176 | 📤 [流式SSE生成器] 发送流式数据 #43
+2025-06-10 19:50:31 | INFO     | backend.api.testcase:generate:177 |    🏷️  类型: text_message
+2025-06-10 19:50:31 | INFO     | backend.api.testcase:generate:178 |    🤖 来源: 测试用例生成智能体
+2025-06-10 19:50:31 | INFO     | backend.api.testcase:generate:187 |    📝 完整消息: 测试用例生成智能体
+2. 前端AI分析结果表下,没有实时输出智能体返回的日志
+3.             result = await generator_agent.run(task=generation_task) 这种使用方式替换为流式输出run_stream,前端实时的展示结果
+
+```
+
+我想说,现在的AI理解能力真的是很强
+
+![image-20250610200533222](./assets/image-20250610200533222.png)
+
+
+
+修复后:发现前端报错
+
+接口正常输出日志:
+
+![image-20250610203422991](./assets/image-20250610203422991.png)
+
+![image-20250610203343266](./assets/image-20250610203343266.png)
+
+```
+当前后端接口正常,但是前端代码报错,请修复前端代码的报错
+testcase.ts:179 ❌ 解析SSE数据失败: SyntaxError: Unexpected end of JSON input
+    at JSON.parse (<anonymous>)
+    at startGeneration (testcase.ts:169:33)
+    at async generate (testcase.ts:303:7)
+    at async Object.generateTestCase [as onClick] (TestCasePage.tsx:331:7) data:
+testcase.ts:179 ❌ 解析SSE数据失败: SyntaxError: Unexpected token 'd', "data: {"ty"... is not valid JSON
+    at JSON.parse (<anonymous>)
+    at startGeneration (testcase.ts:169:33)
+    at async generate (testcase.ts:303:7)
+    at async Object.generateTestCase [as onClick] (TestCasePage.tsx:331:7) data: data: {"type": "text_message", "source": "测试用例生成智能体", "content": " ", "conversation_id": "c6a59ac4-159d-4a14-8f6e-618ddc265ea8", "message_type": "测试用例生成", "is_complete": false, "timestamp": "2025-06-10T20:32:28.543163"}
+2
+testcase.ts:179 ❌ 解析SSE数据失败: SyntaxError: Unexpected end of JSON input
+    at JSON.parse (<anonymous>)
+    at startGeneration (testcase.ts:169:33)
+    at async generate (testcase.ts:303:7)
+    at async Object.generateTestCase [as onClick] (TestCasePage.tsx:331:7) data:
+testcase.ts:179 ❌ 解析SSE数据失败: SyntaxError: Unexpected token 'd', "data: {"ty"... is not valid JSON
+    at JSON.parse (<anonymous>)
+    at startGeneration (testcase.ts:169:33)
+    at async generate (testcase.ts:303:7)
+    at async Object.generateTestCase [as onClick] (TestCasePage.tsx:331:7) data: data: {"type": "text_message", "source": "测试用例生成智能体", "content": "测试", "conversation_id": "c6a59ac4-159d-4a14-8f6e-618ddc265ea8", "message_type": "测试用例生成", "is_complete": false, "timestamp": "2025-06-10T20:32:28.543733"}
+```
+
+
+
+![image-20250610213652553](./assets/image-20250610213652553.png)
+
+```
+前端现在能够正确的处理sse的格式了,但是AI分析结果表并没有实时的输出后端的流式日志,请修复这个问题
+```
+
+
+
+```
+当前前端还不能实时输出流式日志,比如接口返回的这条信息,就不能实时输出:data: {"type": "streaming_chunk", "source": "需求分析智能体", "content": "测试", "conversation_id": "fff858e7-b82b-4608-8a7f-b88d8b215196", "message_type": "streaming", "timestamp": "2025-06-10T22:59:19.362047"}请修复
+
+
+```
+
+
+
+
+
+```
+问题修复
+frontend/src/pages/TestCasePage.tsx,当前前端AI分析结果表还不能实时输出流式日志,比如接口返回的这条信息,就不能实时输出:
+data: {"type": "text_message", "source": "需求分析智能体", "content": "🔍 收到用户需求，开始进行专业需求分析...", "conversation_id": "0b126fdc-cdd0-4fb0-9739-49801d69495d", "message_type": "需求分析", "is_complete": false, "timestamp": "2025-06-10T23:13:32.665223"}
+
+data: {"type": "streaming_chunk", "source": "测试用例生成智能体", "content": "针对", "conversation_id": "0b126fdc-cdd0-4fb0-9739-49801d69495d", "message_type": "streaming", "timestamp": "2025-06-10T23:14:14.506103"}
+
+data: {"type": "streaming_chunk", "source": "需求分析智能体", "content": "规则", "conversation_id": "87f59475-e7e5-4f6a-935d-40d55b66bcdc", "message_type": "streaming", "timestamp": "2025-06-10T23:33:02.064722"}
+
+
+{"content":"#","is_complete":false,"conversation_id":"4310028a-cbc1-4f57-9ff0-a3d99809bfc5"}
+```
+
+
+
+
+
+```
+TestCasePage.tsx前端还是有问题,frontend/src/pages/ChatPage.tsx 中的流式日志就可以实时显示,显示的数据如下:{"content":"#","is_complete":false,"conversation_id":"4310028a-cbc1-4f57-9ff0-a3d99809bfc5"}
+frontend/src/pages/TestCasePage.tsx 中的流式日志不能实时显示data: {"type": "streaming_chunk", "source": "需求分析智能体", "content": "规则", "conversation_id": "87f59475-e7e5-4f6a-935d-40d55b66bcdc", "message_type": "streaming", "timestamp": "2025-06-10T23:33:02.064722"}
+请对比一下,找出问题,修复TestCasePage.tsx中的问题
+```
+
+
+
+```
+我不想要使用frontend/src/api下的代码,请重新修改frontend/src/pages/TestCasePage.tsx代码,使用最简单的接口代码来完成前端和后端的对接,使用sse流式输出技术栈,实时展示智能体的内容到前端
+```

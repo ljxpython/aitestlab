@@ -91,11 +91,11 @@ export const API_ENDPOINTS = {
 
   // 测试用例相关
   TESTCASE: {
-    GENERATE: '/testcase/generate',
-    GENERATE_STREAM: '/testcase/generate/stream',
-    GENERATE_SSE: '/testcase/generate/sse',
-    FEEDBACK: '/testcase/feedback',
-    HISTORY: '/testcase/history',
+    GENERATE: '/api/testcase/generate',
+    GENERATE_STREAMING: '/api/testcase/generate/streaming',
+    FEEDBACK_STREAMING: '/api/testcase/feedback/streaming',
+    HISTORY: '/api/testcase/history',
+    TEST: '/api/testcase/test',
     EXPORT: '/testcase/export',
   },
 
