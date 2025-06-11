@@ -1,7 +1,8 @@
 import asyncio
 
 from autogen_agentchat.agents import AssistantAgent
-from autogen_agentchat.messages import ModelClientStreamingChunkEvent
+from autogen_agentchat.base import TaskResult
+from autogen_agentchat.messages import ModelClientStreamingChunkEvent, TextMessage
 from autogen_agentchat.ui import Console
 from llms import openai_model_client
 
@@ -27,7 +28,12 @@ async def main_stream():
     )  # 当前代码不会执行run_stream()中的代码,直接返回协程对象
     async for item in result:
         if isinstance(item, ModelClientStreamingChunkEvent):
-            print(item.content, end="", flush=True)
+            print(item.content, end="", flush=True)  ## 流式输出
+        if isinstance(item, TextMessage):
+            print(item.content)  # 表示primary智能体最终的完整输出
+        if isinstance(item, TaskResult):
+            print(item.messages[0].content)  # 记录user的输入
+            print(item.messages[-1].content)  # 表示primary智能体最终的完整输出
 
 
 async def main_console():

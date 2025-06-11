@@ -34,9 +34,6 @@ from autogen_ext.models.openai import OpenAIChatCompletionClient
 from llama_index.core import Document, SimpleDirectoryReader
 from pydantic import BaseModel, Field
 
-# from app.api.v1.agent.api.llms import model_client
-from .utils import extract_text_from_llm
-
 # 定义主题类型
 requirement_acquisition_topic_type = "requirement_acquisition"
 requirement_analysis_topic_type = "requirement_analysis"
@@ -86,7 +83,7 @@ class RequirementAcquisitionAgent(RoutedAgent):
 
         try:
             # 从文件中读取文档内容
-            doc_content = await self.get_document_from_llm_files(message.files)
+            doc_content = await self.get_document_from_files(message.files)
 
             # 发送处理状态到前端
             await self.publish_message(

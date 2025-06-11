@@ -332,3 +332,4 @@ frontend.log
 # 日志文件
 logs/
 *.log
+uploads

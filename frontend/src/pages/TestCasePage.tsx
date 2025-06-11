@@ -65,22 +65,23 @@ interface TestCase {
   category: string;
 }
 
-// SSE消息类型
+// SSE消息类型 - 根据后端接口重新定义
 interface SSEMessage {
-  type: string;
-  source: string;
-  content: string;
-  conversation_id?: string;
-  message_type?: string;
-  timestamp?: string;
-  is_complete?: boolean;
+  type?: string; // 消息类型: 'text_message', 'streaming_chunk', 'task_result', 'error'
+  source?: string; // 消息来源: '需求分析智能体', '测试用例生成智能体'等
+  content: string; // 消息内容
+  conversation_id?: string; // 对话ID
+  message_type?: string; // 业务类型: '用户需求', '文档解析结果', '需求分析', '测试用例生成', 'streaming_chunk'
+  timestamp?: string; // 时间戳
+  is_final?: boolean; // 是否最终消息
+  is_complete?: boolean; // 是否完成（兼容性）
 }
 
 // 根据智能体名称获取类型
 const getAgentTypeFromSource = (source: string): 'requirement_agent' | 'testcase_agent' | 'user_proxy' => {
-  if (source.includes('需求分析')) {
+  if (source.includes('需求分析智能体')) {
     return 'requirement_agent';
-  } else if (source.includes('测试用例') || source.includes('优化') || source.includes('结构化')) {
+  } else if (source.includes('测试用例生成智能体') || source.includes('用例评审优化智能体') || source.includes('结构化入库智能体')) {
     return 'testcase_agent';
   } else {
     return 'user_proxy';
@@ -137,9 +138,13 @@ const TestCasePage: React.FC = () => {
 
   // 获取简化的智能体显示名称（用于流式输出）
   const getSimplifiedAgentName = (agentName: string): string => {
-    if (agentName.includes('需求分析')) {
+    if (agentName.includes('需求分析智能体')) {
       return '需求分析师';
-    } else if (agentName.includes('测试用例') || agentName.includes('优化') || agentName.includes('结构化')) {
+    } else if (agentName.includes('测试用例生成智能体')) {
+      return '测试用例专家';
+    } else if (agentName.includes('用例评审优化智能体')) {
+      return '测试用例专家';
+    } else if (agentName.includes('结构化入库智能体')) {
       return '测试用例专家';
     } else {
       return getAgentDisplayName(getAgentTypeFromSource(agentName), agentName);
@@ -149,10 +154,10 @@ const TestCasePage: React.FC = () => {
   // 判断是否应该显示流式输出（避免冗余显示）
   const shouldShowStreamingOutput = (agentName: string): boolean => {
     // 只显示主要的智能体流式输出
-    return agentName.includes('需求分析') ||
-           agentName.includes('测试用例生成') ||
-           agentName.includes('测试用例优化') ||
-           agentName.includes('测试用例最终化');
+    return agentName.includes('需求分析智能体') ||
+           agentName.includes('测试用例生成智能体') ||
+           agentName.includes('用例评审优化智能体') ||
+           agentName.includes('结构化入库智能体');
   };
 
   // 判断是否应该在消息列表中显示（避免重复显示）
@@ -298,7 +303,16 @@ const TestCasePage: React.FC = () => {
     }
   };
 
-  // 修复的SSE处理函数 - 处理重复data:前缀问题
+  // 辅助函数：根据智能体来源获取智能体类型（保留，用于兼容性）
+  const getAgentTypeFromSource = (source: string): AgentType => {
+    if (source.includes('需求分析')) return 'requirement_agent';
+    if (source.includes('测试用例生成')) return 'testcase_agent';
+    if (source.includes('评审') || source.includes('优化')) return 'review_agent';
+    if (source.includes('存储') || source.includes('数据库')) return 'storage_agent';
+    return 'testcase_agent'; // 默认类型
+  };
+
+  // SSE处理函数 - 根据后端接口重新实现
   const processSSEStream = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
     const decoder = new TextDecoder();
     let buffer = '';
@@ -316,128 +330,204 @@ const TestCasePage: React.FC = () => {
       buffer = lines.pop() || '';
 
       for (const line of lines) {
-        if (!line.trim() || !line.startsWith('data: ')) {
-          continue;
-        }
-
-        // 处理重复的data:前缀问题
-        let jsonStr = line.slice(6).trim(); // 移除第一个 "data: "
-
-        // 检查并移除可能的重复data:前缀
-        while (jsonStr.startsWith('data: ')) {
-          console.warn('⚠️ 检测到重复的data:前缀，正在清理:', line);
-          jsonStr = jsonStr.slice(6).trim();
-        }
-
-        // 跳过空数据或非JSON数据
-        if (!jsonStr || !jsonStr.startsWith('{')) {
-          console.debug('🔍 跳过非JSON数据:', jsonStr);
-          continue;
-        }
-
-        try {
-          const data: SSEMessage = JSON.parse(jsonStr);
-          console.log('📤 收到SSE消息:', data.type, data.source, data.content?.substring(0, 50) + '...');
-
-          if (data.type === 'streaming_chunk') {
-            // 实时显示流式输出
-            console.log('🔥 处理streaming_chunk:', data.source, data.content);
-
-            // 更新当前智能体的流式内容（总是更新，用于后续的完整消息）
-            setAgentStreamingMap(prev => ({
-              ...prev,
-              [data.source]: (prev[data.source] || '') + data.content
-            }));
-
-            // 只为重要的智能体显示流式输出
-            if (shouldShowStreamingOutput(data.source)) {
-              const simplifiedName = getSimplifiedAgentName(data.source);
-              setCurrentAgent(simplifiedName);
-
-              // 更新全局流式内容（用于显示）
-              setStreamingContent(prev => {
-                const newContent = prev + data.content;
-                console.log('🔥 更新streamingContent长度:', newContent.length);
-                return newContent;
-              });
-            }
-          } else if (data.type === 'text_message') {
-            // 完整消息 - 使用累积的流式内容或接收到的完整内容
-            console.log('📝 处理text_message:', data.source, data.content?.length);
-
-            // 只处理应该在消息列表中显示的智能体
-            if (shouldShowInMessageList(data.source)) {
-              // 获取该智能体累积的流式内容
-              const agentStreamContent = agentStreamingMap[data.source] || '';
-              const finalContent = agentStreamContent.trim() || data.content;
-
-              console.log('📝 最终内容长度:', finalContent?.length, '流式内容长度:', agentStreamContent.length);
-
-              const newMessage: AgentMessageData = {
-                id: `${data.source}_${Date.now()}_${Math.random()}`,
-                content: finalContent,
-                agentType: getAgentTypeFromSource(data.source),
-                agentName: data.source,
-                timestamp: data.timestamp || new Date().toISOString(),
-                roundNumber: roundNumber
-              };
-
-              // 检查是否已经存在相同智能体的消息（避免重复）
-              setAgentMessages(prev => {
-                const existingIndex = prev.findIndex(msg =>
-                  msg.agentName === data.source &&
-                  msg.roundNumber === roundNumber &&
-                  Math.abs(Date.now() - new Date(msg.timestamp).getTime()) < 10000 // 10秒内的消息认为是重复的
-                );
-
-                if (existingIndex >= 0) {
-                  // 更新现有消息
-                  const updated = [...prev];
-                  updated[existingIndex] = { ...updated[existingIndex], content: finalContent };
-                  console.log('📝 更新现有消息:', data.source, finalContent?.length);
-                  return updated;
-                } else {
-                  // 添加新消息
-                  console.log('📝 添加新消息:', data.source, finalContent?.length);
-                  return [...prev, newMessage];
-                }
-              });
-            }
-
-            // 清理该智能体的流式内容
-            setAgentStreamingMap(prev => {
-              const updated = { ...prev };
-              delete updated[data.source];
-              return updated;
+        if (line.startsWith('data: ')) {
+          try {
+            const data: SSEMessage = JSON.parse(line.slice(6));
+            console.log('📤 收到SSE消息:', {
+              type: data.type,
+              message_type: data.message_type,
+              source: data.source,
+              content_length: data.content?.length,
+              is_final: data.is_final
             });
 
-            // 如果当前智能体完成，清空流式显示
-            const simplifiedName = getSimplifiedAgentName(data.source);
-            if (currentAgent === simplifiedName) {
-              setStreamingContent('');
-              setCurrentAgent('');
+            // 更新conversation_id（如果还没有设置）
+            if (data.conversation_id && !conversationId) {
+              console.log('📋 设置conversation_id:', data.conversation_id);
+              setConversationId(data.conversation_id);
             }
-          } else if (data.type === 'task_result') {
-            // 任务完成
-            console.log('🏁 任务完成');
-            setIsComplete(true);
-            setCurrentStep(2);
-            setAnalysisProgress(100);
-            message.success('测试用例生成完成！');
-            break;
-          } else if (data.type === 'error') {
-            // 错误处理
-            console.error('❌ 收到错误消息:', data.content);
-            setStreamError(data.content);
-            message.error('生成过程中出现错误');
-            break;
+
+            // 根据后端接口逻辑处理不同类型的消息
+            if (data.type === 'text_message') {
+              // 处理text_message类型的消息
+              console.log('📝 处理text_message:', data.message_type, data.source);
+
+              if (data.message_type === '用户需求') {
+                // 用户模块: 用户需求
+                console.log('👤 处理用户需求消息');
+                const userMessage: AgentMessageData = {
+                  id: `user_requirement_${Date.now()}_${Math.random()}`,
+                  content: data.content,
+                  agentType: 'user_proxy',
+                  agentName: '用户模块',
+                  timestamp: data.timestamp || new Date().toISOString(),
+                  roundNumber: roundNumber
+                };
+                setAgentMessages(prev => [...prev, userMessage]);
+
+              } else if (data.message_type === '文档解析结果') {
+                // 用户模块: 文档解析结果
+                console.log('📄 处理文档解析结果消息');
+                const docMessage: AgentMessageData = {
+                  id: `doc_analysis_${Date.now()}_${Math.random()}`,
+                  content: data.content,
+                  agentType: 'user_proxy',
+                  agentName: '用户模块',
+                  timestamp: data.timestamp || new Date().toISOString(),
+                  roundNumber: roundNumber
+                };
+                setAgentMessages(prev => [...prev, docMessage]);
+
+              } else if (data.message_type === '需求分析') {
+                // 需求分析智能体的完整输出
+                console.log('🧠 处理需求分析完整消息');
+
+                // 获取该智能体累积的流式内容
+                const agentStreamContent = agentStreamingMap[data.source] || '';
+                const finalContent = agentStreamContent.trim() || data.content;
+
+                const analysisMessage: AgentMessageData = {
+                  id: `requirement_analysis_${Date.now()}_${Math.random()}`,
+                  content: finalContent,
+                  agentType: 'requirement_agent',
+                  agentName: '需求分析师',
+                  timestamp: data.timestamp || new Date().toISOString(),
+                  roundNumber: roundNumber
+                };
+
+                // 检查是否已经存在相同的消息（避免重复）
+                setAgentMessages(prev => {
+                  const existingIndex = prev.findIndex(msg =>
+                    msg.agentType === 'requirement_agent' &&
+                    msg.roundNumber === roundNumber &&
+                    Math.abs(Date.now() - new Date(msg.timestamp).getTime()) < 10000
+                  );
+
+                  if (existingIndex >= 0) {
+                    // 更新现有消息
+                    const updated = [...prev];
+                    updated[existingIndex] = { ...updated[existingIndex], content: finalContent };
+                    console.log('📝 更新需求分析消息');
+                    return updated;
+                  } else {
+                    // 添加新消息
+                    console.log('📝 添加需求分析消息');
+                    return [...prev, analysisMessage];
+                  }
+                });
+
+                // 清理该智能体的流式内容
+                setAgentStreamingMap(prev => {
+                  const updated = { ...prev };
+                  delete updated[data.source];
+                  return updated;
+                });
+
+                // 清空流式显示
+                if (currentAgent === '需求分析师') {
+                  setStreamingContent('');
+                  setCurrentAgent('');
+                }
+
+              } else if (data.message_type === '测试用例生成') {
+                // 测试用例生成智能体的完整输出
+                console.log('🧪 处理测试用例生成完整消息');
+
+                // 获取该智能体累积的流式内容
+                const agentStreamContent = agentStreamingMap[data.source] || '';
+                const finalContent = agentStreamContent.trim() || data.content;
+
+                const testcaseMessage: AgentMessageData = {
+                  id: `testcase_generation_${Date.now()}_${Math.random()}`,
+                  content: finalContent,
+                  agentType: 'testcase_agent',
+                  agentName: '测试用例专家',
+                  timestamp: data.timestamp || new Date().toISOString(),
+                  roundNumber: roundNumber
+                };
+
+                // 检查是否已经存在相同的消息（避免重复）
+                setAgentMessages(prev => {
+                  const existingIndex = prev.findIndex(msg =>
+                    msg.agentType === 'testcase_agent' &&
+                    msg.roundNumber === roundNumber &&
+                    Math.abs(Date.now() - new Date(msg.timestamp).getTime()) < 10000
+                  );
+
+                  if (existingIndex >= 0) {
+                    // 更新现有消息
+                    const updated = [...prev];
+                    updated[existingIndex] = { ...updated[existingIndex], content: finalContent };
+                    console.log('📝 更新测试用例生成消息');
+                    return updated;
+                  } else {
+                    // 添加新消息
+                    console.log('📝 添加测试用例生成消息');
+                    return [...prev, testcaseMessage];
+                  }
+                });
+
+                // 清理该智能体的流式内容
+                setAgentStreamingMap(prev => {
+                  const updated = { ...prev };
+                  delete updated[data.source];
+                  return updated;
+                });
+
+                // 清空流式显示
+                if (currentAgent === '测试用例专家') {
+                  setStreamingContent('');
+                  setCurrentAgent('');
+                }
+
+                // 标记完成
+                setIsComplete(true);
+                setCurrentStep(2);
+                setAnalysisProgress(100);
+                message.success('测试用例生成完成！');
+              }
+
+            } else if (data.message_type === 'streaming_chunk') {
+              // 处理流式输出块
+              console.log('🔥 处理streaming_chunk:', data.source);
+
+              // 更新当前智能体的流式内容
+              setAgentStreamingMap(prev => ({
+                ...prev,
+                [data.source]: (prev[data.source] || '') + data.content
+              }));
+
+              // 根据智能体来源显示流式输出
+              if (data.source === '需求分析智能体') {
+                setCurrentAgent('需求分析师');
+                setStreamingContent(prev => prev + data.content);
+                setAnalysisProgress(60);
+              } else if (data.source === '测试用例生成智能体') {
+                setCurrentAgent('测试用例专家');
+                setStreamingContent(prev => prev + data.content);
+                setAnalysisProgress(80);
+              }
+
+            } else if (data.type === 'task_result') {
+              // 任务完成
+              console.log('🏁 任务完成');
+              setIsComplete(true);
+              setCurrentStep(2);
+              setAnalysisProgress(100);
+              message.success('测试用例生成完成！');
+              break;
+
+            } else if (data.type === 'error') {
+              // 错误处理
+              console.error('❌ 收到错误消息:', data.content);
+              setStreamError(data.content);
+              message.error('生成过程中出现错误');
+              break;
+            }
+
+          } catch (e) {
+            console.error('❌ 解析SSE数据失败:', e, '原始行:', line);
           }
-        } catch (e) {
-          console.error('❌ 解析SSE数据失败:', e);
-          console.error('   原始行:', line);
-          console.error('   清理后JSON:', jsonStr);
-          console.error('   JSON长度:', jsonStr.length);
-          console.error('   JSON前100字符:', jsonStr.substring(0, 100));
         }
       }
     }
@@ -446,6 +536,20 @@ const TestCasePage: React.FC = () => {
   const generateTestCase = async () => {
     if (!textContent.trim() && selectedFiles.length === 0) {
       message.warning('请输入文本内容或上传文件');
+      return;
+    }
+
+    // 检查文件是否都已成功选择
+    const hasUploadingFiles = selectedFiles.some(file => file.status === 'uploading');
+    const hasFailedFiles = selectedFiles.some(file => file.status === 'error');
+
+    if (hasUploadingFiles) {
+      message.warning('请等待文件处理完成');
+      return;
+    }
+
+    if (hasFailedFiles) {
+      message.error('存在处理失败的文件，请重新选择');
       return;
     }
 
@@ -459,16 +563,55 @@ const TestCasePage: React.FC = () => {
     setAgentStreamingMap({});
 
     try {
-      // 简化的请求数据
+      // 步骤1: 先上传文件（如果有文件需要上传）
+      let filePaths: string[] = [];
+
+      if (selectedFiles.length > 0) {
+        console.log('📁 开始上传文件:', selectedFiles.length, '个');
+
+        // 准备FormData
+        const formData = new FormData();
+        formData.append('user_id', '1'); // 默认用户ID
+
+        selectedFiles.forEach((file, index) => {
+          if (file.originFileObj) {
+            formData.append('files', file.originFileObj);
+            console.log(`📄 添加文件 ${index + 1}:`, file.name);
+          }
+        });
+
+        // 调用上传接口
+        const uploadResponse = await fetch('/api/testcase/upload', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!uploadResponse.ok) {
+          throw new Error(`文件上传失败: ${uploadResponse.status}`);
+        }
+
+        const uploadResult = await uploadResponse.json();
+        console.log('📁 文件上传成功:', uploadResult);
+
+        // 提取文件路径
+        filePaths = uploadResult.files?.map((file: any) => file.filePath) || [];
+        console.log('📎 获得文件路径:', filePaths);
+      }
+
+      // 步骤2: 构建生成请求数据 - 使用文件路径而不是文件内容
+      // 如果没有conversation_id，生成一个新的
+      let currentConversationId = conversationId;
+      if (!currentConversationId) {
+        currentConversationId = `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        console.log('🆕 生成新的conversation_id:', currentConversationId);
+        setConversationId(currentConversationId);
+      }
+
       const requestData = {
-        conversation_id: conversationId || undefined,
-        text_content: textContent.trim() || undefined,
-        files: selectedFiles.map(file => ({
-          filename: file.name,
-          content_type: file.type,
-          size: file.size,
-          content: ''
-        })),
+        conversation_id: currentConversationId,
+        text_content: textContent.trim() || "",
+        file_paths: filePaths.length > 0 ? filePaths : null,  // 使用文件路径
+        files: null,  // 不再使用文件内容
         round_number: roundNumber,
         enable_streaming: true
       };
@@ -476,7 +619,7 @@ const TestCasePage: React.FC = () => {
       setAnalysisProgress(40);
       console.log('🚀 开始生成测试用例:', requestData);
 
-      // 发送请求
+      // 发送请求 - 与ChatPage对齐的处理方式
       const response = await fetch('/api/testcase/generate/streaming', {
         method: 'POST',
         headers: {
@@ -497,11 +640,6 @@ const TestCasePage: React.FC = () => {
       // 处理SSE流
       await processSSEStream(reader);
 
-      // 更新对话ID（如果是新对话）
-      if (!conversationId && response.headers.get('X-Conversation-Id')) {
-        setConversationId(response.headers.get('X-Conversation-Id') || '');
-      }
-
     } catch (error: any) {
       console.error('生成测试用例失败:', error);
       message.error(`生成测试用例失败: ${error.message || '请重试'}`);
@@ -512,6 +650,8 @@ const TestCasePage: React.FC = () => {
       setLoading(false);
     }
   };
+
+
 
   const submitFeedback = async () => {
     if (!userFeedback.trim()) {
@@ -536,7 +676,7 @@ const TestCasePage: React.FC = () => {
     setAgentStreamingMap({});
 
     try {
-      // 简化的反馈数据
+      // 构建反馈数据 - 确保所有字段都符合后端模型要求
       const feedbackData = {
         conversation_id: conversationId,
         feedback: userFeedback.trim(),
@@ -544,11 +684,12 @@ const TestCasePage: React.FC = () => {
         previous_testcases: agentMessages
           .filter(msg => msg.agentName.includes('测试用例') || msg.agentName.includes('优化'))
           .map(msg => msg.content)
-          .join('\n\n')
+          .join('\n\n') || ""  // 确保是字符串，不能是undefined
       };
 
       console.log('🔄 提交反馈:', userFeedback.trim());
 
+      // 发送反馈请求 - 与ChatPage对齐的处理方式
       const response = await fetch('/api/testcase/feedback/streaming', {
         method: 'POST',
         headers: {
@@ -591,10 +732,34 @@ const TestCasePage: React.FC = () => {
     message.info('已停止生成');
   };
 
-  const resetConversation = () => {
+  const resetConversation = async () => {
+    console.log('🔄 开始重置对话');
+
+    // 如果有现有的conversation_id，先清除后端历史记录
+    if (conversationId) {
+      try {
+        console.log('🗑️ 清除后端历史记录:', conversationId);
+        const response = await fetch(`/api/testcase/conversation/${conversationId}`, {
+          method: 'DELETE',
+        });
+
+        if (response.ok) {
+          console.log('✅ 后端历史记录清除成功');
+        } else {
+          console.warn('⚠️ 后端历史记录清除失败，但继续重置前端状态');
+        }
+      } catch (error) {
+        console.warn('⚠️ 清除后端历史记录时出错:', error);
+      }
+    }
+
+    // 生成新的conversation_id
+    const newConversationId = `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    console.log('🆕 生成新的conversation_id:', newConversationId);
+
     // 重置所有状态
     setAgentMessages([]);
-    setConversationId('');
+    setConversationId(newConversationId);  // 设置新的conversation_id
     setRoundNumber(1);
     setCurrentStep(0);
     setTextContent('');
@@ -607,7 +772,9 @@ const TestCasePage: React.FC = () => {
     setAgentStreamingMap({});
     setLoading(false);
     setStreamError(null);
-    message.info('已重置对话');
+
+    message.success('已重新开始，生成新的对话');
+    console.log('🎉 对话重置完成，新conversation_id:', newConversationId);
   };
 
   return (

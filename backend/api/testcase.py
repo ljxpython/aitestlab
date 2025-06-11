@@ -10,8 +10,10 @@ import base64
 import json
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import List, Optional
 
+import aiofiles
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from loguru import logger
 from pydantic import BaseModel
@@ -52,63 +54,100 @@ class StreamingGenerateRequest(BaseModel):
     conversation_id: Optional[str] = None
     text_content: Optional[str] = None
     files: Optional[List[FileUpload]] = None
+    file_paths: Optional[List[str]] = None  # 新增：支持文件路径列表
     round_number: int = 1
     enable_streaming: bool = True
 
 
 @router.post("/upload")
 async def upload_files(
+    user_id: int = Query(default=1, description="用户ID"),
     files: List[UploadFile] = File(...),
-    text_content: Optional[str] = Form(None),
-    conversation_id: Optional[str] = Form(None),
 ):
-    """文件上传接口"""
-    conversation_id = conversation_id or str(uuid.uuid4())
+    """
+    文件上传接口 - 参考examples实现
+
+    处理文件上传并返回存储路径，供后续文件解析使用
+    """
     logger.info(
-        f"收到文件上传请求 | 对话ID: {conversation_id} | 文件数量: {len(files)}"
+        f"📁 [文件上传] 收到文件上传请求 | 用户ID: {user_id} | 文件数量: {len(files)}"
     )
 
     try:
+        from pathlib import Path
+
+        import aiofiles
+
         uploaded_files = []
 
-        for file in files:
-            # 读取文件内容
-            content = await file.read()
+        # 创建用户专属上传目录
+        upload_dir = Path("uploads") / str(user_id)
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"   📂 上传目录: {upload_dir}")
 
-            # 检查文件大小（限制为10MB）
-            if len(content) > 10 * 1024 * 1024:
-                raise HTTPException(
-                    status_code=413, detail=f"文件 {file.filename} 过大，最大支持10MB"
-                )
+        for i, file in enumerate(files):
+            logger.info(f"   📄 处理文件 {i+1}: {file.filename}")
 
-            # 编码文件内容
-            encoded_content = base64.b64encode(content).decode("utf-8")
+            # 文件类型验证（可选，当前注释掉以支持更多格式）
+            # ALLOWED_TYPES = [
+            #     "application/pdf",
+            #     "application/msword",
+            #     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            #     "text/plain"
+            # ]
+            # if file.content_type not in ALLOWED_TYPES:
+            #     raise HTTPException(400, detail=f"不支持的文件类型: {file.content_type}")
 
-            file_upload = FileUpload(
-                filename=file.filename or "unknown",
-                content_type=file.content_type or "application/octet-stream",
-                size=len(content),
-                content=encoded_content,
-            )
-            uploaded_files.append(file_upload)
+            # 生成唯一文件名
+            file_ext = Path(file.filename).suffix if file.filename else ""
+            uuid_name = f"{uuid.uuid4().hex}{file_ext}"
+            file_path = upload_dir / uuid_name
+            logger.debug(f"   💾 文件保存路径: {file_path}")
 
-            logger.debug(f"文件上传成功: {file.filename} ({len(content)} bytes)")
+            # 流式写入文件并控制大小
+            max_size = 10 * 1024 * 1024  # 10MB
+            total_size = 0
 
-        logger.success(f"所有文件上传完成 | 对话ID: {conversation_id}")
+            async with aiofiles.open(file_path, "wb") as buffer:
+                while chunk := await file.read(8192):
+                    total_size += len(chunk)
+                    if total_size > max_size:
+                        await buffer.close()
+                        file_path.unlink(missing_ok=True)
+                        raise HTTPException(
+                            413, detail=f"文件 {file.filename} 大小超过10MB限制"
+                        )
+                    await buffer.write(chunk)
+
+            # 构建文件信息
+            file_info = {
+                "filePath": file_path.as_posix(),  # 文件完整路径
+                "fileId": uuid_name,  # 唯一文件ID
+                "fileName": file.filename,  # 原始文件名
+                "contentType": file.content_type,  # 文件类型
+                "size": total_size,  # 文件大小
+            }
+            uploaded_files.append(file_info)
+
+            logger.success(f"   ✅ 文件上传成功: {file.filename} -> {file_path}")
+
+        logger.success(
+            f"🎉 [文件上传] 所有文件上传完成 | 用户ID: {user_id} | 成功: {len(uploaded_files)} 个"
+        )
 
         return {
-            "conversation_id": conversation_id,
-            "files": [
-                {"filename": f.filename, "content_type": f.content_type, "size": f.size}
-                for f in uploaded_files
-            ],
-            "text_content": text_content,
+            "success": True,
             "message": "文件上传成功",
+            "user_id": user_id,
+            "files": uploaded_files,
+            "total_files": len(uploaded_files),
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"文件上传失败 | 对话ID: {conversation_id} | 错误: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"❌ [文件上传] 文件上传失败 | 用户ID: {user_id} | 错误: {e}")
+        raise HTTPException(status_code=500, detail=f"文件上传失败: {str(e)}")
 
 
 @router.post("/generate/streaming")
@@ -146,6 +185,7 @@ async def generate_testcase_streaming(request: StreamingGenerateRequest):
     requirement = RequirementMessage(
         text_content=request.text_content or "",
         files=request.files or [],
+        file_paths=request.file_paths or [],  # 新增：支持文件路径
         conversation_id=conversation_id,
         round_number=request.round_number,
     )
@@ -208,9 +248,12 @@ async def generate_testcase_streaming(request: StreamingGenerateRequest):
                         f"   🏁 任务结果: {len(stream_data.get('messages', []))} 条消息"
                     )
 
-                # 发送SSE数据 - 修复缺失的data:前缀
+                # 确保每个流式数据都包含conversation_id
+                stream_data["conversation_id"] = conversation_id
+
+                # 发送SSE数据 - EventSourceResponse会自动添加data:前缀
                 sse_data = json.dumps(stream_data, ensure_ascii=False)
-                yield f"data: {sse_data}\n\n"
+                yield f"{sse_data}"
                 logger.debug(f"   📡 SSE数据已发送: {len(sse_data)} 字符")
 
                 # 如果是任务结果，表示完成
@@ -242,7 +285,7 @@ async def generate_testcase_streaming(request: StreamingGenerateRequest):
                 "timestamp": datetime.now().isoformat(),
             }
             error_data = json.dumps(error_message, ensure_ascii=False)
-            yield f"data: {error_data}\n\n"
+            yield f"{error_data}"
             logger.debug(f"   📡 错误消息已发送: {error_data}")
 
     return EventSourceResponse(
@@ -305,7 +348,7 @@ async def submit_feedback_streaming(request: FeedbackRequest):
                 "max_rounds_reached": True,
                 "timestamp": datetime.now().isoformat(),
             }
-            yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
+            yield f"{json.dumps(error_data, ensure_ascii=False)}"
 
         return EventSourceResponse(
             error_generator(),
@@ -384,9 +427,12 @@ async def submit_feedback_streaming(request: FeedbackRequest):
                         f"   🏁 任务结果: {len(stream_data.get('messages', []))} 条消息"
                     )
 
-                # 发送SSE数据
+                # 确保每个流式数据都包含conversation_id
+                stream_data["conversation_id"] = request.conversation_id
+
+                # 发送SSE数据 - EventSourceResponse会自动添加data:前缀
                 sse_data = json.dumps(stream_data, ensure_ascii=False)
-                yield f"data: {sse_data}\n\n"
+                yield f"{sse_data}"
                 logger.debug(f"   📡 SSE数据已发送: {len(sse_data)} 字符")
 
                 # 如果是任务结果，表示完成
@@ -418,7 +464,7 @@ async def submit_feedback_streaming(request: FeedbackRequest):
                 "timestamp": datetime.now().isoformat(),
             }
             error_data = json.dumps(error_message, ensure_ascii=False)
-            yield f"data: {error_data}\n\n"
+            yield f"{error_data}"
             logger.debug(f"   📡 错误消息已发送: {error_data}")
 
     return EventSourceResponse(
@@ -512,5 +558,46 @@ async def get_conversation_history(conversation_id: str):
         logger.error(f"   🐛 错误类型: {type(e).__name__}")
         logger.error(f"   📄 错误详情: {str(e)}")
         logger.error(f"   📍 错误位置: 历史接口处理过程")
+
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/conversation/{conversation_id}")
+async def clear_conversation_history(conversation_id: str):
+    """
+    清除对话历史接口
+
+    功能：清除指定对话的所有历史记录和消息
+
+    Args:
+        conversation_id: 对话唯一标识符
+
+    Returns:
+        dict: 清除结果
+    """
+    logger.info(f"🗑️ [API-清除历史] 收到清除对话历史请求")
+    logger.info(f"   📋 对话ID: {conversation_id}")
+    logger.info(f"   🌐 请求方法: DELETE /api/testcase/conversation/{conversation_id}")
+
+    try:
+        # 清除历史记录和消息
+        await testcase_service.clear_conversation(conversation_id)
+
+        logger.success(
+            f"✅ [API-清除历史] 对话历史清除成功 | 对话ID: {conversation_id}"
+        )
+
+        return {
+            "success": True,
+            "message": "对话历史已清除",
+            "conversation_id": conversation_id,
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    except Exception as e:
+        logger.error(f"❌ [API-清除历史] 清除对话历史失败 | 对话ID: {conversation_id}")
+        logger.error(f"   🐛 错误类型: {type(e).__name__}")
+        logger.error(f"   📄 错误详情: {str(e)}")
+        logger.error(f"   📍 错误位置: 清除历史接口处理过程")
 
         raise HTTPException(status_code=500, detail=str(e))

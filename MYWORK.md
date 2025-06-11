@@ -1937,3 +1937,308 @@ openai_model_client = OpenAIChatCompletionClient(
 ```
 backend/services/testcase_service.py 对后端代码进行 优化,只有智能体流式输出返回到接口中,其余只在日志中做记录
 ```
+
+
+
+```
+我上传了一个md文档,前端的类型检测为unknown,
+一个文件前端展示为两个相同的文件,
+点击或拖拽文件到此区域的配色和页面不搭,请美观一点
+```
+
+
+
+```
+现在不管上传什么文件,都显示文件 xxxx已存在,另外上传区域的配色还需要优化,当前不好看,AI分析结果表中输出的内容例子:请分析以下需求：
+
+
+测试#需求分析报告##1.需求概述您提供的需求描述为"测试"，这是一个非常简短的输入。作为专业需求分析师，我需要指出这个描述存在以下问题：
+
+
+1.信息量严重不足，无法识别任何具体的
+请查看前端代码,以markdown的方式展示
+```
+
+
+
+```
+问题修复:
+1. 现在上传文件,前端还是报错: 文件 协程使用.md 已存在,需要修复
+2. 请查看前端和后端进行sse流式输出的处理逻辑,是不是存在冗余的操作,sse的格式处理可以参考ChatPage.tsx文件
+```
+
+
+
+```
+接口响应报错
+{
+  "conversation_id": null,
+  "text_content": "测试",
+  "files": [
+    {
+      "content": ""
+    }
+  ],
+  "round_number": 1,
+  "enable_streaming": true
+}
+
+接口响应无问题
+{
+  "conversation_id": null,
+  "text_content": "测试",
+  "files": null,
+  "round_number": 1,
+  "enable_streaming": true
+}
+```
+
+
+
+
+
+```
+修复问题:
+1. 上传区域出现单击有时不生效的问题
+2. 我通过接口发现,上传的文件没有被正确的解析:请分析以下需求：
+测试
+📎 附件文件信息:
+文件总数: 1
+协程使用.md (application/octet-stream, 5141 bytes)
+#需求分析报告##1.文档概述根据提供的附件"协程使用.md",这是一个关于协程(Coroutines)使用的技术文档，文件大小为5141字节。由于我无法直接查看附件内容，我将基于"协程使用"这个主题进行通用的需求分析。
+需要调整后端代码
+```
+
+
+
+```
+请参考examples/requirements.py和examples/requirement_agents.py中上传文件"/upload" 和RequirementAcquisitionAgent处理文件的逻辑,修改本项目的前后端backend/services/testcase_service.py  backend/api/testcase.py frontend/src/pages/TestCasePage.tsx
+```
+
+
+
+
+
+### (重要)待优化点 memeroy要持久化存储
+
+参考: https://microsoft.github.io/autogen/stable/user-guide/agentchat-user-guide/memory.html  实现
+
+```
+我想把记忆放到本地的磁盘,这样就会减少磁盘的开销,可以参考这段代码实现该功能
+ 同样增加删除逻辑
+import os
+from pathlib import Path
+
+from autogen_agentchat.agents import AssistantAgent
+from autogen_agentchat.ui import Console
+from autogen_core.memory import MemoryContent, MemoryMimeType
+from autogen_ext.memory.chromadb import ChromaDBVectorMemory, PersistentChromaDBVectorMemoryConfig
+from autogen_ext.models.openai import OpenAIChatCompletionClient
+
+# Initialize ChromaDB memory with custom config
+chroma_user_memory = ChromaDBVectorMemory(
+    config=PersistentChromaDBVectorMemoryConfig(
+        collection_name="preferences",
+        persistence_path=os.path.join(str(Path.home()), ".chromadb_autogen"),
+        k=2,  # Return top  k results
+        score_threshold=0.4,  # Minimum similarity score
+    )
+)
+# a HttpChromaDBVectorMemoryConfig is also supported for connecting to a remote ChromaDB server
+
+# Add user preferences to memory
+await chroma_user_memory.add(
+    MemoryContent(
+        content="The weather should be in metric units",
+        mime_type=MemoryMimeType.TEXT,
+        metadata={"category": "preferences", "type": "units"},
+    )
+)
+
+await chroma_user_memory.add(
+    MemoryContent(
+        content="Meal recipe must be vegan",
+        mime_type=MemoryMimeType.TEXT,
+        metadata={"category": "preferences", "type": "dietary"},
+    )
+)
+
+model_client = OpenAIChatCompletionClient(
+    model="gpt-4o",
+)
+
+# Create assistant agent with ChromaDB memory
+assistant_agent = AssistantAgent(
+    name="assistant_agent",
+    model_client=model_client,
+    tools=[get_weather],
+    memory=[chroma_user_memory],
+)
+
+stream = assistant_agent.run_stream(task="What is the weather in New York?")
+await Console(stream)
+
+await model_client.close()
+await chroma_user_memory.close()
+
+```
+
+
+
+
+
+
+
+### (重要)待优化点 用户上传文件云端保存
+
+未来用户上传,先`MD5sum` 一下,存在数据库就不需要上传,不存在就上传保存
+
+保存的文件也有时效性,定期删除
+
+
+
+### 后端优化,流式返回结果 优化
+
+我看了下AI生成的代码,如下,类似于这类的代码,其实没有按照Autogen官方文档中的范例使用
+
+```
+            async for chunk in generator_agent.run_stream(task=generation_task):
+                if hasattr(chunk, "content") and chunk.content:
+                    testcases_parts.append(chunk.content)
+                    # 发送流式输出块 (streaming_chunk 类型)
+                    await self.publish_message(
+                        ResponseMessage(
+                            source="测试用例生成智能体",
+                            content=chunk.content,
+                            message_type="streaming_chunk",  # 标记为流式块
+                        ),
+                        topic_id=TopicId(
+                            type=task_result_topic_type, source=self.id.key
+                        ),
+                    )
+                    logger.info(
+                        f"📡 [测试用例生成智能体] 发送流式块 | 对话ID: {conversation_id} | 内容: {chunk.content}"
+                    )
+
+```
+
+如下是一个标准的使用
+
+```
+            async for chunk in generator_agent.run_stream(task=generation_task):
+                if hasattr(chunk, "content") and chunk.content:
+                    testcases_parts.append(chunk.content)
+                    # 发送流式输出块 (streaming_chunk 类型)
+                    await self.publish_message(
+                        ResponseMessage(
+                            source="测试用例生成智能体",
+                            content=chunk.content,
+                            message_type="streaming_chunk",  # 标记为流式块
+                        ),
+                        topic_id=TopicId(
+                            type=task_result_topic_type, source=self.id.key
+                        ),
+                    )
+                    logger.info(
+                        f"📡 [测试用例生成智能体] 发送流式块 | 对话ID: {conversation_id} | 内容: {chunk.content}"
+                    )
+
+```
+
+
+
+
+
+```
+在backend/services/testcase_service.py中,对于collect_result部分需要优化
+在Autogen的使用中 result = agent.run_stream()的结果有三类ModelClientStreamingChunkEvent,TextMessage,TaskResult
+输出到前端的使用ModelClientStreamingChunkEvent,记录用户的问题和反馈可以使用TextMessage,记录所有的结果可以用TaskResult
+例子如下:
+import asyncio
+
+from autogen_agentchat.agents import AssistantAgent
+from autogen_agentchat.messages import ModelClientStreamingChunkEvent,TextMessage
+from autogen_agentchat.base import TaskResult
+from autogen_agentchat.ui import Console
+from llms import openai_model_client
+
+agent = AssistantAgent(
+    name="reporter_agent",
+    model_client=openai_model_client,
+    system_message="你擅长编写古诗",
+    model_client_stream=True,  # 支持流式输出
+)
+async def main_stream():
+    # 获取协程对象
+    result = agent.run_stream(
+        task="编写一首4言古诗"
+    )  # 当前代码不会执行run_stream()中的代码,直接返回协程对象
+    async for item in result:
+        if isinstance(item, ModelClientStreamingChunkEvent):
+            print(item.content, end="", flush=True)  ## 流式输出
+        if isinstance(item, TextMessage):
+            print(item.content)  # 表示primary智能体最终的完整输出
+        if isinstance(item, TaskResult):
+            print(item.messages[0].content) # 记录user的输入
+            print(item.messages[-1].content)  # 表示primary智能体最终的完整输出
+
+
+async def main_console():
+    await Console(agent.run_stream(task="编写一首4言古诗"))
+根据上面的例子,修改项目中类似于如下的代码,
+            async for chunk in generator_agent.run_stream(task=generation_task):
+                if hasattr(chunk, "content") and chunk.content:
+                    testcases_parts.append(chunk.content)
+                    # 发送流式输出块 (streaming_chunk 类型)
+                    await self.publish_message(
+                        ResponseMessage(
+                            source="测试用例生成智能体",
+                            content=chunk.content,
+                            message_type="streaming_chunk",  # 标记为流式块
+                        ),
+                        topic_id=TopicId(
+                            type=task_result_topic_type, source=self.id.key
+                        ),
+                    )
+                    logger.info(
+                        f"📡 [测试用例生成智能体] 发送流式块 | 对话ID: {conversation_id} | 内容: {chunk.content}"
+                    )
+```
+
+
+
+代码一定要自己敲过一遍,后面就可以用自己的例子,让AI帮忙丰富,那样里面的逻辑才能看懂,除了问题自己才能知道哪里有错
+
+
+
+```
+"message_type": "测试用例生成"
+
+"agent_type": "agent",
+      "agent_name": "测试用例生成智能体",
+
+"agent_type": "agent",
+      "agent_name": "需求分析智能体",
+```
+
+
+
+前端优化
+
+```
+frontend/src/pages/TestCasePage.tsx 中对sse的特殊处理方式与frontend/src/pages/ChatPage.tsx中对sse的处理方式对其
+```
+
+
+
+
+
+```
+frontend/src/pages/TestCasePage.tsx
+重新梳理后端逻辑,前端按照后端接口来实现(前端重写)
+1. 用户输出请求(文件+文字描述) -> /testcase/generate/streaming -> 前端展示内容在AI分析结果表下:
+
+用户模块: 用户需求: type=text_message message_type=需求分析 文档解析结果: type=text_message message_type=文档解析结果
+需求分析智能体: type=streaming_chunk source=需求分析智能体
+
+```
