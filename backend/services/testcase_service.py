@@ -21,9 +21,12 @@ AI测试用例生成服务 - 重新设计版本
 import asyncio
 import base64
 import json
+import os
+import tempfile
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Any, AsyncGenerator, Awaitable, Callable, Dict, List, Optional
 
 from autogen_agentchat.agents import AssistantAgent, UserProxyAgent
@@ -49,15 +52,11 @@ from autogen_core import (
     type_subscription,
 )
 from autogen_core.memory import ListMemory, MemoryContent, MemoryMimeType
+from llama_index.core import Document, SimpleDirectoryReader
 from loguru import logger
 from pydantic import BaseModel, Field
 
-try:
-    from examples.llms import openai_model_client
-except ImportError:
-    logger.warning("无法导入openai_model_client，请检查examples/llms.py")
-    openai_model_client = None
-
+from backend.core.llm import get_openai_model_client, validate_model_client
 from backend.models.chat import AgentMessage, AgentType, FileUpload, TestCaseRequest
 from backend.models.testcase import (
     TestCaseConversation,
@@ -617,36 +616,39 @@ class TestCaseGenerationRuntime:
         """注册智能体到运行时"""
         logger.info(f"[智能体注册] 开始注册智能体 | 对话ID: {conversation_id}")
 
-        if not openai_model_client:
-            logger.error("模型客户端未初始化")
+        if not validate_model_client():
+            logger.error("模型客户端未初始化或验证失败")
             return
+
+        # 获取模型客户端
+        model_client = get_openai_model_client()
 
         # 注册需求分析智能体
         await RequirementAnalysisAgent.register(
             runtime,
             requirement_analysis_topic_type,
-            lambda: RequirementAnalysisAgent(openai_model_client),
+            lambda: RequirementAnalysisAgent(model_client),
         )
 
         # 注册测试用例生成智能体
         await TestCaseGenerationAgent.register(
             runtime,
             testcase_generation_topic_type,
-            lambda: TestCaseGenerationAgent(openai_model_client),
+            lambda: TestCaseGenerationAgent(model_client),
         )
 
         # 注册测试用例优化智能体
         await TestCaseOptimizationAgent.register(
             runtime,
             testcase_optimization_topic_type,
-            lambda: TestCaseOptimizationAgent(openai_model_client),
+            lambda: TestCaseOptimizationAgent(model_client),
         )
 
         # 注册测试用例最终化智能体
         await TestCaseFinalizationAgent.register(
             runtime,
             testcase_finalization_topic_type,
-            lambda: TestCaseFinalizationAgent(openai_model_client),
+            lambda: TestCaseFinalizationAgent(model_client),
         )
 
         # 注册结果收集器 - 使用ClosureAgent
@@ -752,16 +754,79 @@ class TestCaseGenerationRuntime:
                 "timestamp": datetime.now().isoformat(),
             }
 
+    def _should_stream_message(
+        self, agent_name: str, msg_type: str, content: str
+    ) -> bool:
+        """
+        判断是否应该流式输出该消息
+
+        只输出重要智能体的实际内容，过滤掉状态消息和辅助信息
+        """
+        # 过滤掉空内容
+        if not content or not content.strip():
+            return False
+
+        # 过滤掉状态消息和提示信息
+        status_indicators = [
+            "🔍 收到用户需求",
+            "开始进行专业",
+            "正在分析",
+            "正在生成",
+            "正在优化",
+            "开始执行",
+            "任务完成",
+            "处理完成",
+        ]
+
+        for indicator in status_indicators:
+            if indicator in content:
+                logger.debug(
+                    f"🚫 [流式过滤] 过滤状态消息 | 智能体: {agent_name} | 内容: {content[:50]}..."
+                )
+                return False
+
+        # 只允许重要智能体的实际输出内容
+        important_agents = [
+            "需求分析智能体",
+            "测试用例生成智能体",
+            "用例评审优化智能体",
+            "结构化入库智能体",
+        ]
+
+        # 检查是否是重要智能体
+        is_important_agent = any(agent in agent_name for agent in important_agents)
+
+        if not is_important_agent:
+            logger.debug(f"🚫 [流式过滤] 过滤非重要智能体 | 智能体: {agent_name}")
+            return False
+
+        # 只允许流式块和最终结果
+        allowed_types = [
+            "streaming_chunk",
+            "需求分析",
+            "测试用例生成",
+            "用例优化",
+            "用例结果",
+        ]
+
+        if msg_type not in allowed_types:
+            logger.debug(
+                f"🚫 [流式过滤] 过滤非允许类型 | 类型: {msg_type} | 智能体: {agent_name}"
+            )
+            return False
+
+        logger.debug(
+            f"✅ [流式过滤] 允许输出 | 智能体: {agent_name} | 类型: {msg_type}"
+        )
+        return True
+
     async def _generate_streaming_output(
         self, conversation_id: str
     ) -> AsyncGenerator[Dict, None]:
         """
-        生成流式输出
+        生成流式输出 - 优化版本
 
-        模拟AutoGen的流式输出模式：
-        - ModelClientStreamingChunkEvent: 流式输出块
-        - TextMessage: 智能体完整输出
-        - TaskResult: 最终任务结果
+        只输出智能体的实际内容，过滤掉状态消息和辅助信息
         """
         logger.info(f"📡 [流式输出] 开始生成流式输出 | 对话ID: {conversation_id}")
 
@@ -769,6 +834,7 @@ class TestCaseGenerationRuntime:
         wait_time = 0
         check_interval = 0.1
         last_message_count = 0
+        sent_messages = set()  # 记录已发送的消息，避免重复
 
         while wait_time < max_wait_time:
             # 获取新消息
@@ -784,12 +850,20 @@ class TestCaseGenerationRuntime:
                     msg_type = msg.get("message_type", "info")
                     is_final = msg.get("is_final", False)
 
-                    logger.info(
-                        f"📤 [流式输出] 处理消息 {i+1} | 智能体: {agent_name} | 消息类型: {msg_type} | 是否最终: {is_final}"
+                    # 创建消息唯一标识
+                    msg_id = f"{agent_name}_{msg_type}_{hash(content)}_{i}"
+
+                    logger.debug(
+                        f"📤 [流式输出] 处理消息 {i+1} | 智能体: {agent_name} | 消息类型: {msg_type} | 是否最终: {is_final} | 内容长度: {len(content)}"
                     )
 
-                    if content:
-                        # 根据消息类型决定发送的数据类型
+                    # 检查是否应该流式输出
+                    if (
+                        self._should_stream_message(agent_name, msg_type, content)
+                        and msg_id not in sent_messages
+                    ):
+                        sent_messages.add(msg_id)
+
                         if msg_type == "streaming_chunk":
                             # 发送流式输出块
                             chunk_data = {
@@ -804,7 +878,7 @@ class TestCaseGenerationRuntime:
                             }
                             yield chunk_data
                             logger.info(
-                                f"📡 [流式输出] 发送流式块 | 智能体: {agent_name} | 内容: {content}"
+                                f"📡 [流式输出] 发送流式块 | 智能体: {agent_name} | 内容: {content[:100]}..."
                             )
                         else:
                             # 发送完整消息 (智能体的完整输出)
@@ -821,10 +895,13 @@ class TestCaseGenerationRuntime:
                             }
                             yield complete_data
                             logger.info(
-                                f"📝 [流式输出] 发送完整消息 | 智能体: {agent_name} | 内容长度: {len(content)} | 完整内容: {content}"
+                                f"📝 [流式输出] 发送完整消息 | 智能体: {agent_name} | 内容长度: {len(content)}"
                             )
-
-                    logger.debug(f"✅ [流式输出] 消息处理完成 | 智能体: {agent_name}")
+                    else:
+                        # 记录过滤的消息到日志
+                        logger.debug(
+                            f"🚫 [流式输出] 消息已过滤 | 智能体: {agent_name} | 类型: {msg_type} | 内容: {content[:50]}..."
+                        )
 
                 last_message_count = current_count
 
@@ -834,10 +911,18 @@ class TestCaseGenerationRuntime:
                         f"🏁 [流式输出] 检测到完成信号 | 对话ID: {conversation_id}"
                     )
 
-                    # 3. 发送任务结果 (模拟 TaskResult)
+                    # 发送任务结果 (模拟 TaskResult)
                     task_result_data = {
                         "type": "task_result",
-                        "messages": messages,
+                        "messages": [
+                            msg
+                            for msg in messages
+                            if self._should_stream_message(
+                                msg.get("agent_name", ""),
+                                msg.get("message_type", ""),
+                                msg.get("content", ""),
+                            )
+                        ],  # 只包含有效的消息
                         "conversation_id": conversation_id,
                         "task_complete": True,
                         "timestamp": datetime.now().isoformat(),
@@ -955,6 +1040,93 @@ class RequirementAnalysisAgent(RoutedAgent):
 请用专业、清晰的语言输出分析结果，为后续的测试用例生成提供准确的需求基础。
         """
 
+    async def get_document_from_files(self, files: List[FileUpload]) -> str:
+        """
+        使用 llama_index 获取文件内容
+
+        Args:
+            files: 文件上传对象列表
+
+        Returns:
+            str: 解析后的文件内容
+        """
+        if not files:
+            return ""
+
+        logger.info(
+            f"📄 [文件解析] 开始使用llama_index解析文件 | 文件数量: {len(files)}"
+        )
+
+        try:
+            # 创建临时目录存储文件
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_path = Path(temp_dir)
+                file_paths = []
+
+                # 将base64编码的文件内容保存到临时文件
+                for i, file in enumerate(files):
+                    logger.debug(
+                        f"   📁 处理文件 {i+1}: {file.filename} ({file.content_type}, {file.size} bytes)"
+                    )
+
+                    # 解码base64内容
+                    try:
+                        file_content = base64.b64decode(file.content)
+                    except Exception as e:
+                        logger.warning(f"   ⚠️ 文件 {file.filename} base64解码失败: {e}")
+                        continue
+
+                    # 确定文件扩展名
+                    file_ext = Path(file.filename).suffix if file.filename else ""
+                    if not file_ext:
+                        # 根据content_type推断扩展名
+                        if "pdf" in file.content_type.lower():
+                            file_ext = ".pdf"
+                        elif (
+                            "word" in file.content_type.lower()
+                            or "docx" in file.content_type.lower()
+                        ):
+                            file_ext = ".docx"
+                        elif "text" in file.content_type.lower():
+                            file_ext = ".txt"
+                        else:
+                            file_ext = ".txt"  # 默认为文本文件
+
+                    # 保存到临时文件
+                    temp_file_path = temp_path / f"file_{i+1}{file_ext}"
+                    with open(temp_file_path, "wb") as f:
+                        f.write(file_content)
+
+                    file_paths.append(str(temp_file_path))
+                    logger.debug(f"   ✅ 文件保存成功: {temp_file_path}")
+
+                if not file_paths:
+                    logger.warning("   ⚠️ 没有成功保存的文件，跳过解析")
+                    return ""
+
+                # 使用 llama_index 读取文件内容
+                logger.info(f"   🔍 使用SimpleDirectoryReader读取文件内容")
+                data = SimpleDirectoryReader(input_files=file_paths).load_data()
+
+                if not data:
+                    logger.warning("   ⚠️ SimpleDirectoryReader未读取到任何内容")
+                    return ""
+
+                # 合并所有文档内容
+                doc = Document(text="\n\n".join([d.text for d in data]))
+                content = doc.text
+
+                logger.success(f"   ✅ 文件解析完成 | 总内容长度: {len(content)} 字符")
+                logger.debug(f"   📄 解析内容预览: {content[:200]}...")
+
+                return content
+
+        except Exception as e:
+            logger.error(f"❌ [文件解析] 使用llama_index解析文件失败: {e}")
+            logger.error(f"   🐛 错误类型: {type(e).__name__}")
+            logger.error(f"   📄 错误详情: {str(e)}")
+            raise Exception(f"文件读取失败: {str(e)}")
+
     @message_handler
     async def handle_requirement_analysis(
         self, message: RequirementMessage, ctx: MessageContext
@@ -989,18 +1161,11 @@ class RequirementAnalysisAgent(RoutedAgent):
             return
 
         try:
-            # 步骤1: 发送开始分析的状态消息
+            # 步骤1: 记录开始分析状态（仅日志记录，不发送到流式输出）
             logger.info(
-                f"📢 [需求分析智能体] 步骤1: 发送开始分析状态消息 | 对话ID: {conversation_id}"
+                f"📢 [需求分析智能体] 步骤1: 开始需求分析 | 对话ID: {conversation_id}"
             )
-            await self.publish_message(
-                ResponseMessage(
-                    source="需求分析智能体",
-                    content="🔍 收到用户需求，开始进行专业需求分析...",
-                    message_type="需求分析",
-                ),
-                topic_id=TopicId(type=task_result_topic_type, source=self.id.key),
-            )
+            logger.info(f"   🔍 收到用户需求，开始进行专业需求分析...")
 
             # 步骤2: 准备分析内容
             logger.info(
@@ -1011,14 +1176,32 @@ class RequirementAnalysisAgent(RoutedAgent):
 
             if message.files:
                 logger.info(f"   📎 处理附件文件: {len(message.files)} 个")
-                analysis_content += f"\n\n📎 附件文件信息:\n"
-                analysis_content += f"文件总数: {len(message.files)}\n"
-                for i, file in enumerate(message.files, 1):
-                    file_info = (
-                        f"{i}. {file.filename} ({file.content_type}, {file.size} bytes)"
-                    )
-                    analysis_content += f"{file_info}\n"
-                    logger.debug(f"   📄 文件{i}: {file_info}")
+                try:
+                    # 使用 llama_index 解析文件内容
+                    file_content = await self.get_document_from_files(message.files)
+                    if file_content:
+                        analysis_content += f"\n\n📎 附件文件内容:\n{file_content}"
+                        logger.success(
+                            f"   ✅ 文件内容解析成功，内容长度: {len(file_content)} 字符"
+                        )
+                    else:
+                        logger.warning("   ⚠️ 文件内容解析为空，使用文件信息")
+                        # 回退到原来的文件信息显示
+                        analysis_content += f"\n\n📎 附件文件信息:\n"
+                        analysis_content += f"文件总数: {len(message.files)}\n"
+                        for i, file in enumerate(message.files, 1):
+                            file_info = f"{i}. {file.filename} ({file.content_type}, {file.size} bytes)"
+                            analysis_content += f"{file_info}\n"
+                            logger.debug(f"   📄 文件{i}: {file_info}")
+                except Exception as e:
+                    logger.error(f"   ❌ 文件解析失败: {e}")
+                    # 回退到原来的文件信息显示
+                    analysis_content += f"\n\n📎 附件文件信息:\n"
+                    analysis_content += f"文件总数: {len(message.files)}\n"
+                    for i, file in enumerate(message.files, 1):
+                        file_info = f"{i}. {file.filename} ({file.content_type}, {file.size} bytes)"
+                        analysis_content += f"{file_info}\n"
+                        logger.debug(f"   📄 文件{i}: {file_info}")
 
             logger.debug(f"   📋 最终分析内容长度: {len(analysis_content)} 字符")
 
@@ -1089,17 +1272,9 @@ class RequirementAnalysisAgent(RoutedAgent):
             }
             await testcase_runtime._save_to_memory(conversation_id, memory_data)
 
-            # 步骤6: 发送分析结果到结果收集器
+            # 步骤6: 记录分析结果（仅日志记录，不重复发送）
             logger.info(
-                f"📢 [需求分析智能体] 步骤6: 发送分析结果到结果收集器 | 对话ID: {conversation_id}"
-            )
-            await self.publish_message(
-                ResponseMessage(
-                    source="需求分析智能体",
-                    content=requirements,
-                    message_type="需求分析",
-                ),
-                topic_id=TopicId(type=task_result_topic_type, source=self.id.key),
+                f"📢 [需求分析智能体] 步骤6: 分析结果已保存 | 对话ID: {conversation_id} | 结果长度: {len(requirements)}"
             )
 
             # 步骤7: 发送到测试用例生成智能体
@@ -1195,18 +1370,11 @@ class TestCaseGenerationAgent(RoutedAgent):
             return
 
         try:
-            # 步骤1: 发送开始生成的状态消息
+            # 步骤1: 记录开始生成状态（仅日志记录，不发送到流式输出）
             logger.info(
-                f"📢 [测试用例生成智能体] 步骤1: 发送开始生成状态消息 | 对话ID: {conversation_id}"
+                f"📢 [测试用例生成智能体] 步骤1: 开始测试用例生成 | 对话ID: {conversation_id}"
             )
-            await self.publish_message(
-                ResponseMessage(
-                    source="测试用例生成智能体",
-                    content="📋 收到需求分析结果，开始生成专业测试用例...",
-                    message_type="需求分析",
-                ),
-                topic_id=TopicId(type=task_result_topic_type, source=self.id.key),
-            )
+            logger.info(f"   📋 收到需求分析结果，开始生成专业测试用例...")
 
             # 步骤2: 准备生成任务内容
             logger.info(
@@ -1296,17 +1464,9 @@ class TestCaseGenerationAgent(RoutedAgent):
             testcase_runtime.conversation_states[conversation_id] = conversation_state
             logger.debug(f"   📊 对话状态已更新: {conversation_state}")
 
-            # 步骤7: 发送生成结果到结果收集器
+            # 步骤7: 记录生成结果（仅日志记录，不重复发送）
             logger.info(
-                f"📢 [测试用例生成智能体] 步骤7: 发送生成结果到结果收集器 | 对话ID: {conversation_id}"
-            )
-            await self.publish_message(
-                ResponseMessage(
-                    source="测试用例生成智能体",
-                    content=testcases,
-                    message_type="需求分析",
-                ),
-                topic_id=TopicId(type=task_result_topic_type, source=self.id.key),
+                f"📢 [测试用例生成智能体] 步骤7: 生成结果已保存 | 对话ID: {conversation_id} | 结果长度: {len(testcases)}"
             )
 
             logger.success(
@@ -1386,18 +1546,11 @@ class TestCaseOptimizationAgent(RoutedAgent):
             return
 
         try:
-            # 步骤1: 发送开始优化的状态消息
+            # 步骤1: 记录开始优化状态（仅日志记录，不发送到流式输出）
             logger.info(
-                f"📢 [用例评审优化智能体] 步骤1: 发送开始优化状态消息 | 对话ID: {conversation_id}"
+                f"📢 [用例评审优化智能体] 步骤1: 开始测试用例优化 | 对话ID: {conversation_id}"
             )
-            await self.publish_message(
-                ResponseMessage(
-                    source="用例评审优化智能体",
-                    content="🔧 收到用户反馈，开始优化测试用例...",
-                    message_type="用例优化",
-                ),
-                topic_id=TopicId(type=task_result_topic_type, source=self.id.key),
-            )
+            logger.info(f"   🔧 收到用户反馈，开始优化测试用例...")
 
             # 步骤2: 准备优化任务内容
             logger.info(
@@ -1497,17 +1650,9 @@ class TestCaseOptimizationAgent(RoutedAgent):
             testcase_runtime.conversation_states[conversation_id] = conversation_state
             logger.debug(f"   📊 对话状态已更新: {conversation_state}")
 
-            # 步骤7: 发送优化结果到结果收集器
+            # 步骤7: 记录优化结果（仅日志记录，不重复发送）
             logger.info(
-                f"📢 [用例评审优化智能体] 步骤7: 发送优化结果到结果收集器 | 对话ID: {conversation_id}"
-            )
-            await self.publish_message(
-                ResponseMessage(
-                    source="用例评审优化智能体",
-                    content=optimized_testcases,
-                    message_type="用例优化",
-                ),
-                topic_id=TopicId(type=task_result_topic_type, source=self.id.key),
+                f"📢 [用例评审优化智能体] 步骤7: 优化结果已保存 | 对话ID: {conversation_id} | 结果长度: {len(optimized_testcases)}"
             )
 
             logger.success(
@@ -1598,18 +1743,11 @@ JSON格式要求：
             return
 
         try:
-            # 步骤1: 发送开始处理的状态消息
+            # 步骤1: 记录开始处理状态（仅日志记录，不发送到流式输出）
             logger.info(
-                f"📢 [结构化入库智能体] 步骤1: 发送开始处理状态消息 | 对话ID: {conversation_id}"
+                f"📢 [结构化入库智能体] 步骤1: 开始结构化处理 | 对话ID: {conversation_id}"
             )
-            await self.publish_message(
-                ResponseMessage(
-                    source="结构化入库智能体",
-                    content="🏗️ 开始进行数据结构化和入库处理...",
-                    message_type="用例结果",
-                ),
-                topic_id=TopicId(type=task_result_topic_type, source=self.id.key),
-            )
+            logger.info(f"   🏗️ 开始进行数据结构化和入库处理...")
 
             # 步骤2: 准备结构化任务内容
             logger.info(

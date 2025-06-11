@@ -208,7 +208,7 @@ async def generate_testcase_streaming(request: StreamingGenerateRequest):
                         f"   🏁 任务结果: {len(stream_data.get('messages', []))} 条消息"
                     )
 
-                # 发送SSE数据
+                # 发送SSE数据 - 修复缺失的data:前缀
                 sse_data = json.dumps(stream_data, ensure_ascii=False)
                 yield f"data: {sse_data}\n\n"
                 logger.debug(f"   📡 SSE数据已发送: {len(sse_data)} 字符")

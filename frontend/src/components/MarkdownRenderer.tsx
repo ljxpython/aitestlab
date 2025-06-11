@@ -26,6 +26,9 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
         lineHeight: '1.6',
         fontSize: '15px',
         color: '#374151',
+        maxWidth: '100%',
+        overflow: 'hidden',
+        wordBreak: 'break-word',
         ...style
       }}
     >
@@ -115,7 +118,10 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
                   fontFamily: 'Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
                   lineHeight: '1.5',
                   overflow: 'auto',
-                  border: '1px solid #e5e7eb'
+                  border: '1px solid #e5e7eb',
+                  maxWidth: '100%',
+                  wordBreak: 'break-all',
+                  whiteSpace: 'pre-wrap'
                 }}
                 {...props}
               >
@@ -132,7 +138,10 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
               borderRadius: '8px',
               overflow: 'auto',
               marginBottom: '16px',
-              border: '1px solid #e5e7eb'
+              border: '1px solid #e5e7eb',
+              maxWidth: '100%',
+              wordBreak: 'break-all',
+              whiteSpace: 'pre-wrap'
             }}>
               {children}
             </pre>
@@ -185,12 +194,17 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
 
           // 自定义表格样式
           table: ({ children }) => (
-            <div style={{ overflowX: 'auto', marginBottom: '16px' }}>
+            <div style={{
+              overflowX: 'auto',
+              marginBottom: '16px',
+              maxWidth: '100%',
+              border: '1px solid #e5e7eb',
+              borderRadius: '8px'
+            }}>
               <table style={{
                 width: '100%',
+                minWidth: '600px',
                 borderCollapse: 'collapse',
-                border: '1px solid #e5e7eb',
-                borderRadius: '8px',
                 overflow: 'hidden'
               }}>
                 {children}
@@ -205,7 +219,9 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
               textAlign: 'left',
               fontWeight: 600,
               borderBottom: '1px solid #e5e7eb',
-              color: '#374151'
+              color: '#374151',
+              wordBreak: 'break-word',
+              maxWidth: '200px'
             }}>
               {children}
             </th>
@@ -215,7 +231,10 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
             <td style={{
               padding: '12px',
               borderBottom: '1px solid #f3f4f6',
-              color: '#6b7280'
+              color: '#6b7280',
+              wordBreak: 'break-word',
+              maxWidth: '200px',
+              whiteSpace: 'pre-wrap'
             }}>
               {children}
             </td>

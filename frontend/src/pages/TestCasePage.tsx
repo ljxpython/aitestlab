@@ -93,6 +93,7 @@ const TestCasePage: React.FC = () => {
   const [currentAgent, setCurrentAgent] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [streamError, setStreamError] = useState<string | null>(null);
+  const [agentStreamingMap, setAgentStreamingMap] = useState<Record<string, string>>({});
 
   // 基础状态
   const [currentStep, setCurrentStep] = useState(0);
@@ -110,32 +111,56 @@ const TestCasePage: React.FC = () => {
 
   // 智能体显示相关的辅助函数
   const getAgentDisplayName = (agentType: string, agentName: string): string => {
-    console.log('获取智能体显示名称:', { agentType, agentName });
-
-    switch (agentName) {
-      case 'testcase_generator':
-        return '测试用例生成器';
-      case 'user_proxy':
-        return '用户代理';
-      case 'requirement_analyst':
-        return '需求分析师';
-      case 'feedback_processor':
-        return '反馈处理器';
-      case 'system':
-        return '系统';
-      default:
-        // 根据类型返回默认名称
-        switch (agentType) {
-          case 'testcase_agent':
-            return '测试用例智能体';
-          case 'requirement_agent':
-            return '需求分析智能体';
-          case 'user_proxy':
-            return '用户代理';
-          default:
-            return agentName || '未知智能体';
-        }
+    // 根据智能体名称或类型返回简洁的显示名称
+    if (agentName.includes('需求分析') || agentType === 'requirement_agent') {
+      return '需求分析师';
+    } else if (agentName.includes('测试用例') || agentName.includes('优化') || agentName.includes('结构化') || agentType === 'testcase_agent') {
+      return '测试用例专家';
+    } else if (agentName.includes('用户') || agentType === 'user_proxy') {
+      return '用户代理';
+    } else {
+      // 特殊命名的智能体
+      switch (agentName) {
+        case 'testcase_generator':
+          return '测试用例专家';
+        case 'requirement_analyst':
+          return '需求分析师';
+        case 'feedback_processor':
+          return '反馈处理器';
+        case 'system':
+          return '系统';
+        default:
+          return '智能助手';
+      }
     }
+  };
+
+  // 获取简化的智能体显示名称（用于流式输出）
+  const getSimplifiedAgentName = (agentName: string): string => {
+    if (agentName.includes('需求分析')) {
+      return '需求分析师';
+    } else if (agentName.includes('测试用例') || agentName.includes('优化') || agentName.includes('结构化')) {
+      return '测试用例专家';
+    } else {
+      return getAgentDisplayName(getAgentTypeFromSource(agentName), agentName);
+    }
+  };
+
+  // 判断是否应该显示流式输出（避免冗余显示）
+  const shouldShowStreamingOutput = (agentName: string): boolean => {
+    // 只显示主要的智能体流式输出
+    return agentName.includes('需求分析') ||
+           agentName.includes('测试用例生成') ||
+           agentName.includes('测试用例优化') ||
+           agentName.includes('测试用例最终化');
+  };
+
+  // 判断是否应该在消息列表中显示（避免重复显示）
+  const shouldShowInMessageList = (agentName: string): boolean => {
+    // 过滤掉一些中间步骤的智能体，只显示有价值的结果
+    return !agentName.includes('结果收集') &&
+           !agentName.includes('消息收集') &&
+           !agentName.includes('流式生成');
   };
 
   const getAgentColor = (agentType: string, agentName: string): string => {
@@ -273,7 +298,7 @@ const TestCasePage: React.FC = () => {
     }
   };
 
-  // 简单的SSE处理函数
+  // 修复的SSE处理函数 - 处理重复data:前缀问题
   const processSSEStream = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
     const decoder = new TextDecoder();
     let buffer = '';
@@ -295,34 +320,106 @@ const TestCasePage: React.FC = () => {
           continue;
         }
 
-        const jsonStr = line.slice(6).trim();
+        // 处理重复的data:前缀问题
+        let jsonStr = line.slice(6).trim(); // 移除第一个 "data: "
+
+        // 检查并移除可能的重复data:前缀
+        while (jsonStr.startsWith('data: ')) {
+          console.warn('⚠️ 检测到重复的data:前缀，正在清理:', line);
+          jsonStr = jsonStr.slice(6).trim();
+        }
+
+        // 跳过空数据或非JSON数据
         if (!jsonStr || !jsonStr.startsWith('{')) {
+          console.debug('🔍 跳过非JSON数据:', jsonStr);
           continue;
         }
 
         try {
           const data: SSEMessage = JSON.parse(jsonStr);
-          console.log('📤 收到SSE消息:', data.type, data.source, data.content);
+          console.log('📤 收到SSE消息:', data.type, data.source, data.content?.substring(0, 50) + '...');
 
           if (data.type === 'streaming_chunk') {
             // 实时显示流式输出
-            setCurrentAgent(data.source);
-            setStreamingContent(prev => prev + data.content);
+            console.log('🔥 处理streaming_chunk:', data.source, data.content);
+
+            // 更新当前智能体的流式内容（总是更新，用于后续的完整消息）
+            setAgentStreamingMap(prev => ({
+              ...prev,
+              [data.source]: (prev[data.source] || '') + data.content
+            }));
+
+            // 只为重要的智能体显示流式输出
+            if (shouldShowStreamingOutput(data.source)) {
+              const simplifiedName = getSimplifiedAgentName(data.source);
+              setCurrentAgent(simplifiedName);
+
+              // 更新全局流式内容（用于显示）
+              setStreamingContent(prev => {
+                const newContent = prev + data.content;
+                console.log('🔥 更新streamingContent长度:', newContent.length);
+                return newContent;
+              });
+            }
           } else if (data.type === 'text_message') {
-            // 完整消息
-            const newMessage: AgentMessageData = {
-              id: `${data.source}_${Date.now()}_${Math.random()}`,
-              content: data.content,
-              agentType: getAgentTypeFromSource(data.source),
-              agentName: data.source,
-              timestamp: data.timestamp || new Date().toISOString(),
-              roundNumber: roundNumber
-            };
-            setAgentMessages(prev => [...prev, newMessage]);
-            setStreamingContent('');
-            setCurrentAgent('');
+            // 完整消息 - 使用累积的流式内容或接收到的完整内容
+            console.log('📝 处理text_message:', data.source, data.content?.length);
+
+            // 只处理应该在消息列表中显示的智能体
+            if (shouldShowInMessageList(data.source)) {
+              // 获取该智能体累积的流式内容
+              const agentStreamContent = agentStreamingMap[data.source] || '';
+              const finalContent = agentStreamContent.trim() || data.content;
+
+              console.log('📝 最终内容长度:', finalContent?.length, '流式内容长度:', agentStreamContent.length);
+
+              const newMessage: AgentMessageData = {
+                id: `${data.source}_${Date.now()}_${Math.random()}`,
+                content: finalContent,
+                agentType: getAgentTypeFromSource(data.source),
+                agentName: data.source,
+                timestamp: data.timestamp || new Date().toISOString(),
+                roundNumber: roundNumber
+              };
+
+              // 检查是否已经存在相同智能体的消息（避免重复）
+              setAgentMessages(prev => {
+                const existingIndex = prev.findIndex(msg =>
+                  msg.agentName === data.source &&
+                  msg.roundNumber === roundNumber &&
+                  Math.abs(Date.now() - new Date(msg.timestamp).getTime()) < 10000 // 10秒内的消息认为是重复的
+                );
+
+                if (existingIndex >= 0) {
+                  // 更新现有消息
+                  const updated = [...prev];
+                  updated[existingIndex] = { ...updated[existingIndex], content: finalContent };
+                  console.log('📝 更新现有消息:', data.source, finalContent?.length);
+                  return updated;
+                } else {
+                  // 添加新消息
+                  console.log('📝 添加新消息:', data.source, finalContent?.length);
+                  return [...prev, newMessage];
+                }
+              });
+            }
+
+            // 清理该智能体的流式内容
+            setAgentStreamingMap(prev => {
+              const updated = { ...prev };
+              delete updated[data.source];
+              return updated;
+            });
+
+            // 如果当前智能体完成，清空流式显示
+            const simplifiedName = getSimplifiedAgentName(data.source);
+            if (currentAgent === simplifiedName) {
+              setStreamingContent('');
+              setCurrentAgent('');
+            }
           } else if (data.type === 'task_result') {
             // 任务完成
+            console.log('🏁 任务完成');
             setIsComplete(true);
             setCurrentStep(2);
             setAnalysisProgress(100);
@@ -330,12 +427,17 @@ const TestCasePage: React.FC = () => {
             break;
           } else if (data.type === 'error') {
             // 错误处理
+            console.error('❌ 收到错误消息:', data.content);
             setStreamError(data.content);
             message.error('生成过程中出现错误');
             break;
           }
         } catch (e) {
-          console.error('❌ 解析SSE数据失败:', e, '原始数据:', jsonStr);
+          console.error('❌ 解析SSE数据失败:', e);
+          console.error('   原始行:', line);
+          console.error('   清理后JSON:', jsonStr);
+          console.error('   JSON长度:', jsonStr.length);
+          console.error('   JSON前100字符:', jsonStr.substring(0, 100));
         }
       }
     }
@@ -354,6 +456,7 @@ const TestCasePage: React.FC = () => {
     setStreamingContent('');
     setCurrentAgent('');
     setAgentMessages([]);
+    setAgentStreamingMap({});
 
     try {
       // 简化的请求数据
@@ -430,6 +533,7 @@ const TestCasePage: React.FC = () => {
     setStreamError(null);
     setStreamingContent('');
     setCurrentAgent('');
+    setAgentStreamingMap({});
 
     try {
       // 简化的反馈数据
@@ -483,6 +587,7 @@ const TestCasePage: React.FC = () => {
     setAnalysisProgress(0);
     setStreamingContent('');
     setCurrentAgent('');
+    setAgentStreamingMap({});
     message.info('已停止生成');
   };
 
@@ -499,6 +604,7 @@ const TestCasePage: React.FC = () => {
     setAnalysisProgress(0);
     setStreamingContent('');
     setCurrentAgent('');
+    setAgentStreamingMap({});
     setLoading(false);
     setStreamError(null);
     message.info('已重置对话');
@@ -906,7 +1012,10 @@ const TestCasePage: React.FC = () => {
                         border: '1px solid #f0f0f0',
                         whiteSpace: 'pre-wrap',
                         lineHeight: 1.6,
-                        minHeight: 60
+                        minHeight: 60,
+                        maxWidth: '100%',
+                        overflow: 'hidden',
+                        wordBreak: 'break-word'
                       }}>
                         {streamingContent ? (
                           <MarkdownRenderer content={streamingContent} />
@@ -965,7 +1074,10 @@ const TestCasePage: React.FC = () => {
                           border: '1px solid #f0f0f0',
                           whiteSpace: 'pre-wrap',
                           lineHeight: 1.6,
-                          minHeight: 60
+                          minHeight: 60,
+                          maxWidth: '100%',
+                          overflow: 'hidden',
+                          wordBreak: 'break-word'
                         }}>
                           {msg.content ? (
                             <AgentMessage

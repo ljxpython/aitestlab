@@ -1685,3 +1685,255 @@ frontend/src/pages/TestCasePage.tsx 中的流式日志不能实时显示data: {"
 ```
 我不想要使用frontend/src/api下的代码,请重新修改frontend/src/pages/TestCasePage.tsx代码,使用最简单的接口代码来完成前端和后端的对接,使用sse流式输出技术栈,实时展示智能体的内容到前端
 ```
+
+
+
+
+
+闲杂后端接口已经没有问题,问题在前端处理sse流式日志上存在缺陷,对比chat的流式日志找到其中的问题,这部分AI一直生成错误的地方,我们需要自己的寻找根因了
+
+
+
+```
+分析前后端代码,修复frontend/src/pages/TestCasePage.tsx,不能实时输出后端结果的原因
+chat/stream接口的的请求如下:
+curl -X 'POST' \
+  'http://localhost:8000/api/chat/stream' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{
+  "message": "一瓶水如何测试",
+  "conversation_id": "sdasdadad",
+  "system_message": "你是一个有用的AI助手"
+}'
+结果如下:
+data: {"content":"测试","is_complete":false,"conversation_id":"sdasdadad"}
+
+data: {"content":"一瓶","is_complete":false,"conversation_id":"sdasdadad"}
+
+data: {"content":"水的","is_complete":false,"conversation_id":"sdasdadad"}
+
+data: {"content":"质量","is_complete":false,"conversation_id":"sdasdadad"}
+
+data: {"content":"、","is_complete":false,"conversation_id":"sdasdadad"}
+
+data: {"content":"安全性","is_complete":false,"conversation_id":"sdasdadad"}
+
+data: {"content":"或","is_complete":false,"conversation_id":"sdasdadad"}
+
+data: {"content":"适用","is_complete":false,"conversation_id":"sdasdadad"}
+
+data: {"content":"性","is_complete":false,"conversation_id":"sdasdadad"}
+
+testcase/generate/streaming的请求如下
+curl -X 'POST' \
+  'http://localhost:8000/api/testcase/generate/streaming' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{
+  "conversation_id": "dasdasdasd",
+  "text_content": "一瓶水如何测试",
+  "files": [
+    {
+      "filename": "string",
+      "content_type": "string",
+      "size": 0,
+      "content": "string"
+    }
+  ],
+  "round_number": 1,
+  "enable_streaming": true
+}'
+结果如下:
+data: data: {"type": "text_message", "source": "需求分析智能体", "content": "🔍 收到用户需求，开始进行专业需求分析...", "conversation_id": "dasdasdasd", "message_type": "需求分析", "is_complete": false, "timestamp": "2025-06-11T08:49:48.477729"}
+data:
+data:
+
+data: data: {"type": "streaming_chunk", "source": "需求分析智能体", "content": "请分析以下需求：\n\n一瓶水如何测试\n\n📎 附件文件信息:\n文件总数: 1\n1. string (string, 0 bytes)\n", "conversation_id": "dasdasdasd", "message_type": "streaming", "timestamp": "2025-06-11T08:49:48.479356"}
+data:
+data:
+
+data: data: {"type": "streaming_chunk", "source": "需求分析智能体", "content": "###", "conversation_id": "dasdasdasd", "message_type": "streaming", "timestamp": "2025-06-11T08:49:51.996349"}
+data:
+data:
+
+data: data: {"type": "streaming_chunk", "source": "需求分析智能体", "content": " ", "conversation_id": "dasdasdasd", "message_type": "streaming", "timestamp": "2025-06-11T08:49:52.284181"}
+data:
+data:
+
+当前我的问题是:chat/stream的结果就可以实时的展示到前端,但是testcase/generate/streaming的就不行,感觉testcase/generate/streaming输出的结果和chat/stream有很大差异,请详细分析相关的前后端对应的代码,找到testcase/generate/streaming在前端不能实时输出日志的原因,并修复
+```
+
+AI终于找到了问题的真正原因
+
+![image-20250611090730972](./assets/image-20250611090730972.png)
+
+不过我感觉这个是后端的数据格式问题,需要AI再次帮我修复
+
+```
+现在前端可以实时输出日志了,但是这个问题是不是后端接口不规范导致的,如果是请找到原因,并且修复
+curl -X 'POST' \
+  'http://localhost:8000/api/chat/stream' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{
+  "message": "一瓶水如何测试",
+  "conversation_id": "sdasdadad",
+  "system_message": "你是一个有用的AI助手"
+}'
+结果如下:
+data: {"content":"测试","is_complete":false,"conversation_id":"sdasdadad"}
+
+data: {"content":"一瓶","is_complete":false,"conversation_id":"sdasdadad"}
+
+data: {"content":"水的","is_complete":false,"conversation_id":"sdasdadad"}
+
+data: {"content":"质量","is_complete":false,"conversation_id":"sdasdadad"}
+
+data: {"content":"、","is_complete":false,"conversation_id":"sdasdadad"}
+
+data: {"content":"安全性","is_complete":false,"conversation_id":"sdasdadad"}
+
+data: {"content":"或","is_complete":false,"conversation_id":"sdasdadad"}
+
+data: {"content":"适用","is_complete":false,"conversation_id":"sdasdadad"}
+
+data: {"content":"性","is_complete":false,"conversation_id":"sdasdadad"}
+
+testcase/generate/streaming的请求如下
+curl -X 'POST' \
+  'http://localhost:8000/api/testcase/generate/streaming' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{
+  "conversation_id": "dasdasdasd",
+  "text_content": "一瓶水如何测试",
+  "files": [
+    {
+      "filename": "string",
+      "content_type": "string",
+      "size": 0,
+      "content": "string"
+    }
+  ],
+  "round_number": 1,
+  "enable_streaming": true
+}'
+结果如下:
+data: data: {"type": "text_message", "source": "需求分析智能体", "content": "🔍 收到用户需求，开始进行专业需求分析...", "conversation_id": "dasdasdasd", "message_type": "需求分析", "is_complete": false, "timestamp": "2025-06-11T08:49:48.477729"}
+data:
+data:
+
+data: data: {"type": "streaming_chunk", "source": "需求分析智能体", "content": "请分析以下需求：\n\n一瓶水如何测试\n\n📎 附件文件信息:\n文件总数: 1\n1. string (string, 0 bytes)\n", "conversation_id": "dasdasdasd", "message_type": "streaming", "timestamp": "2025-06-11T08:49:48.479356"}
+data:
+data:
+
+data: data: {"type": "streaming_chunk", "source": "需求分析智能体", "content": "###", "conversation_id": "dasdasdasd", "message_type": "streaming", "timestamp": "2025-06-11T08:49:51.996349"}
+data:
+data:
+
+data: data: {"type": "streaming_chunk", "source": "需求分析智能体", "content": " ", "conversation_id": "dasdasdasd", "message_type": "streaming", "timestamp": "2025-06-11T08:49:52.284181"}
+data:
+data:
+```
+
+
+
+
+
+### 问题优化
+
+上述问题我自己看了半天,最后我自己找到了问题所在
+
+在testcase.py的接口文件中,我引入的是`from sse_starlette.sse import EventSourceResponse` 其中`EventSourceResponse`做了一层封装,把返回的数据自己加了一层`data: {xxxx}\n\n`这就是为什么接口返回的结果中一直多出来data:和两个空行的原因,我们自己修复这个问题
+
+而chat.py中引入的是`from fastapi.responses import StreamingResponse`  相当于自己实现的sse的流式输出规则
+
+
+
+
+
+### 后期需要优化的问题(重要)
+
+```
+            # 启动需求分析流程
+            await self.start_requirement_analysis(requirement)
+
+            # 创建流式输出生成器
+            async for stream_data in self._generate_streaming_output(conversation_id):
+                yield stream_data
+在backend/services/testcase_service.py中的上述代码,
+await self.start_requirement_analysis(requirement)完全执行完成,才可以走到            async for stream_data in self._generate_streaming_output(conversation_id):
+                yield stream_data
+这会导致一个问题,程序其实不是在最开始就实时输出内容,而且分析完成后,这部分容我想想,不像websocket那样好用
+
+```
+
+
+
+### 优化
+
+```
+backend/services/testcase_service.py中RequirementAnalysisAgent的读取解析文件的代码需要优化 ,可以使用下面的代码
+from llama_index.core import SimpleDirectoryReader, Document
+   async def get_document_from_files(self, files: list[str]) -> str:
+        """获取文件内容"""
+        try:
+            data = SimpleDirectoryReader(input_files=files).load_data()
+            doc = Document(text="\n\n".join([d.text for d in data[0:]]))
+            return doc.text
+        except Exception as e:
+            raise Exception(f"文件读取失败: {str(e)}")
+也可以阅读https://docs.llamaindex.ai/en/stable/找到最合适的方法
+```
+
+
+
+### 代码结构优化
+
+```
+在backend/core目录下新建一个llm.py 创建一个共用的openai_model_client,代码参考
+from backend.conf.config import settings
+from autogen_core.models import ModelFamily
+from autogen_ext.models.openai import OpenAIChatCompletionClient
+# 创建模型客户端
+openai_model_client = OpenAIChatCompletionClient(
+    model=settings.aimodel.model,
+    base_url=settings.aimodel.base_url,
+    api_key=settings.aimodel.api_key,
+    model_info={
+        "vision": False,
+        "function_calling": True,
+        "json_output": True,
+        "family": ModelFamily.UNKNOWN,
+        "structured_output": True,
+        "multiple_system_messages": True,
+    },
+)
+将backend/services/autogen_service.py和backend/services/testcase_service.py中的openai_model_client改为使用llm.py
+```
+
+
+
+
+
+### 前端优化
+
+```
+前端在生成测试用例的过程中,AI分析结果表的内容,有部分内容展示不全了,完全生成完成后,页面又恢复了
+前端展示内容冗余,测试用例专家和需求分析师展示的内容有两次
+```
+
+
+
+
+
+```
+当前返回的内容:测试用例智能体就相当于测试用例专家,需求智能体为需求分析师,去除流式输出中不必要的部分,让前端展示的结果不冗余
+```
+
+
+
+```
+backend/services/testcase_service.py 对后端代码进行 优化,只有智能体流式输出返回到接口中,其余只在日志中做记录
+```

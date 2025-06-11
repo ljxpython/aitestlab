@@ -13,25 +13,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 sys.path.append(project_root)
 
 # 使用 backend 目录下的配置
-from autogen_core.models import ModelFamily
-from autogen_ext.models.openai import OpenAIChatCompletionClient
-
-from backend.conf.config import settings
-
-# 创建模型客户端
-openai_model_client = OpenAIChatCompletionClient(
-    model=settings.aimodel.model,
-    base_url=settings.aimodel.base_url,
-    api_key=settings.aimodel.api_key,
-    model_info={
-        "vision": False,
-        "function_calling": True,
-        "json_output": True,
-        "family": ModelFamily.UNKNOWN,
-        "structured_output": True,
-        "multiple_system_messages": True,
-    },
-)
+from backend.core.llm import get_openai_model_client
 
 
 class AutoGenService:
@@ -67,7 +49,7 @@ class AutoGenService:
             safe_name = f"assistant_{conversation_id.replace('-', '_')}"
             agent = AssistantAgent(
                 name=safe_name,
-                model_client=openai_model_client,
+                model_client=get_openai_model_client(),
                 system_message=system_message,
                 model_client_stream=True,
             )
