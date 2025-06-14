@@ -8,7 +8,7 @@
 
 个人微信号:
 
-<img src="./assets/image-20250531212549739.png" alt="Description" width="300"/>
+<img src="docs/work/assets/image-20250531212549739.png" alt="Description" width="300"/>
 
 
 
@@ -134,7 +134,7 @@ UI测试智能体
 
 ## 工程搭建记录
 
-[工程搭建记录](./MYWORK.md)
+[工程搭建记录](docs/work/MYWORK.md)
 
 
 
@@ -401,7 +401,7 @@ docs/
 - **故障排除**: [问题排查目录](./docs/troubleshooting/)
 
 ### 📋 项目记录
-- [工程搭建记录](./MYWORK.md) - 项目搭建过程记录
+- [工程搭建记录](docs/work/MYWORK.md) - 项目搭建过程记录
 - [项目定位调整](./docs/PROJECT_REPOSITIONING.md) - 从通用 AI 助手调整为测试平台模块
 
 ---
