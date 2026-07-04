@@ -8,6 +8,7 @@ PID_DIR="$LOG_DIR/pids"
 mkdir -p "$LOG_DIR"
 mkdir -p "$PID_DIR"
 mkdir -p "$ROOT_DIR/apps/platform-api/.tmp"
+mkdir -p "$ROOT_DIR/apps/platform-api/.data"
 
 ensure_file() {
   local target="$1"

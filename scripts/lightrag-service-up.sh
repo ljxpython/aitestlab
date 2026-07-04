@@ -115,7 +115,7 @@ resolve_mcp_command() {
     return
   fi
 
-  printf '%s\n' "env MCP_TRANSPORT=sse MCP_HOST=$MCP_HOST MCP_PORT=$MCP_PORT MCP_PATH=/sse MCP_MESSAGE_PATH=/messages/ WORKING_DIR=$WORKING_DIR INPUT_DIR=$INPUT_DIR uv run --with 'fastmcp>=3.2.0' python -m lightrag.mcp"
+  printf '%s\n' "env MCP_TRANSPORT=sse MCP_HOST=$MCP_HOST MCP_PORT=$MCP_PORT MCP_PATH=/sse MCP_MESSAGE_PATH=/messages/ WORKING_DIR=$WORKING_DIR INPUT_DIR=$INPUT_DIR uv run --with 'fastmcp>=3.2.0' --with 'starlette==0.49.1' python -m lightrag.mcp"
 }
 
 start_service() {
