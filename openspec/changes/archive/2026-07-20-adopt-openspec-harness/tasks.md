@@ -23,4 +23,4 @@
 - [x] 3.1 Run OpenSpec doctor, status, and strict validation
 - [x] 3.2 Run repository documentation checks and whitespace validation
 - [x] 3.3 Review generated files, ignored-file boundaries, and active change status
-- [ ] 3.4 Obtain owner acceptance or an explicit bootstrap waiver before archiving the change
+- [x] 3.4 Obtain owner acceptance or an explicit bootstrap waiver before archiving the change

@@ -4,7 +4,7 @@
 
 ## [Unreleased]
 
-> 当前默认归档到下一版本：`v0.3.1`
+> 当前默认归档到下一版本：`v0.3.2`
 >
 > 维护规则：
 >
@@ -23,6 +23,26 @@
 ### Fixed
 
 - 待补充：缺陷修复、兼容性问题、联调问题、回归问题
+
+## [v0.3.1] - 2026-07-20
+
+### Added
+
+- 新增 repo-local `lightrag-service`，提供 HTTP 与项目级 MCP 知识链路，并接入默认本地启动、健康检查和停止脚本
+- 新增 OpenSpec 项目配置、官方 Codex Skills 与显式 `route-project-change` Skill，为持久 B2/B3 变更提供 proposal、spec、tasks、verification、sync 和 archive 生命周期
+- 新增跨平台文档与变更状态检查器，并在 CI 中执行 OpenSpec strict validation 和 Harness 闭环门禁
+
+### Changed
+
+- 将活动 Harness helper host 从 `.omx` 迁移到 `.harness`，保留 `.omx` 作为历史和过渡面
+- 收敛 B1/B2/B3 路由、B3 实施前审批、持久验证证据、accepted spec sync 和 archive 规则
+- 更新本地 demo 依赖顺序、当前文档入口、前端 leaf playbook 和 Harness 人类使用指南
+
+### Fixed
+
+- 修复本地 demo 启动时知识服务与依赖项未完整拉起的问题
+- 修复活动计划、OpenSpec change 和验证证据可能形成重复真相源或绕过完成门禁的问题
+- 修复 Graphify、CodeGraph 和本机数据库等生成物可能误入版本控制的问题
 
 ## [v0.3.0] - 2026-04-23
 

@@ -49,11 +49,12 @@ def markdown_files() -> list[Path]:
         capture_output=True,
         text=True,
     )
-    return [
+    paths = (
         ROOT / name
         for name in result.stdout.splitlines()
         if name and not name.startswith(GENERATED_PREFIXES)
-    ]
+    )
+    return [path for path in paths if path.is_file()]
 
 
 def is_historical(path: Path, text: str) -> bool:

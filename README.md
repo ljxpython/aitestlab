@@ -339,6 +339,12 @@ AITestLab/
 - `docs/releases/v0.1.1-release-runbook.md`
 - `docs/releases/v0.1.2-agent-workspace-demo-draft.md`
 - `docs/releases/v0.1.2-release-runbook.md`
+- `docs/releases/v0.2.0-agent-workspace-demo-draft.md`
+- `docs/releases/v0.2.0-release-runbook.md`
+- `docs/releases/v0.3.0-agent-workspace-demo-draft.md`
+- `docs/releases/v0.3.0-release-runbook.md`
+- `docs/releases/v0.3.1-agent-workspace-demo-draft.md`
+- `docs/releases/v0.3.1-release-runbook.md`
 
 <a id="ai-deploy"></a>
 
