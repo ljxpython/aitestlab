@@ -11,10 +11,11 @@
   <img src="https://img.shields.io/badge/MCP-Knowledge%20Ready-7C3AED" alt="MCP Knowledge Ready" />
   <img src="https://img.shields.io/badge/Harness-AI%20Continuous%20Coding-F59E0B" alt="Harness" />
   <img src="https://img.shields.io/badge/LangGraph-Runtime%20Core-111827" alt="LangGraph Runtime Core" />
+  <a href="https://github.com/ljxpython/ai-agent-platform/releases/latest"><img src="https://img.shields.io/github/v/release/ljxpython/ai-agent-platform" alt="Latest Release" /></a>
   <img src="https://img.shields.io/badge/README-EN%2FZH-F59E0B" alt="README EN/ZH" />
 </p>
 
-<p align="center"><a href="#system-overview">系统总览</a> · <a href="#frontend-entry">前端入口</a> · <a href="#quick-start">快速开始</a> · <a href="docs/deployment-guide.md">部署文档</a> · <a href="docs/CHANGELOG.md">更新日志</a> · <a href="docs/commit-and-changelog-guidelines.md">提交规范</a> · <a href="#acknowledgements">致谢参考</a> · <a href="#ai-deploy">AI代理部署</a></p>
+<p align="center"><a href="#system-overview">系统总览</a> · <a href="#frontend-entry">前端入口</a> · <a href="#quick-start">快速开始</a> · <a href="docs/deployment-guide.md">部署文档</a> · <a href="https://github.com/ljxpython/ai-agent-platform/releases/tag/v0.3.1">最新 Release</a> · <a href="docs/CHANGELOG.md">更新日志</a> · <a href="#acknowledgements">致谢参考</a> · <a href="#ai-deploy">AI代理部署</a></p>
 
 ## Testcase Agent 展示视频
 
@@ -73,6 +74,16 @@
 - `docs/knowledge/`：背景、理由与设计哲学
 - `.harness/`：B1/B2 helper、历史计划和 repo 级报告，不是 canonical truth
 - `openspec/`：承载需要持久评审的 B2 和全部 B3 change lifecycle
+
+需要显式判断任务应该走 B1、B2 还是 B3 时，在 Codex 中调用：
+
+```text
+$route-project-change <任务描述>
+```
+
+这个 Skill 只负责路由，不会绕过 `AGENTS.md`、leaf standard、人工审批或验证门禁。
+需要执行持久 B2/B3 流程的设备还应安装 OpenSpec CLI；安装方式、6 个官方 Skills
+和完整生命周期见 [AI 执行系统使用指南](docs/ai-execution-system-usage-guide.md#5-openspec-怎么参与)。
 
 <a id="frontend-entry"></a>
 
@@ -157,10 +168,13 @@
 
 - `apps/runtime-web`：直连 Runtime 的调试前端
 
-### 两条主链路
+### 主要链路
 
 - 平台链路：`platform-web -> platform-api -> runtime-service`
 - 调试链路：`runtime-web -> runtime-service`
+- 结果链路：`runtime-service -> interaction-data-service`
+- 知识 HTTP 链路：`platform-api -> lightrag-service`
+- 知识 MCP 链路：`runtime-service -> lightrag-service`
 
 ### 当前两个前端入口分别做什么
 
@@ -274,7 +288,9 @@ curl http://127.0.0.1:2142/_system/health
 curl http://127.0.0.1:2142/api/langgraph/info
 ```
 
-如果 `platform-api` 的 `/api/langgraph/info` 返回 `200`，且 `interaction-data-service` 的 `/_service/health` 返回 `200`，说明平台链路和结果落库链路都已基本打通。
+如果 `platform-api` 的 `/api/langgraph/info`、`interaction-data-service` 的
+`/_service/health` 和 `lightrag-service` 的 `/health` 都返回成功，说明平台、结果落库和
+知识 HTTP 主链已经基本打通；MCP SSE 可连接性由统一健康检查脚本继续验证。
 
 ![本地联调启动流程图](docs/assets/local-dev-startup-flow.zh.svg)
 
@@ -284,18 +300,25 @@ curl http://127.0.0.1:2142/api/langgraph/info
 AITestLab/
 ├── apps/
 │   ├── interaction-data-service/
+│   ├── lightrag-service/
 │   ├── platform-api/
 │   ├── platform-web/
 │   ├── runtime-service/
 │   ├── runtime-web/
 │   └── ...
+├── .codex/skills/
+├── .harness/
 ├── docs/
+├── openspec/
 ├── scripts/
 └── archive/
 ```
 
 - `apps/`：业务应用目录，包含当前默认联调服务与其他按需维护的应用目录
+- `.codex/skills/`：可跨设备复用的项目级 Codex / OpenSpec Skills
+- `.harness/`：helper、历史计划和 repo 级验证报告
 - `docs/`：部署、开发、约束和背景文档
+- `openspec/`：持久 B2/B3 change、已批准 capability specs 和归档
 - `scripts/`：统一启动、停止、健康检查脚本
 - `archive/`：历史归档说明
 
@@ -333,18 +356,9 @@ AITestLab/
 先看：
 
 - `docs/releases/release-policy.md`
-- `docs/releases/v0.1.0-agent-workspace-demo-draft.md`
-- `docs/releases/v0.1.0-release-runbook.md`
-- `docs/releases/v0.1.1-agent-workspace-demo-draft.md`
-- `docs/releases/v0.1.1-release-runbook.md`
-- `docs/releases/v0.1.2-agent-workspace-demo-draft.md`
-- `docs/releases/v0.1.2-release-runbook.md`
-- `docs/releases/v0.2.0-agent-workspace-demo-draft.md`
-- `docs/releases/v0.2.0-release-runbook.md`
-- `docs/releases/v0.3.0-agent-workspace-demo-draft.md`
-- `docs/releases/v0.3.0-release-runbook.md`
 - `docs/releases/v0.3.1-agent-workspace-demo-draft.md`
 - `docs/releases/v0.3.1-release-runbook.md`
+- `docs/releases/`：完整历史发布记录
 
 <a id="ai-deploy"></a>
 
@@ -369,7 +383,7 @@ AITestLab/
 
 默认推理模型使用 `<YOUR_REASONING_MODEL_ID>`。
 当前多模态链路需要的模型一并配置为 `<YOUR_MULTIMODAL_MODEL_ID>`。
-如果本地缺少 runtime 模型配置，请把下面内容写入 `apps/runtime-service/graph_src_v2/conf/settings.local.yaml`，并继续完成部署、启动与验证；不要把真实 API Key 提交回仓库。
+如果本地缺少 runtime 模型配置，请把下面内容写入 `apps/runtime-service/runtime_service/conf/settings.local.yaml`，并继续完成部署、启动与验证；不要把真实 API Key 提交回仓库。
 
 default:
   default_model_id: <YOUR_REASONING_MODEL_ID>
@@ -434,6 +448,8 @@ default:
 - `lightrag-service` 的 HTTP + MCP 已接入默认本地一键启动脚本
 - `platform-web` 是当前正式平台前端入口，`runtime-web` 继续作为可选调试壳
 - `apps/lightrag-service` 当前已进入默认本地一键启动集合，但 Compose 栈仍按需单独接入
+- Harness + OpenSpec 已形成路由、B3 实施前审批、持久验证证据、spec sync、archive 和 CI 检查闭环
+- 当前正式版本为 [`v0.3.1`](https://github.com/ljxpython/ai-agent-platform/releases/tag/v0.3.1)
 
 当前仍保持的约定：
 

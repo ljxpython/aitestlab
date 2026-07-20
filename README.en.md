@@ -11,10 +11,11 @@
   <img src="https://img.shields.io/badge/MCP-Knowledge%20Ready-7C3AED" alt="MCP Knowledge Ready" />
   <img src="https://img.shields.io/badge/Harness-AI%20Continuous%20Coding-F59E0B" alt="Harness" />
   <img src="https://img.shields.io/badge/LangGraph-Runtime%20Core-111827" alt="LangGraph Runtime Core" />
+  <a href="https://github.com/ljxpython/ai-agent-platform/releases/latest"><img src="https://img.shields.io/github/v/release/ljxpython/ai-agent-platform" alt="Latest Release" /></a>
   <img src="https://img.shields.io/badge/README-EN%2FZH-F59E0B" alt="README EN/ZH" />
 </p>
 
-<p align="center"><a href="#system-overview">System Overview</a> · <a href="#frontend-entry">Frontend Entry</a> · <a href="#quick-start">Quick Start</a> · <a href="docs/deployment-guide.md">Deployment Guide</a> · <a href="docs/CHANGELOG.md">Changelog</a> · <a href="docs/commit-and-changelog-guidelines.md">Commit Guidelines</a> · <a href="#acknowledgements">Acknowledgements</a> · <a href="#ai-deploy">AI Deployment</a></p>
+<p align="center"><a href="#system-overview">System Overview</a> · <a href="#frontend-entry">Frontend Entry</a> · <a href="#quick-start">Quick Start</a> · <a href="docs/deployment-guide.md">Deployment Guide</a> · <a href="https://github.com/ljxpython/ai-agent-platform/releases/tag/v0.3.1">Latest Release</a> · <a href="docs/CHANGELOG.md">Changelog</a> · <a href="#acknowledgements">Acknowledgements</a> · <a href="#ai-deploy">AI Deployment</a></p>
 
 ## Testcase Agent Demo
 
@@ -68,12 +69,23 @@ That harness is made of several parts working together:
 
 In short, the repo is meant to let AI agents keep building inside a controlled engineering environment, not just generate random code in a vacuum.
 
-The current canonical docs for that harness are:
+The current entry docs for that harness are:
 
-- `docs/local-deployment-contract.yaml`
-- `docs/development-paradigm.md`
-- `docs/local-dev.md`
-- `docs/env-matrix.md`
+1. `AGENTS.md`
+2. `docs/standards/01-ai-execution-system.md`
+3. `docs/ai-execution-system-usage-guide.md`
+4. `docs/README.md`
+
+Use the explicit project router in Codex when a task needs a B1/B2/B3 decision:
+
+```text
+$route-project-change <task description>
+```
+
+The router does not override root rules, leaf standards, human approval, or verification
+gates. Machines that execute persisted B2/B3 workflows also need the OpenSpec CLI. See
+[the AI execution usage guide](docs/ai-execution-system-usage-guide.md#5-openspec-怎么参与)
+for installation, the six official Skills, and the full lifecycle.
 
 ## What Problem This Project Solves
 
@@ -112,11 +124,13 @@ Optional in-repo services:
 
 - `apps/runtime-web`: debug frontend that talks directly to the runtime
 
-### Two Main Paths
+### Main Paths
 
 - Platform path: `platform-web -> platform-api -> runtime-service`
 - Debug path: `runtime-web -> runtime-service`
 - Result-domain path: `runtime-service -> interaction-data-service`
+- Knowledge HTTP path: `platform-api -> lightrag-service`
+- Knowledge MCP path: `runtime-service -> lightrag-service`
 
 ### What The Frontend Entries Are For
 
@@ -194,7 +208,10 @@ curl http://127.0.0.1:2142/_system/health
 curl http://127.0.0.1:2142/api/langgraph/info
 ```
 
-If `/api/langgraph/info` on `platform-api` returns `200`, and `/_service/health` on `interaction-data-service` also returns `200`, the platform path and result persistence path are basically connected.
+If `/api/langgraph/info` on `platform-api`, `/_service/health` on
+`interaction-data-service`, and `/health` on `lightrag-service` all succeed, the platform,
+result persistence, and knowledge HTTP paths are basically connected. The unified health
+script also checks MCP SSE connectivity.
 
 ![Local Startup Flow](docs/assets/local-dev-startup-flow.en.svg)
 
@@ -204,18 +221,25 @@ If `/api/langgraph/info` on `platform-api` returns `200`, and `/_service/health`
 AITestLab/
 ├── apps/
 │   ├── interaction-data-service/
+│   ├── lightrag-service/
 │   ├── platform-api/
 │   ├── platform-web/
 │   ├── runtime-service/
 │   ├── runtime-web/
 │   └── ...
+├── .codex/skills/
+├── .harness/
 ├── docs/
+├── openspec/
 ├── scripts/
 └── archive/
 ```
 
 - `apps/`: business apps, including the default local startup set and other maintained application directories
+- `.codex/skills/`: portable project-level Codex and OpenSpec Skills
+- `.harness/`: helpers, historical plans, and repo-level verification reports
 - `docs/`: deployment, development, constraints, and background docs
+- `openspec/`: persisted B2/B3 changes, approved capability specs, and archives
 - `scripts/`: unified start, stop, and health-check scripts
 - `archive/`: historical archive notes
 
@@ -243,7 +267,8 @@ Then read:
 
 Focus on:
 
-- `docs/development-paradigm.md`
+- `docs/standards/01-ai-execution-system.md`
+- `docs/ai-execution-system-usage-guide.md`
 - `docs/development-guidelines.md`
 - `docs/project-story.md`
 
@@ -252,12 +277,9 @@ Focus on:
 Start with:
 
 - `docs/releases/release-policy.md`
-- `docs/releases/v0.1.0-agent-workspace-demo-draft.md`
-- `docs/releases/v0.1.0-release-runbook.md`
-- `docs/releases/v0.1.1-agent-workspace-demo-draft.md`
-- `docs/releases/v0.1.1-release-runbook.md`
-- `docs/releases/v0.1.2-agent-workspace-demo-draft.md`
-- `docs/releases/v0.1.2-release-runbook.md`
+- `docs/releases/v0.3.1-agent-workspace-demo-draft.md`
+- `docs/releases/v0.3.1-release-runbook.md`
+- `docs/releases/` for the complete release history
 
 <a id="ai-deploy"></a>
 
@@ -348,6 +370,8 @@ This repo has already completed:
 - `lightrag-service` HTTP + MCP are now wired into the default local one-click startup scripts
 - `platform-web` is the official platform frontend host, while `runtime-web` remains the optional runtime debug shell
 - `apps/lightrag-service` is now part of the default local one-click bring-up, while the Compose stack still keeps it as an explicit opt-in lane
+- Harness and OpenSpec now cover routing, the B3 pre-apply gate, durable verification evidence, spec sync, archive, and CI enforcement
+- The current release is [`v0.3.1`](https://github.com/ljxpython/ai-agent-platform/releases/tag/v0.3.1)
 
 Current conventions that are still kept:
 
