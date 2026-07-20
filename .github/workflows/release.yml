@@ -1,0 +1,28 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          notes="docs/releases/${GITHUB_REF_NAME}-agent-workspace-demo-draft.md"
+          test -f "$notes"
+          title="$(sed -n '1s/^# //p' "$notes")"
+          test -n "$title"
+          gh release create "$GITHUB_REF_NAME" \
+            --verify-tag \
+            --title "$title" \
+            --notes-file "$notes"
