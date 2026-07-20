@@ -1,0 +1,6 @@
+interface:
+  display_name: "Route Project Change"
+  short_description: "Classify and route project changes through Harness"
+  default_prompt: "Use $route-project-change to classify this task and start the appropriate B1, B2, or B3 workflow."
+policy:
+  allow_implicit_invocation: false

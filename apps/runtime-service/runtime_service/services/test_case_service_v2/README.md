@@ -73,7 +73,7 @@
 
 ## Skills 与行为
 
-服务私有 skills 位于 [skills](/Users/bytedance/PycharmProjects/my_best/AITestLab/apps/runtime-service/runtime_service/services/test_case_service_v2/skills)：
+服务私有 skills 位于 [skills](./skills)：
 
 - `requirement-analysis`
 - `test-strategy`

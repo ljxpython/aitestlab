@@ -1,5 +1,8 @@
 # 14. Frontend Development Playbook
 
+> 状态：Archived。当前 leaf standard 已收敛到
+> `apps/platform-web/docs/frontend-development-playbook.md`。
+
 ## 目标
 
 这份文档不是继续分析 `sub2api-base` 为什么好看，而是把我们已经收敛出来的前端开发范式正式固化下来。

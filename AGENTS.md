@@ -1,207 +1,130 @@
 # Root AGENTS Routing Surface
 
-This root `AGENTS.md` is a **thin routing and execution-gating surface**.
+This file is the repo's thin AI routing and execution gate. Canonical rules live in
+`docs/standards/01-ai-execution-system.md`; human guidance lives in
+`docs/ai-execution-system-usage-guide.md`.
 
-It is **not** the canonical standard.
+For an explicit guided intake, invoke `$route-project-change`. The Skill applies this
+routing surface but does not override root or leaf standards.
 
-Canonical repo execution rules live in:
+## 1. Read Order
 
-- `docs/standards/01-ai-execution-system.md`
+For non-trivial work:
 
-Practical usage guidance lives in:
+1. Read this file.
+2. Resolve the narrowest authoritative leaf document.
+3. Use the repo standard only for cross-leaf routing and escalation.
+4. Read knowledge/history only when rationale is needed.
 
-- `docs/ai-execution-system-usage-guide.md`
+Authority order:
 
-Background rationale lives in:
+1. leaf-local current standard
+2. repo current standard
+3. supporting knowledge
+4. `.harness` plans/templates/reports
 
-- `docs/knowledge/04-ai-execution-system-rationale.md`
+`.harness` and `openspec` help execution; neither may override repo or leaf policy.
 
-Use this file to decide:
+## 2. Intake
 
-1. what to read first,
-2. how to classify the task,
-3. when to escalate,
-4. and when direct implementation is not yet allowed.
+Resolve these before implementation:
 
-Do **not** duplicate the full canon here.
+1. **Locus**: which app/service/repo surface owns the change?
+2. **Chain**: local, shortest adjacent chain, or governed cross-boundary chain?
+3. **Standards**: which narrow leaf documents apply?
+4. **Band**: B1 Local, B2 Chain, or B3 Governed?
+5. **Verification**: what is the smallest proof that covers the affected boundary?
 
----
+Every band follows the same execution loop:
 
-## 1. Canonical Read Path
+`analyze -> scope -> plan -> pre-apply gate when required -> implement -> verify -> accept -> summarize`
 
-For any non-trivial task, read in this order:
+The band changes artifact persistence and verification depth, not whether analysis,
+planning, or checking happens.
 
-1. **Root routing**
-   - `AGENTS.md`
-2. **Canonical repo rule**
-   - `docs/standards/01-ai-execution-system.md`
-3. **Practical usage**
-   - `docs/ai-execution-system-usage-guide.md`
-4. **Background / rationale** (only when needed)
-   - `docs/knowledge/04-ai-execution-system-rationale.md`
-5. **Narrowest authoritative leaf standard**
-   - app/service-local docs
+## 3. Execution Bands
 
-`.harness/` may contain plans, templates, and state, but it is **not** canonical policy. Legacy `.omx/` may remain as transition/history state only.
+| Band | Use when | Artifact | Verification |
+| --- | --- | --- | --- |
+| B1 Local | one locus, no governed contract | no file or OpenSpec change by default | local/minimal |
+| B2 Chain | bounded work in one locus or shortest adjacent chain | short plan; OpenSpec only when durable alignment is needed | local + shortest chain |
+| B3 Governed | governed contract, policy, ownership, migration, release, or cross-boundary risk | OpenSpec change | formal evidence at the required boundary |
 
----
+Code size does not choose the band. A one-line public contract change can be B3.
 
-## 2. Mandatory Intake Order
+B3 is required when any of these is true:
 
-Always resolve work in this order:
+- public/governed contract or repo/leaf policy changes
+- auth, permission, audit, data ownership, or migration semantics change
+- ownership moves across loci
+- production rollout/rollback or external compatibility needs formal review
+- user-owned secrets, accounts, or datasets are required for trustworthy acceptance
+- local and shortest-chain evidence cannot prove the result
 
-1. **Locus / Layer**
-2. **Chain / Ownership**
-3. **Standards Resolution**
-4. **Execution Band**
-5. **Artifacts / Verification**
+Research alone is not B3 unless its decision affects a governed boundary.
 
-Do **not** select workflow depth before locus/layer is explicit.
+## 4. Leaf Resolver
 
-Do **not** implement before the governing standard path is clear.
-
----
-
-## 3. Locus Resolver
-
-### `platform-web`
-- page archetype / UI composition / template choice
-  - `docs/platform-web-sub2api-migration/14-frontend-development-playbook.md`
-- formal control-plane page behavior
-  - `apps/platform-web/docs/control-plane-page-standard.md`
-
-### `platform-api`
-- module ownership / control-plane code-shape
-  - `apps/platform-api/docs/handbook/project-handbook.md`
-  - `apps/platform-api/docs/handbook/development-playbook.md`
-- permission / audit / operation governance
-  - `apps/platform-api/docs/standards/permission-standard.md`
-  - `apps/platform-api/docs/standards/audit-standard.md`
-  - `apps/platform-api/docs/standards/operations-standard.md`
-- runtime gateway / formal management interface
-  - `apps/platform-api/docs/standards/runtime-gateway-interface-standard.md`
-
-### `runtime-service`
-- standards
-  - `apps/runtime-service/runtime_service/docs/standards/*.md`
-- harness checks
-  - `apps/runtime-service/runtime_service/tests/harness/*.py`
-
-### `runtime-web`
-- debug-shell standard
+- `platform-web`
+  - page/UI archetypes: `apps/platform-web/docs/frontend-development-playbook.md`
+  - control-plane behavior: `apps/platform-web/docs/control-plane-page-standard.md`
+- `platform-api`
+  - module shape: `apps/platform-api/docs/handbook/*.md`
+  - permission/audit/operations: `apps/platform-api/docs/standards/*.md`
+- `runtime-service`
+  - standards: `apps/runtime-service/runtime_service/docs/standards/*.md`
+  - executable contracts: `apps/runtime-service/runtime_service/tests/harness/*.py`
+- `runtime-web`
   - `apps/runtime-web/docs/standards/runtime-web-debug-standard.md`
+- `interaction-data-service`
+  - current API: `apps/interaction-data-service/docs/test-case-service-api-design.md`
+  - ownership: `apps/interaction-data-service/docs/standards/result-domain-boundary-standard.md`
 
-### `interaction-data-service`
-- current API / resource / payload truth
-  - `apps/interaction-data-service/docs/test-case-service-api-design.md`
-- result-domain boundary / formal access chain
-  - `apps/interaction-data-service/docs/standards/result-domain-boundary-standard.md`
-- background design / future abstraction
-  - `apps/interaction-data-service/docs/service-design.md`
+Load only the documents needed for the current locus and concern.
 
-### Repo-level / process / standards work
-- `docs/standards/01-ai-execution-system.md`
-- `docs/development-paradigm.md`
-- `docs/knowledge/01-harness-engineering-foundation.md`
-- `docs/knowledge/02-aitestlab-harness-blueprint.md`
-- `docs/knowledge/03-harness-operating-model.md`
+## 5. OpenSpec
 
-Always load the **narrowest authoritative leaf** that answers the current question.
+OpenSpec is initialized with the official `core` profile and `spec-driven` schema.
+Use its generated skills; do not wrap or fork them without repeated evidence that the
+official workflow is insufficient.
 
----
+`proposal -> specs -> design (when needed) -> tasks -> apply -> verify -> archive`
 
-## 4. Execution Bands
+- B1 may use `openspec-explore` for thinking, but does not create a change by default.
+- B2 creates an OpenSpec change only when behavior or acceptance criteria need durable
+  review, or when multi-session collaboration/handoff justifies persistence.
+- B3 must use an OpenSpec change and stop for owner review before apply. Proposal,
+  specs, design, and tasks must be reviewed together. A bypass is allowed only when
+  the owner explicitly grants a waiver and its reason is recorded before apply.
 
-- **B1**
-  - small, local, bounded, no governed surface
-- **B2**
-  - bounded work inside one locus or the shortest relevant chain
-- **B3**
-  - governed, research-heavy, contract-changing, or formal-chain work
+Harness owns locus, band, authority, verification depth, and human gates. OpenSpec
+owns persisted change artifacts and their lifecycle. Never duplicate one change in
+both `openspec/changes/` and `.harness/plans/`.
 
-`B1/B2/B3` are **execution bands**, not the blueprint’s Harness Layers `L1-L4`.
+Every persisted B2/B3 change with `tasks.md` must maintain `verification.md` containing
+the pre-apply review decision, commands/checks, inputs, results, uncovered boundaries,
+and docs/runbook impact. Checked tasks are not verification evidence.
 
----
+## 6. Verification And Completion
 
-## 5. Hard Escalation Rules
+Verify in order:
 
-Escalate out of B1 if **any** of the following is true:
+1. local/minimal
+2. shortest relevant chain
+3. formal chain only when the selected band requires it
 
-- public / governed contract changes
-- research is required
-- formal platform behavior is affected
-- runtime public contract is affected
-- platform management interface is affected
-- cross-service / cross-permission / cross-data boundary judgment is needed
-- local proof is insufficient
+Do not declare completion until the relevant leaf standard was loaded, required
+evidence exists, and doc/runbook impact was considered.
 
-When escalation is required:
+For an accepted change with delta specs, sync the specs to `openspec/specs/` before
+archive. Archiving without sync is allowed only for a change explicitly marked
+`Rejected` or `Abandoned` in `verification.md`.
 
-1. first escalate to the relevant leaf owner / leaf doc,
-2. then to the repo current-standard if needed,
-3. and only then to formal-chain planning/execution.
+Require a human gate when intent is ambiguous, subjective product acceptance is
+needed, user-owned inputs are required, or the action changes governed/production
+state. Git commit and push remain explicit user-authorized operations.
 
----
-
-## 6. Canonical Artifact Expectations
-
-When artifacts are required, they must be compatible with the canonical grammar in:
-
-- `docs/standards/01-ai-execution-system.md`
-
-At minimum, think in terms of:
-
-- Goal
-- Scope
-- Not-do list
-- Locus / Layer
-- Chain map
-- Responsibility boundary / ownership split
-- Standards loaded
-- I/O contract
-- Verification plan
-- Acceptance criteria
-- Retro / doc decision
-
-Use `.harness/templates/ai-execution-system/*` as helper templates only.
-
----
-
-## 7. Verification Doctrine
-
-Always verify in this order:
-
-1. **local / minimal proof first**
-2. **shortest relevant chain second**
-3. **formal chain only when required**
-
-Do not default to full-chain validation just because it feels safer.
-
-Do not skip local proof when the formal chain is affected.
-
----
-
-## 8. Prohibitions
-
-Do **not**:
-
-- treat `.harness` or legacy `.omx` as canonical policy
-- invent real secrets, real params, or user-owned datasets
-- duplicate the full canon into `AGENTS.md`
-- flatten all apps into one generic detailed standard
-- select B1/B2/B3 before resolving locus/layer
-- implement directly when the leaf standard path is still ambiguous
-
----
-
-## 9. Completion Rule
-
-Do not declare completion unless:
-
-- the selected execution band is appropriate,
-- the relevant leaf standard(s) were loaded,
-- verification evidence exists at the required depth,
-- retro/doc impact was considered,
-- and no governed-surface escalation was skipped.
+Do not invent secrets, parameters, datasets, or user decisions. Do not turn helper
+artifacts into a shadow standard.
 
 @RTK.md

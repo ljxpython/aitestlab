@@ -97,7 +97,7 @@
 先读：
 
 - `apps/platform-web/docs/control-plane-page-standard.md`
-- `docs/platform-web-sub2api-migration/14-frontend-development-playbook.md`
+- `apps/platform-web/docs/frontend-development-playbook.md`
 
 适用于：
 

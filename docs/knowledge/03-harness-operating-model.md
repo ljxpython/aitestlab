@@ -1,5 +1,8 @@
 # Harness Operating Model（AITestLab 的运行方式与落地操作模型）
 
+> 状态：Archived Knowledge。当前操作规则见
+> `docs/ai-execution-system-usage-guide.md`，本文仅供历史追溯。
+
 文档类型：`Knowledge Operating Model`
 
 本文解释团队和 AI 代理应如何在当前 harness 中工作。它描述的是操作模型，不直接替代某个服务的 README、contract 或 API 文档。

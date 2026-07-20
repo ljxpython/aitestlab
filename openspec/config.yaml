@@ -1,0 +1,31 @@
+schema: spec-driven
+
+context: |
+  This is a multi-service AI Agent platform monorepo.
+  Read AGENTS.md, then the narrowest applicable leaf standard, then
+  docs/standards/01-ai-execution-system.md for cross-leaf routing.
+  Classify work as B1 Local, B2 Chain, or B3 Governed before implementation.
+  B1 does not create an OpenSpec change. B2 uses OpenSpec only when behavior,
+  acceptance criteria, multi-session work, or handoff needs a durable spec.
+  B3 requires an OpenSpec change.
+  Verify in order: local/minimal, shortest relevant chain, then formal evidence
+  only when the governed risk requires it.
+  Do not duplicate an OpenSpec change under .harness/plans.
+  Every persisted change with tasks.md must maintain verification.md. B3 must record
+  owner review approval or an explicit owner waiver before apply. Accepted delta specs
+  must sync to openspec/specs before archive.
+
+rules:
+  proposal:
+    - State the owning locus, affected chain, selected execution band, and standards loaded.
+    - Keep scope and non-goals explicit; include compatibility or rollback impact when relevant.
+  specs:
+    - Specify observable behavior and testable acceptance scenarios, not implementation details.
+    - Include failure or denial scenarios when permissions, validation, or external calls are involved.
+  design:
+    - Create substantive design content only for real architecture, ownership, dependency, security, migration, or rollout decisions.
+    - Record affected service boundaries and rejected alternatives when a real trade-off exists.
+  tasks:
+    - Include implementation, local verification, required chain verification, and docs or runbook impact.
+    - Include a task to create and maintain verification.md with pre-apply review, evidence, residual risk, and disposition.
+    - Do not add git commit or push tasks unless the user explicitly requests them.

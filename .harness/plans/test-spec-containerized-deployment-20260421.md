@@ -1,5 +1,7 @@
 # Test Spec — Containerized Deployment for AITestLab
 
+> Status: Archived. This is historical planning evidence, not a current test entry.
+
 - Date: 2026-04-21
 - Related PRD: `.harness/plans/prd-containerized-deployment-20260421.md`
 - Source context: `.harness/context/containerized-deployment-20260421T131133Z.md`

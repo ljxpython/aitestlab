@@ -1,5 +1,8 @@
 # TODO — Containerized Deployment Delivery Checklist
 
+> Status: Archived. Delivery is implemented; use `deploy/README.md` and the current
+> runbook for operation and verification.
+
 - Date: 2026-04-21
 - Related PRD: `.harness/plans/prd-containerized-deployment-20260421.md`
 - Related Test Spec: `.harness/plans/test-spec-containerized-deployment-20260421.md`

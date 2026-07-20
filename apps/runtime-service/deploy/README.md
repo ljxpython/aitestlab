@@ -150,7 +150,7 @@
 
 更新 runbook 不在本页展开，统一收敛到：
 
-- [`docs/runbooks/container-update-runbook.md`](/Users/bytedance/PycharmProjects/my_best/AITestLab/docs/runbooks/container-update-runbook.md)
+- [`docs/runbooks/container-update-runbook.md`](../../../docs/runbooks/container-update-runbook.md)
 
 核心原则已经确定：
 
@@ -159,9 +159,9 @@
 - 仅 env/config 变更：
   - recreate
 
-## 7. 跟踪面
+## 7. 历史设计记录
 
-如果你要继续推进这个交付面，优先同时查看：
+以下内容只用于追溯原始容器化决策：
 
 - [PRD](../../../.harness/plans/prd-containerized-deployment-20260421.md)
 - [Test Spec](../../../.harness/plans/test-spec-containerized-deployment-20260421.md)

@@ -3,7 +3,8 @@
 > Helper checklist only — not repo canon.
 
 ## When to use
-Mandatory for B3. Use in B2 whenever trustworthy verification depends on user-owned or environment-owned real inputs.
+Use only when trustworthy verification depends on user-owned or environment-owned real inputs.
+It is conditional even for B3 and is not required when no such input exists.
 
 ## Rule
 AI may identify required real inputs, but must not invent or silently substitute them.

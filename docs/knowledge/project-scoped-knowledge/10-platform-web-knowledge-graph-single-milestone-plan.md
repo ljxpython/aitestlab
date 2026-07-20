@@ -321,7 +321,7 @@
 本阶段验收依赖两套材料：
 
 1. **LightRAG reference verifier**
-   - `/Users/bytedance/PycharmProjects/test4/LightRAG`
+   - external LightRAG checkout（本地路径不纳入仓库文档）
    - `source .venv/bin/activate`
    - `lightrag-server`
 

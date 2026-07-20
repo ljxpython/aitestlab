@@ -7,6 +7,19 @@ on:
   pull_request:
 
 jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: python scripts/check_docs.py
+      - run: npx --yes @fission-ai/openspec@1.6.0 validate --all --strict --no-interactive
+
   platform-api:
     runs-on: ubuntu-latest
     defaults:

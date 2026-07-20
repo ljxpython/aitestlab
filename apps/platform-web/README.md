@@ -13,7 +13,7 @@
 然后再进入 `platform-web` 自己的 leaf standard：
 
 - [Control Plane 页面标准](./docs/control-plane-page-standard.md)
-- [前端开发范式手册](../../docs/platform-web-sub2api-migration/14-frontend-development-playbook.md)
+- [前端开发范式手册](./docs/frontend-development-playbook.md)
 
 ## 这个 app 在仓库里的角色
 
@@ -31,7 +31,7 @@
 ## 推荐读路径
 
 1. [Control Plane 页面标准](./docs/control-plane-page-standard.md)
-2. [前端开发范式手册](../../docs/platform-web-sub2api-migration/14-frontend-development-playbook.md)
+2. [前端开发范式手册](./docs/frontend-development-playbook.md)
 3. [当前项目开发范式说明](../../docs/development-paradigm.md)
 
 如果你的问题是：

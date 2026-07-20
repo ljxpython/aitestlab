@@ -1,5 +1,8 @@
 # AI Execution System Rationale（Locus-First AI 执行系统的知识说明）
 
+> 状态：Archived Knowledge。当前简明说明见 `docs/knowledge/harness-engineering.md`，
+> 正式规则见 `docs/standards/01-ai-execution-system.md`。
+
 文档类型：`Knowledge`
 
 本文是对已批准的 locus-first AI execution system 的知识说明，不是可执行的标准文档，也不是门禁定义。

@@ -1,5 +1,8 @@
 # Harness Engineering 学习与实践总纲
 
+> 状态：Archived Knowledge。当前简明说明见 `docs/knowledge/harness-engineering.md`。
+> 本文仅保留完整背景、历史建议和外部参考，不属于默认阅读路径。
+
 文档类型：`Knowledge`
 
 这是一篇方法论文档，用来解释为什么这个仓库会以 `AI Harness` 为总哲学。它不是当前架构事实源，也不直接定义启动链路或接口契约。

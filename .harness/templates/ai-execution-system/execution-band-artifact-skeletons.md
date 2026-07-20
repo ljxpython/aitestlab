@@ -1,134 +1,75 @@
 # Execution-Band Artifact Skeletons
 
-> Helper templates only — not repo canon.
+> Helper only. Canonical rules live in
+> `docs/standards/01-ai-execution-system.md`.
 
-All bands keep the same repo-native grammar:
-**goal, scope, not-do list, locus/layer, chain map, ownership split, standards loaded, I/O contract, verification plan, acceptance criteria, retro/doc decision**.
+## B1 Local
 
-## B1 — Compact classification note
-Use for small, bounded, local work.
+Default: keep this in the conversation; do not create a file.
 
 ```md
-# B1 Artifact — <task>
-- Goal: <outcome>
-- Scope: <bounded change>
-- Not-do list:
-  - <non-goal>
-- Locus / layer: <owner>
-- Chain map: <local only or short boundary>
-- Ownership split: <owner vs adjacent boundary>
-- Standards loaded: <leaf docs/checks>
-- I/O contract: <inputs/outputs/defaults/forbidden fields if relevant>
-- Verification plan: <local/minimal proof>
+- Goal:
+- Scope:
+- Change:
+- Verify:
+```
+
+Use when one locus can close the work without changing a governed surface.
+
+## B2 Chain
+
+Keep a short plan in the conversation by default. Use OpenSpec when behavior or
+acceptance criteria need durable review, or for multi-session collaboration/handoff.
+
+```md
+# <task>
+
+- Goal:
+- Scope / non-goals:
+- Owning locus:
+- Shortest affected chain:
+- Standards loaded:
+- Implementation steps:
 - Acceptance criteria:
-  - <must be true>
-- Retro / doc decision: <none needed because... | update ...>
-
-## TODO / Checklist
-- [ ] Implement bounded change
-- [ ] Run local proof
-- [ ] Capture short verification note
+- Verification:
+  - local:
+  - shortest chain:
+- Doc decision:
 ```
 
-## B2 — Bounded plan + TODO + verification matrix
-Use for meaningful but still bounded work in one locus or a short chain.
+B2 should not produce both this short plan and an OpenSpec change.
 
-```md
-# B2 Artifact — <task>
-## Goal
-<outcome>
+## B3 Governed
 
-## Scope
-- In: <...>
-- Out: <...>
+Use OpenSpec:
 
-## Not-do list
-- <non-goal>
-- <non-goal>
-
-## Locus / layer
-- Owning locus: <...>
-- Layer: <...>
-
-## Chain map
-- Shortest relevant chain: <...>
-- Public/governed surface touched: <no|yes>
-
-## Ownership split
-- This locus owns: <...>
-- Neighbor boundary: <...>
-
-## Standards loaded
-- <path>
-- <path>
-
-## I/O contract
-- Inputs: <...>
-- Outputs: <...>
-- Defaults / forbidden fields / failure expectations: <...>
-
-## Delivery plan
-1. <step>
-2. <step>
-3. <step>
-
-## Verification plan / matrix
-| Proof level | What to run | Why it is enough |
-| --- | --- | --- |
-| Local/minimal | <...> | <...> |
-| Shortest relevant chain | <...> | <...> |
-
-## Acceptance criteria
-- <...>
-- <...>
-
-## Retro / doc decision
-- <update|none> — <reason>
-
-## TODO breakdown
-- [ ] <...>
-- [ ] <...>
-- [ ] <...>
+```text
+proposal -> specs -> design (when needed) -> tasks
+         -> apply -> verification -> archive
 ```
 
-## B3 — Governed/full artifact set
-Use for governed surfaces, research-heavy design, real-input dependency, or multi-locus formal-chain work.
+Required concerns:
 
-```md
-# B3 Artifact Set — <task>
-## Core artifact (PRD / plan)
-- Goal: <...>
-- Scope: <...>
-- Not-do list:
-  - <...>
-- Locus / layer: <primary + adjacent loci>
-- Chain map: <local, shortest chain, formal chain>
-- Ownership split: <clear boundary by locus>
-- Standards loaded: <authoritative leaf standards>
-- I/O contract: <public inputs/outputs/defaults/forbidden fields/failure rules>
-- Verification plan: <local first, shortest chain second, formal chain last if required>
-- Acceptance criteria:
-  - <...>
-- Retro / doc decision: <docs/runbook/ADR updates>
+- impact and non-goals
+- affected capability/contract
+- owner and boundary changes
+- acceptance scenarios
+- implementation tasks
+- verification and rollback expectations
 
-## Additional required B3 sections
-- Escalation rationale: <why B3 is required>
-- Affected contract list:
-  - <contract/interface/schema>
-- Real-input requirements list:
-  - <secret|dataset|env param|none>
-- Release / handoff considerations:
-  - <migration, rollout, owner, support notes>
+Conditional artifacts:
 
-## Companion artifacts expected
-- ADR: <decision + rejected options>
-- Test spec: <coverage of local, boundary, formal chain>
-- Escalation log: <who/what/why>
-- Real-input checklist: <link/checklist>
-- Doc/runbook update plan: <what must change>
-```
+- design/ADR: real architecture choice
+- dedicated Test Spec: complex or high-risk verification matrix
+- real-input checklist: user-owned inputs are required
+- runbook: deployment or recovery changes
+- repo report: cross-change summary
 
-## Usage notes
-- B1 stays compact but must still cover the grammar.
-- B2 is the default for bounded meaningful delivery.
-- B3 is not “large work only”; it is for governed boundaries, research, or real-input risk.
+Do not create a duplicate in both `.harness/plans/` and `openspec/changes/`.
+
+## Usage
+
+- B1 is the default for bounded local work.
+- B2 covers one locus or the shortest adjacent chain.
+- B3 is selected by governed risk, not task size or research alone.
+- Always verify local first, then expand only as required.

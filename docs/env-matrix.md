@@ -4,7 +4,7 @@
 
 本文只做配置文件与关键变量索引。
 
-默认本地部署的服务成员、启动顺序、端口和链路，以 [`docs/local-deployment-contract.yaml`](/Users/bytedance/PycharmProjects/my_best/AITestLab/docs/local-deployment-contract.yaml) 为准。
+默认本地部署的服务成员、启动顺序、端口和链路，以 [`docs/local-deployment-contract.yaml`](./local-deployment-contract.yaml) 为准。
 
 ## 1. `platform-api`
 

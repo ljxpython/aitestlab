@@ -1,5 +1,9 @@
 # 当前项目开发范式说明
 
+> 状态：Supporting Legacy Reference。当前任务路由以 `AGENTS.md` 和
+> `docs/standards/01-ai-execution-system.md` 为准；本文保留详细架构、需求模板和联调清单，
+> 不属于默认阅读路径。
+
 ## 这篇文档想讲清什么
 
 这篇文档不重复介绍怎么启动项目，而是专门回答 3 个问题：

@@ -11,6 +11,10 @@ Use after implementation to record proof in locus-first order:
 ## Template
 ```md
 # Verification Evidence — <task>
+- Status: <Pending|Complete>
+- Disposition: <Pending acceptance|Accepted|Rejected|Abandoned>
+- Pre-apply review: <Pending|Approved|Waived>
+- Review owner / evidence: <...>
 - Execution band: <B1|B2|B3>
 - Owning locus / layer: <...>
 - Standards loaded: <...>

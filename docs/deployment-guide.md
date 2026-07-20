@@ -6,11 +6,11 @@
 
 如果你要看已经收敛的容器化交付方向，另见：
 
-- [`deploy/README.md`](/Users/bytedance/PycharmProjects/my_best/AITestLab/deploy/README.md)
-- [`apps/runtime-service/deploy/README.md`](/Users/bytedance/PycharmProjects/my_best/AITestLab/apps/runtime-service/deploy/README.md)
-- [`docs/zero-to-one-container-deploy.md`](/Users/bytedance/PycharmProjects/my_best/AITestLab/docs/zero-to-one-container-deploy.md)
-- [`docs/container-address-guide.md`](/Users/bytedance/PycharmProjects/my_best/AITestLab/docs/container-address-guide.md)
-- [`docs/runbooks/container-update-runbook.md`](/Users/bytedance/PycharmProjects/my_best/AITestLab/docs/runbooks/container-update-runbook.md)
+- [`deploy/README.md`](../deploy/README.md)
+- [`apps/runtime-service/deploy/README.md`](../apps/runtime-service/deploy/README.md)
+- [`docs/zero-to-one-container-deploy.md`](./zero-to-one-container-deploy.md)
+- [`docs/container-address-guide.md`](./container-address-guide.md)
+- [`docs/runbooks/container-update-runbook.md`](./runbooks/container-update-runbook.md)
 
 ## 1. 当前正式部署口径
 

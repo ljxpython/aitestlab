@@ -1,5 +1,8 @@
 # AITestLab Harness Blueprint（仓库级 Harness 蓝图）
 
+> 状态：Archived Knowledge。当前简明说明见 `docs/knowledge/harness-engineering.md`。
+> 本文保留历史蓝图，不作为当前任务入口或 current standard。
+
 文档类型：`Knowledge Blueprint`
 
 这篇蓝图解释当前仓库为什么按 `platform-web -> platform-api -> runtime-service -> interaction-data-service` 这条正式主链组织，但它不是本地部署 contract 本身。

@@ -1,5 +1,9 @@
 # PRD — Containerized Deployment for AITestLab
 
+> Status: Archived. Current deployment behavior lives in `deploy/README.md`.
+> Historical names such as `platform-web-vue` and `platform-api-v2` are retained
+> only to preserve the original decision record.
+
 - Date: 2026-04-21
 - Mode: B3 research / clarification / PRD only
 - Source context: `.harness/context/containerized-deployment-20260421T131133Z.md`

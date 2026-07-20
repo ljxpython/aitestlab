@@ -43,7 +43,7 @@
 
 地址如何填写，另见：
 
-- [`docs/container-address-guide.md`](/Users/bytedance/PycharmProjects/my_best/AITestLab/docs/container-address-guide.md)
+- [`docs/container-address-guide.md`](./container-address-guide.md)
 
 ## 3. 单应用 `runtime-service`
 
@@ -250,7 +250,7 @@ docker compose -f deploy/docker-compose.stack.nginx.yml --env-file deploy/.env.s
 
 记不住时，直接看：
 
-- [`docs/container-address-guide.md`](/Users/bytedance/PycharmProjects/my_best/AITestLab/docs/container-address-guide.md)
+- [`docs/container-address-guide.md`](./container-address-guide.md)
 
 最短规则：
 

@@ -1,5 +1,8 @@
 # Containerized Deployment Context Snapshot
 
+> Status: Archived. This snapshot records the pre-rename planning context and must
+> not be used as the current deployment source of truth.
+
 - Timestamp: 2026-04-21T13:11:33Z
 - Task statement:
   - Plan a B3 containerized deployment solution for this repo without implementation.

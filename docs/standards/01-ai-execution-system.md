@@ -1,372 +1,245 @@
-# 01. AI 执行系统当前标准
+# AI 执行系统当前标准
 
-本文是仓库里“按什么顺序接单、谁来定标准、什么时候必须升级”的**当前标准**。  
-它是薄的、可执行的、可检查的；不是方法论文，也不是历史回顾。
+- 文档类型：Current Standard
+- 适用范围：仓库级 AI 任务路由、风险分级和验证门禁
 
-如果你只需要背景原理，去读 `docs/development-paradigm.md` 和 `docs/knowledge/02-aitestlab-harness-blueprint.md`。  
-如果你要做当前标准判断，先读本文。
-如果你要看“以后实际该怎么给 AI 提任务、怎么按这套体系完成事情”，再读：
+本文只定义“现在必须怎么做”。背景说明见
+`docs/knowledge/harness-engineering.md`，人类使用示例见
+`docs/ai-execution-system-usage-guide.md`。
 
-- `docs/ai-execution-system-usage-guide.md`
+## 1. 权威顺序
 
----
+同一问题按下面顺序解析：
 
-## 0. 现行读路径
+1. 最窄的 leaf-local current standard
+2. 本文
+3. supporting knowledge / rationale
+4. `.harness` 或 `openspec` 过程产物
 
-同一件事，按下面顺序读：
+代码是实现事实，不自动升级为标准。`.harness` 和 `openspec` 是执行工具，
+不能反向覆盖 repo/leaf authority。
 
-1. **leaf 本地文档**：先读最近的 app 文档，拿到本地事实
-2. **本仓 current-standard**：再用本文做跨 leaf 的路由和升级判断
-3. **知识文档**：只在需要背景、理由、历史折中时再读
-4. **`.harness` helper surfaces**：只看 helper/运行态辅助，不当成业务政策源（历史 `.omx` 只作过渡/参考）
+## 2. Intake 顺序
 
-### 0.1 权威顺序
+开始实现前依次确认：
 
-同一 locus 内，优先级是：
+1. **Locus**：哪个 app/service/repo surface 拥有该问题？
+2. **Chain**：本地、最短相邻链，还是受治理跨边界链？
+3. **Standards**：哪份最窄 leaf 文档生效？
+4. **Band**：B1 Local、B2 Chain、B3 Governed？
+5. **Verification**：最小充分证据是什么？
 
-1. leaf 本地文档
-2. 本仓 current-standard
-3. 知识文档
-4. `.harness` context / specs / plans / reports / state
+先定边界，再定流程深度。不能根据“代码多不多”选择 band。
 
-`.harness` 里可以有计划和状态，但不能反过来定义本仓当前标准。历史 `.omx` 只作为 transition/history bucket。
+所有 band 都必须完成同一个闭环：
 
-### 0.2 root `AGENTS.md` 事实
-
-当前版本化仓库树里已经有 **root `AGENTS.md`**，但它是 **thin routing only**。
-所以这里的角色分工是：
-
-- root `AGENTS.md`：薄路由与执行门禁
-- 本文：current-standard
-- leaf 文档：leaf 本地事实
-- `.harness`：helper surfaces / repo-local artifact host，不负责域政策
-
----
-
-## 1. 必须先走的 intake 顺序
-
-任何 AI 执行请求，必须按这个顺序判断：
-
-1. **locus / layer**
-2. **chain / ownership**
-3. **standards resolution**
-4. **execution band**
-5. **artifacts / verification**
-
-如果前一项没定，不能跳到后一项。
-
-| 门 | 先回答什么 | 输出 |
-| --- | --- | --- |
-| locus / layer | 这是哪个 leaf、哪个层 | 具体目录 + 层级 |
-| chain / ownership | 谁拥有这条链 | 本地 owner / 邻接 owner / formal owner |
-| standards resolution | 哪份标准生效 | leaf 文档 / 本文 / 知识文档 |
-| execution band | 该走 B1 / B2 / B3 | 允许的推进范围 |
-| artifacts / verification | 需要哪些产物和证据 | 最小必需集合 |
-
----
-
-## 2. B1 / B2 / B3：执行带宽
-
-**B = execution band。**  
-它不是 Harness Layers L1-L4，也不要拿它们互相替代。
-
-| Band | 含义 | 适用范围 | 证据要求 |
-| --- | --- | --- | --- |
-| B1 | 本地最小执行 | 单一 leaf、单一 owner 链内可闭环 | 本地最小验证 |
-| B2 | 最短相关链 | 需要相邻 leaf，但不需要全链路 | 最短链路验证 |
-| B3 | formal chain | 触及正式标准、跨边界治理、或需要正式交付物 | formal artifacts + formal verification |
-
-### 2.1 B1
-
-B1 只做叶子内部闭环。  
-典型情况：
-
-- `platform-web` 只改自己页面、自己的 payload 规范、自己的 service 适配
-- `runtime-service` 只改自己的 runtime resolver、middleware、graph 装配
-
-### 2.2 B2
-
-B2 只走**最短相关链**，不扩散。
-
-典型链：
-
-- `platform-web -> platform-api`
-- `platform-api -> runtime-service`
-- `runtime-web -> runtime-service`
-
-### 2.3 B3
-
-B3 只在下面情况出现：
-
-- 要改 current-standard 本身
-- 要跨多个 leaf 的正式边界
-- 要产出 PRD / test spec / 交付 runbook 这类 formal artifacts
-- 本地或最短链无法证明结论
-
----
-
-## 3. Hard escalation rules
-
-以下任一条命中，必须升级，不准继续猜：
-
-- 要改 **public / governed contract**
-- 需要调研后才能做可信设计
-- 影响 **正式平台相关**
-- 影响 **运行时公开契约**
-- 影响 **平台管理接口**
-- 需要跨服务、跨权限、跨数据契约判断
-- 本地验证无法覆盖结论
-
-升级顺序：
-
-1. 先升到 leaf owner / leaf doc
-2. 再升到本文对应的 current-standard 规则
-3. 最后才升到 formal chain
-
-不允许直接跳过前两步去做“大而全”的 formal 处理。
-
----
-
-## 4. canonical artifact grammar
-
-本文认可的 canonical artifact grammar 必须覆盖下面这些字段：
-
-```md
-# <artifact title>
-
-- Goal:
-- Scope:
-- Not-do list:
-- Locus / Layer:
-- Chain map:
-- Responsibility boundary / ownership split:
-- Standards loaded:
-- I/O contract:
-- Verification plan:
-- Acceptance criteria:
-- Retro / doc decision:
+```text
+分析 -> 定界/分级 -> 规划 -> 必要时实施前审批 -> 实施 -> 检查 -> 验收 -> 总结
 ```
 
-### 4.1 语义要求
+band 只决定过程是否持久化、验证做到多深，不决定是否分析、规划和检查。
 
-- **Goal**：这次要证明什么结果成立
-- **Scope**：这次只做什么
-- **Not-do list**：明确不做什么
-- **Locus / Layer**：具体到 leaf / 目录 / blueprint 层级
-- **Chain map**：本次走的是本地链、最短链，还是 formal chain
-- **Responsibility boundary / ownership split**：谁拥有这一步，哪些边界不能跨
-- **Standards loaded**：明确写出读取了哪份 authoritative 文档
-- **I/O contract**：涉及的输入、输出、默认值、禁止字段、失败语义
-- **Verification plan**：用什么证据证明
-- **Acceptance criteria**：什么条件全部成立才算完成
-- **Retro / doc decision**：是否要更新 docs / runbook / handoff，或为什么不用
+## 3. B1 / B2 / B3
 
-### 4.2 产物命名
+| Band | 定义 | 默认产物 | 验证 |
+| --- | --- | --- | --- |
+| B1 Local | 单一 locus 内闭环，不改受治理面 | 默认不落文件、不创建 OpenSpec change | local/minimal |
+| B2 Chain | 单一 locus 的有意义改动，或一条最短相邻链 | 短计划；需要持久对齐时使用 OpenSpec | local + shortest chain |
+| B3 Governed | 政策、公开契约、所有权、迁移、发布或跨边界风险 | OpenSpec change | 对应边界的正式证据 |
 
-正式产物尽量保持短、稳、能路由：
+### 3.1 B1 Local
 
-- current-standard：`docs/standards/<nn>-<slug>.md`
-- leaf 本地标准：leaf 自己的 `docs/*`
-- formal plan：`.harness/plans/prd-*.md`
-- formal test spec：`.harness/plans/test-spec-*.md`
+适合明确的小改动，例如局部 UI、内部 resolver、单模块 bug。
 
-`.harness` 里的计划文件是 formal chain 产物，不是 current-standard 本身；历史 `.omx/plans/*` 只保留为 transition/history residue。
+只需说明：
 
----
+- Goal
+- Scope
+- Change
+- Verify
 
-## 5. verification doctrine
+默认直接实现，不写 PRD，不创建 OpenSpec change。
+
+### 3.2 B2 Chain
+
+适合需要设计或相邻服务配合，但不改变受治理面的工作。
+
+短计划最多覆盖：
+
+- Goal / Scope
+- Owning locus / shortest chain
+- Standards loaded
+- Implementation steps
+- Acceptance criteria
+- Local + shortest-chain verification
+
+出现以下任一情况时，B2 使用 OpenSpec change；否则计划保留在会话中或使用
+一份短计划：
+
+- 行为或验收标准需要持久评审
+- 工作跨多个会话、多人协作或需要 handoff
+- 现有需求文档需要转成可验证的 delta spec
+
+如果实施中发现受治理风险，必须升级为 B3。
+
+### 3.3 B3 Governed
+
+以下任一条件命中时进入 B3：
+
+- public/governed contract 或 repo/leaf policy 改变
+- auth、permission、audit、data ownership 或 migration 语义改变
+- 责任从一个 locus 转移到另一个 locus
+- 生产发布、回滚或外部兼容需要正式评审
+- 可信验收依赖用户拥有的 secret、account 或 dataset
+- local + shortest-chain 无法证明结果
+
+“需要查资料”本身不是 B3。只有调研结论将改变受治理边界时才升级。
+
+B3 在 apply 前必须完成 proposal/specs/design/tasks 的整体 owner review，并把结果
+记录到该 change 的 `verification.md`。只有 owner 明确授权的紧急或 bootstrap
+waiver 可以跳过评审；waiver 的授权、原因和范围必须在 apply 前持久化。Agent
+不得自行声明豁免。
+
+## 4. OpenSpec 参与方式
+
+OpenSpec 已在仓库初始化，使用官方 `core` profile 和默认 `spec-driven` schema。
+Harness 与 OpenSpec 的职责不能混用：
+
+- Harness 负责 locus、authority、band、验证深度和人工门禁
+- OpenSpec 负责需要持久化的 change artifacts 及其生命周期
+- B1 可以使用 `openspec-explore` 调研，但默认不创建 change
+- B2 只在第 3.2 节的持久对齐条件命中时创建 change
+- B3 实施前必须创建 change
+
+默认流程：
+
+```text
+proposal -> specs -> design (when needed) -> tasks
+         -> owner review -> apply -> verification
+         -> accepted: sync -> archive
+         -> rejected/abandoned: archive without sync
+```
+
+职责映射：
+
+| Repo concern | OpenSpec artifact |
+| --- | --- |
+| Why / Scope / Impact / Non-goals | `proposal.md` |
+| Requirements / acceptance scenarios | `specs/<capability>/spec.md` |
+| Architecture / ownership / contract decisions | `design.md`，仅需要时 |
+| Implementation and verification checklist | `tasks.md` |
+| Review decision and executable evidence | `verification.md` |
+| Approved current capability behavior | `openspec/specs/`，accepted archive 前先 sync |
+
+保持官方默认 `spec-driven` schema，不 fork custom schema，不重复包装官方生成的
+OpenSpec Skills。只有多个真实 change 反复暴露相同缺口时才重新评估。
+
+下列产物按条件生成，不做全家桶：
+
+- ADR/design：存在真实架构取舍时
+- dedicated Test Spec：高风险契约或复杂验证矩阵需要时
+- real-input checklist：确实依赖用户输入时
+- runbook：部署、运维或恢复路径改变时
+- repo-level report：跨 change 汇总时
+
+同一 change 不能同时维护在 `openspec/changes/` 和 `.harness/plans/`。
+`.harness/plans/` 只保留历史或已明确归档的旧计划。
+
+每个已产生 `tasks.md` 的持久化 B2/B3 change 必须同时维护 `verification.md`。
+最晚在任务生成后创建验证计划，实施和检查过程中持续更新；不能用 tasks 的勾选
+状态替代验证结果。
+
+## 5. Leaf Resolver
+
+### `platform-web`
+
+- 页面 archetype / UI composition：
+  `apps/platform-web/docs/frontend-development-playbook.md`
+- 正式控制面行为：
+  `apps/platform-web/docs/control-plane-page-standard.md`
+
+### `platform-api`
+
+- 模块与 code shape：`apps/platform-api/docs/handbook/*.md`
+- permission / audit / operations：
+  `apps/platform-api/docs/standards/*.md`
+
+### `runtime-service`
+
+- 标准：`apps/runtime-service/runtime_service/docs/standards/*.md`
+- 可执行门禁：`apps/runtime-service/runtime_service/tests/harness/*.py`
+
+### `runtime-web`
+
+- `apps/runtime-web/docs/standards/runtime-web-debug-standard.md`
+
+### `interaction-data-service`
+
+- 当前 API：`apps/interaction-data-service/docs/test-case-service-api-design.md`
+- 结果域边界：
+  `apps/interaction-data-service/docs/standards/result-domain-boundary-standard.md`
+
+只加载本次 concern 所需的最窄文档，不加载整个知识树。
+
+## 6. Verification Doctrine
 
 验证顺序固定为：
 
-1. **local/minimal**
-2. **shortest relevant chain**
-3. **formal chain only when required**
+1. local/minimal
+2. shortest relevant chain
+3. formal chain only when B3 风险需要
 
-### 5.1 local/minimal
+高 band 不允许跳过低层验证；低 band 也不应默认扩大到全链路。
 
-先证明 leaf 自己没坏。
+验证证据至少回答：
 
-例子：
+- 跑了什么
+- 使用什么输入
+- 结果是什么
+- 哪些边界没有覆盖
+- 是否需要 docs/runbook 更新
 
-- `platform-web`：先看自己的 payload 归一化、endpoint 归一化、页面本地服务调用
-- `runtime-service`：先看自己的 runtime context 解析、settings 解析、middleware 装配
+持久化证据统一放在 change 根目录的 `verification.md`，至少包含：
 
-### 5.2 shortest relevant chain
+- Status：`Pending` 或 `Complete`
+- Disposition：`Pending acceptance`、`Accepted`、`Rejected` 或 `Abandoned`
+- Pre-apply review：`Pending`、`Approved` 或 `Waived`
+- owner/授权或 waiver 依据
+- local、shortest chain、formal/human 的命令或检查、输入和结果
+- 未覆盖边界、残余风险以及 docs/runbook 决策
 
-只有当本地证明不够，才走最短相关链。
+archive 前必须满足：
 
-例子：
+- `Accepted`：evidence 为 `Complete`，pre-apply review 为 `Approved` 或有明确
+  owner 记录的 `Waived`；存在 delta specs 时必须先 sync
+- `Rejected` / `Abandoned`：允许 evidence 未完成和不 sync，但 disposition 必须
+  明确，不能伪装成已接受交付
 
-- `platform-web -> platform-api`
-- `platform-api -> runtime-service`
+## 7. 文档生命周期
 
-### 5.3 formal chain only when required
+文档只允许四种状态：
 
-只有以下情况才上 formal chain：
+- **Current**：当前事实或标准
+- **Supporting**：解释和使用指南
+- **Draft**：未批准方案
+- **Archived**：历史，不得作为当前入口
 
-- 要改标准
-- 要改边界
-- 要交 formal artifact
-- 要给外部审核或发布门禁
+Current 文档不得包含本机绝对路径或已退役宿主名。历史计划完成或失效后必须
+标记 Archived，并从 Current 指南中解除链接。
 
-不要因为“更稳妥”就默认升级到 formal chain。
+## 8. Completion Gate
 
----
+完成必须满足：
 
-## 6. leaf 本地 authority / resolver
+- locus、chain 和 band 选择合理
+- 最窄 leaf standard 已加载
+- 所需验证证据存在
+- B3 change 已通过实施前 review/waiver 和 verification
+- accepted change 的 delta specs 已 sync，随后必须 archive
+- rejected/abandoned change 已记录 disposition，随后可以无 sync archive
+- docs/runbook 影响已处理或明确说明无需处理
 
-leaf 先管 leaf 的事。
+存在需求歧义、主观产品验收、用户自有输入或受治理/生产状态变化时，必须等待
+对应人工确认。`git commit` 和 `git push` 只在用户明确授权后执行。
 
-### 6.1 `platform-web`
-
-`platform-web` 不能只按“前端规范”一个粗桶判断，必须按更窄的 leaf concern 解析：
-
-#### Leaf A：页面 archetype / UI composition / template choice
-- `docs/platform-web-sub2api-migration/14-frontend-development-playbook.md`
-- 适用于：
-  - 这是 list / detail / create / workspace / resource 哪类页面
-  - 该复用哪组共享组件与页面骨架
-  - 页面结构和视觉/交互模板怎么选
-
-#### Leaf B：formal control-plane page behavior
-- `apps/platform-web/docs/control-plane-page-standard.md`
-- 适用于：
-  - 页面 service / state / permission / audit / page shell 规则
-  - 正式控制面页面有哪些禁止项
-  - formal page 行为如何遵守平台规则
-
-#### `platform-web` resolver rule
-- 如果问题是 **“这是什么页面、应该用哪种页面骨架/组件组合？”**
-  - 先读 **frontend playbook**
-- 如果问题是 **“这个正式页面在 service/state/permission/audit 上必须怎么做？”**
-  - 先读 **control-plane page standard**
-- 如果两者都涉及：
-  - 先用 playbook 选 page archetype
-  - 再用 control-plane standard 收 formal page behavior
-
-### 6.2 `runtime-service`
-
-`runtime-service` 的本地 authority 主要在：
-
-- `apps/runtime-service/runtime_service/docs/standards/*.md`
-- `apps/runtime-service/runtime_service/tests/harness/*.py`
-
-这里的 authoritative leaf 先是标准和 harness checks；具体代码实现只能作为**事实样本**，不能反过来升级成 current-standard 本身。
-
-### 6.3 `platform-api`
-
-`platform-api` 的 leaf authority 不能只收成“control-plane 后端”一个粗桶。
-
-#### Leaf A：control-plane module / ownership / code-shape
-- `apps/platform-api/docs/handbook/project-handbook.md`
-- `apps/platform-api/docs/handbook/development-playbook.md`
-- 适用于：
-  - 这个能力应落在哪个模块
-  - handler / use case / repository / adapter 如何分工
-  - 哪层拥有该行为
-
-#### Leaf B：permission / audit / operation governance
-- `apps/platform-api/docs/standards/permission-standard.md`
-- `apps/platform-api/docs/standards/audit-standard.md`
-- `apps/platform-api/docs/standards/operations-standard.md`
-- 适用于：
-  - 谁能做
-  - 如何追责
-  - 长任务是否必须进入 operation
-
-#### Leaf C：runtime gateway / formal management interface
-- `apps/platform-api/docs/standards/runtime-gateway-interface-standard.md`
-- 适用于：
-  - 正式平台接口如何暴露 runtime 能力
-  - 项目边界与 runtime gateway 的治理边界
-  - 平台管理接口与 runtime public contract 的受管面判断
-
-#### `platform-api` resolver rule
-- 如果问题是 **“这个能力应该落在哪个模块、怎么分层？”**
-  - 先读 **Leaf A**
-- 如果问题是 **“谁能做、怎么记审计、是否必须走 operation？”**
-  - 先读 **Leaf B**
-- 如果问题是 **“这个正式管理接口 / runtime gateway 对外该怎么表现？”**
-  - 先读 **Leaf C**
-
-### 6.4 `runtime-web`
-
-`runtime-web` 的 current-standard 先收成 debug shell，而不是正式平台页。
-
-#### Leaf A：debug-shell role / UI boundary
-- `apps/runtime-web/docs/standards/runtime-web-debug-standard.md`
-- 适用于：
-  - `runtime-web` 应不应该承接这个交互
-  - 它是不是会漂移成正式平台入口
-  - run context / debug mode / artifact context 这类调试壳边界
-
-#### Leaf B：runtime behavior truth
-- `apps/runtime-service/runtime_service/docs/standards/*.md`
-- `apps/runtime-service/runtime_service/tests/harness/*.py`
-- 适用于：
-  - 真正的 runtime contract / graph / tool / middleware 行为
-
-#### `runtime-web` resolver rule
-- 如果问题是 **“这个能力该不该放在调试壳？”**
-  - 先读 **Leaf A**
-- 如果问题是 **“runtime 真正的 contract 行为是什么？”**
-  - 转到 **Leaf B**
-- 如果问题已经变成正式平台页：
-  - 转回 `platform-web` 的 leaf resolver
-
-### 6.5 `interaction-data-service`
-
-`interaction-data-service` 的 leaf authority 要把 **当前 API 真相** 和 **结果域边界** 分开看。
-
-#### Leaf A：current API / resource / payload truth
-- `apps/interaction-data-service/docs/test-case-service-api-design.md`
-- 适用于：
-  - 当前资源
-  - 当前 payload / route / field / table 语义
-
-#### Leaf B：result-domain ownership / formal access chain
-- `apps/interaction-data-service/docs/standards/result-domain-boundary-standard.md`
-- `apps/interaction-data-service/README.md`
-- `apps/interaction-data-service/docs/README.md`
-- 适用于：
-  - 结果域边界
-  - 平台访问是否必须经由 `platform-api`
-  - runtime 写入和平台读取的正式关系
-
-#### Leaf C：background design / future abstraction
-- `apps/interaction-data-service/docs/service-design.md`
-- 适用于：
-  - 为什么结果域应该独立存在
-  - 未来如何继续抽象
-  - 不直接作为当前实现真相
-
-#### `interaction-data-service` resolver rule
-- 如果问题是 **“当前接口/资源/字段到底是什么？”**
-  - 先读 **Leaf A**
-- 如果问题是 **“这东西应不应该归结果域拥有、平台怎么访问它？”**
-  - 先读 **Leaf B**
-- 如果问题是 **“未来还能怎么继续抽象？”**
-  - 再读 **Leaf C**
-
-### 6.6 leaf 之间怎么对齐
-
-leaf 之间只在最短相关链里对齐。  
-不要把一个 leaf 的本地代码实现直接写成另一个 leaf 的默认标准。  
-本文负责 **resolver 路由**，不是把代码文件抬成标准文档。
-
----
-
-## 7. 什么时候读 broad 文档
-
-只有在下面情况才回到 broad 文档：
-
-- 想知道为什么仓库是这种分层
-- 想看 L1-L4 Harness 解释
-- 想补背景，不是要做当前标准判断
-
-对应文档：
-
-- `docs/development-paradigm.md`
-- `docs/knowledge/02-aitestlab-harness-blueprint.md`
-
-如果你要的是“现在到底怎么判”，停在本文即可。
+禁止把 helper、计划、历史文档或 OpenSpec change 当成 shadow canon。

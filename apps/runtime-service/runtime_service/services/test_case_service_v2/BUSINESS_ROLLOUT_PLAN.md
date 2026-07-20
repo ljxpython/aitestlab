@@ -52,18 +52,18 @@
 ## 代码依据
 
 - 当前 `runtime-service` 只注册了 `test_case_agent`
-  - [langgraph.json](/Users/bytedance/PycharmProjects/my_best/AITestLab/apps/runtime-service/runtime_service/langgraph.json#L36)
+  - [langgraph.json](../../langgraph.json#L36)
 - 当前 testcase 生成页固定绑定 `test_case_agent`
-  - [TestcaseGeneratePage.vue](/Users/bytedance/PycharmProjects/my_best/AITestLab/apps/platform-web/src/modules/testcase/pages/TestcaseGeneratePage.vue#L25)
-  - [TestcaseGeneratePage.vue](/Users/bytedance/PycharmProjects/my_best/AITestLab/apps/platform-web/src/modules/testcase/pages/TestcaseGeneratePage.vue#L100)
+  - [TestcaseGeneratePage.vue](../../../../platform-web/src/modules/testcase/pages/TestcaseGeneratePage.vue#L25)
+  - [TestcaseGeneratePage.vue](../../../../platform-web/src/modules/testcase/pages/TestcaseGeneratePage.vue#L100)
 - 当前 testcase 路由组是成套组织的，适合直接复制一份给 `v2`
-  - [routes.ts](/Users/bytedance/PycharmProjects/my_best/AITestLab/apps/platform-web/src/router/routes.ts#L345)
+  - [routes.ts](../../../../platform-web/src/router/routes.ts#L345)
 - 当前 testcase 工作区导航可直接复制
-  - [TestcaseWorkspaceNav.vue](/Users/bytedance/PycharmProjects/my_best/AITestLab/apps/platform-web/src/components/platform/TestcaseWorkspaceNav.vue)
+  - [TestcaseWorkspaceNav.vue](../../../../platform-web/src/components/platform/TestcaseWorkspaceNav.vue)
 - 当前侧边栏已有 testcase 独立入口，可照此新增 `testcase-v2`
-  - [AppSidebar.vue](/Users/bytedance/PycharmProjects/my_best/AITestLab/apps/platform-web/src/components/layout/AppSidebar.vue#L106)
+  - [AppSidebar.vue](../../../../platform-web/src/components/layout/AppSidebar.vue#L106)
 - testcase 结果查询是项目级结果域，不依赖 graph id
-  - [http.py](/Users/bytedance/PycharmProjects/my_best/AITestLab/apps/platform-api/app/modules/testcase/presentation/http.py)
+  - [http.py](../../../../platform-api/app/modules/testcase/presentation/http.py)
 
 ## 方案
 

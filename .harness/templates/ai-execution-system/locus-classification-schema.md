@@ -12,7 +12,7 @@ Use before choosing B1/B2/B3. Intake order is:
 ## Quick routing guide
 - **B1** — small, bounded, local to one locus, no governed contract change, no research, no real-input dependency.
 - **B2** — meaningful but bounded work in one locus or a short nearby chain.
-- **B3** — governed/public contract work, research-heavy design, real-input dependency, or multi-locus formal-chain work.
+- **B3** — governed/public contract, policy, ownership, migration, release, real-input, or multi-locus formal-chain risk.
 
 ## Intake template
 ```md
@@ -55,4 +55,5 @@ Use before choosing B1/B2/B3. Intake order is:
 ## Practical checks
 - Do not pick B1 until locus, chain map, and ownership split are explicit.
 - Prefer the narrowest authoritative standards leaf, not a coarse app bucket.
-- If real secrets/params/datasets are required, mark B3 unless the canon later says otherwise.
+- Research alone does not select B3; the resulting decision must affect a governed boundary.
+- If trustworthy acceptance requires user-owned secrets/params/datasets, mark B3.

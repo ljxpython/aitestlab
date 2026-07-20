@@ -392,6 +392,7 @@ apps/platform-api/__pycache__/
 apps/platform-api/logs/
 apps/platform-api/backups/
 apps/platform-api/data/
+apps/platform-api/.data/
 
 apps/platform-web/.env
 apps/platform-web/.env.local
@@ -426,4 +427,19 @@ apps/runtime-web/.next/
 !apps/runtime-web/src/lib/**
 deploy/.env.stack
 .omx/
-.codex/
+
+# Local code intelligence output and caches.
+/graphify-out/
+/.harness/graphify-out/
+**/.codegraph/
+
+# Keep machine-local Codex state ignored, but version shared project skills.
+/.codex/*
+!/.codex/skills/
+/.codex/skills/*
+!/.codex/skills/openspec-*/
+!/.codex/skills/openspec-*/SKILL.md
+!/.codex/skills/route-project-change/
+!/.codex/skills/route-project-change/SKILL.md
+!/.codex/skills/route-project-change/agents/
+!/.codex/skills/route-project-change/agents/openai.yaml
