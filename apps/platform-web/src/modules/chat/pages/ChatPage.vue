@@ -6,10 +6,15 @@ import EmptyState from '@/components/platform/EmptyState.vue'
 import { findAssistantByTargetId } from '@/services/assistants/assistants.service'
 import { getGraphCatalogItem } from '@/services/graphs/graphs.service'
 import {
+  getRuntimeThreadDetail,
+  normalizeRuntimeGatewayError
+} from '@/services/runtime-gateway/workspace.service'
+import {
   clearRecentChatTarget,
   hasChatTargetDisplayName,
   mergeChatTargets,
   normalizeChatTarget,
+  normalizeChatTargetFromThreadMetadata,
   readRecentChatTarget,
   writeRecentChatTarget,
   type ChatTargetPreference
@@ -40,9 +45,22 @@ const recentTarget = computed(() => {
   return readRecentChatTarget(projectId)
 })
 
+const initialThreadId = computed(() =>
+  typeof route.query.threadId === 'string' && route.query.threadId.trim() ? route.query.threadId.trim() : ''
+)
+const shouldRestoreTargetFromThread = computed(() => !explicitTarget.value && Boolean(initialThreadId.value))
+const threadTargetPreference = ref<ChatTargetPreference | null>(null)
+const threadTargetLoading = ref(false)
+const threadTargetError = ref('')
+const threadTargetReloadKey = ref(0)
+
 const targetPreference = computed(() => {
   if (explicitTarget.value) {
     return mergeChatTargets(explicitTarget.value, recentTarget.value)
+  }
+
+  if (shouldRestoreTargetFromThread.value) {
+    return threadTargetPreference.value
   }
 
   return recentTarget.value
@@ -50,13 +68,14 @@ const targetPreference = computed(() => {
 const hydratedTargetPreference = ref<ChatTargetPreference | null>(null)
 const activeTargetPreference = computed(() => hydratedTargetPreference.value || targetPreference.value)
 const activeTarget = computed(() => resolveChatTarget(activeTargetPreference.value))
-const initialThreadId = computed(() =>
-  typeof route.query.threadId === 'string' && route.query.threadId.trim() ? route.query.threadId.trim() : ''
-)
 
 const sourceNote = computed(() => {
   if (explicitTarget.value) {
     return '当前目标来自页面显式参数。只要你从 Assistants、Graphs 或 Threads 带着目标进入，这里就会直接落到真正的对话工作台。'
+  }
+
+  if (threadTargetPreference.value) {
+    return '当前目标来自 Thread metadata。即使链接里只有 threadId，也会先反查线程所属的 assistant 或 graph。'
   }
 
   if (recentTarget.value) {
@@ -71,6 +90,59 @@ watchEffect(() => {
     writeRecentChatTarget(activeProjectId.value, activeTargetPreference.value)
   }
 })
+
+watch(
+  [activeProjectId, initialThreadId, explicitTarget, () => threadTargetReloadKey.value],
+  async ([projectId, threadId, explicit], _previous, onCleanup) => {
+    threadTargetPreference.value = null
+    threadTargetError.value = ''
+
+    if (explicit || !threadId) {
+      threadTargetLoading.value = false
+      return
+    }
+
+    if (!projectId) {
+      threadTargetLoading.value = false
+      return
+    }
+
+    let cancelled = false
+    onCleanup(() => {
+      cancelled = true
+    })
+
+    threadTargetLoading.value = true
+
+    try {
+      const thread = await getRuntimeThreadDetail(projectId, threadId)
+      if (cancelled) {
+        return
+      }
+
+      const restoredTarget = normalizeChatTargetFromThreadMetadata(
+        thread.metadata,
+        thread.updated_at || thread.created_at || null
+      )
+      if (restoredTarget) {
+        threadTargetPreference.value = restoredTarget
+        return
+      }
+
+      threadTargetError.value = '这个 Thread 没有保存 assistant 或 graph 目标，无法直接恢复聊天上下文。'
+    } catch (restoreError) {
+      if (!cancelled) {
+        const normalizedError = normalizeRuntimeGatewayError(restoreError, '线程聊天目标恢复失败')
+        threadTargetError.value = normalizedError.message
+      }
+    } finally {
+      if (!cancelled) {
+        threadTargetLoading.value = false
+      }
+    }
+  },
+  { immediate: true }
+)
 
 watch(
   [activeProjectId, targetPreference],
@@ -132,6 +204,10 @@ function clearTarget() {
     query: {}
   })
 }
+
+function reloadThreadTarget() {
+  threadTargetReloadKey.value += 1
+}
 </script>
 
 <template>
@@ -141,6 +217,22 @@ function clearTarget() {
       icon="project"
       title="请先选择项目"
       description="Chat 是项目级工作区。没有项目上下文，assistant、graph、thread 这些目标都不成立。"
+    />
+
+    <EmptyState
+      v-else-if="threadTargetLoading && !activeTarget"
+      icon="threads"
+      title="正在恢复聊天上下文"
+      description="正在根据当前 Thread 读取 assistant 或 graph 目标。"
+    />
+
+    <EmptyState
+      v-else-if="threadTargetError && !activeTarget"
+      icon="threads"
+      title="无法恢复这个 Thread"
+      :description="threadTargetError"
+      action-label="重试"
+      @action="reloadThreadTarget"
     />
 
     <ChatEntryGuide

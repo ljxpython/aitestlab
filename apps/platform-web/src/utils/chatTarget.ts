@@ -29,6 +29,18 @@ function normalizeTargetName(value?: string | null) {
   return normalized || undefined
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+  return value as Record<string, unknown>
+}
+
+function readMetadataText(metadata: Record<string, unknown>, key: string) {
+  const value = metadata[key]
+  return typeof value === 'string' ? value.trim() : ''
+}
+
 export function normalizeChatTarget(input?: ChatTargetInput | null): ChatTargetPreference | null {
   if (!input) {
     return null
@@ -65,6 +77,43 @@ export function normalizeChatTarget(input?: ChatTargetInput | null): ChatTargetP
     assistantName,
     updatedAt
   }
+}
+
+export function normalizeChatTargetFromThreadMetadata(
+  metadata: unknown,
+  updatedAt?: string | null
+): ChatTargetPreference | null {
+  const record = asRecord(metadata)
+  if (!record) {
+    return null
+  }
+
+  const targetType = readMetadataText(record, 'target_type').toLowerCase()
+  const assistantId = readMetadataText(record, 'assistant_id')
+  const assistantName = readMetadataText(record, 'assistant_name')
+  const graphId = readMetadataText(record, 'graph_id')
+  const graphName = readMetadataText(record, 'graph_name')
+  const targetDisplayName = readMetadataText(record, 'target_display_name')
+
+  if (targetType === 'graph' || graphId) {
+    return normalizeChatTarget({
+      targetType: 'graph',
+      graphId: graphId || assistantId,
+      graphName: graphName || targetDisplayName,
+      updatedAt
+    })
+  }
+
+  if (targetType === 'assistant' || assistantId) {
+    return normalizeChatTarget({
+      targetType: 'assistant',
+      assistantId,
+      assistantName: assistantName || targetDisplayName,
+      updatedAt
+    })
+  }
+
+  return null
 }
 
 function resolveComparableTargetId(target: ChatTargetPreference) {
