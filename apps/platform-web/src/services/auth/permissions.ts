@@ -134,7 +134,15 @@ export function isProjectPermission(permission: PermissionCode): boolean {
 }
 
 export function hasPlatformRole(user: ManagementUser | null | undefined, role: PlatformRole): boolean {
-  return Boolean(user?.platform_roles.includes(role))
+  if (!user) {
+    return false
+  }
+
+  if (role === 'platform_super_admin' && user.is_super_admin) {
+    return true
+  }
+
+  return user.platform_roles.includes(role)
 }
 
 export function projectRolesFor(
@@ -171,7 +179,7 @@ export function hasPermission(
 
   const platformRoles = PLATFORM_PERMISSION_MAP[permission]
   if (platformRoles) {
-    return platformRoles.some((role) => user.platform_roles.includes(role))
+    return platformRoles.some((role) => hasPlatformRole(user, role))
   }
 
   const projectRoles = PROJECT_PERMISSION_MAP[permission]
@@ -191,8 +199,12 @@ export function hasAnyProjectPermission(
     return false
   }
 
+  if (hasPermission(user, permission)) {
+    return true
+  }
+
   if (!isProjectPermission(permission)) {
-    return hasPermission(user, permission)
+    return false
   }
 
   return Object.keys(user.project_roles).some((projectId) =>
@@ -215,13 +227,13 @@ export function primaryPlatformRole(user: ManagementUser | null | undefined): Pl
     return null
   }
 
-  if (user.platform_roles.includes('platform_super_admin')) {
+  if (hasPlatformRole(user, 'platform_super_admin')) {
     return 'platform_super_admin'
   }
-  if (user.platform_roles.includes('platform_operator')) {
+  if (hasPlatformRole(user, 'platform_operator')) {
     return 'platform_operator'
   }
-  if (user.platform_roles.includes('platform_viewer')) {
+  if (hasPlatformRole(user, 'platform_viewer')) {
     return 'platform_viewer'
   }
   return null
