@@ -79,6 +79,7 @@ class RuntimeGatewayRuntimeContractTest(unittest.IsolatedAsyncioTestCase):
             upstream=upstream,
         )
         service._prepare_project_scope = AsyncMock()  # type: ignore[method-assign]
+        service._project_default_model_id = AsyncMock()  # type: ignore[method-assign]
         service._assert_runtime_target_allowed = AsyncMock()  # type: ignore[method-assign]
 
         result = await service.create_global_run(
@@ -135,6 +136,33 @@ class RuntimeGatewayRuntimeContractTest(unittest.IsolatedAsyncioTestCase):
                 },
                 "metadata": {
                     "source": "chat",
+                },
+            }
+        )
+        service._project_default_model_id.assert_not_awaited()
+
+    async def test_create_global_run_injects_project_default_model(self) -> None:
+        upstream = SimpleNamespace(create_global_run=AsyncMock(return_value={"ok": True}))
+        service = RuntimeGatewayService(
+            session_factory=None,
+            upstream=upstream,
+        )
+        service._prepare_project_scope = AsyncMock()  # type: ignore[method-assign]
+        service._project_default_model_id = AsyncMock(return_value="project-default")  # type: ignore[method-assign]
+        service._assert_runtime_target_allowed = AsyncMock()  # type: ignore[method-assign]
+
+        await service.create_global_run(
+            actor=SimpleNamespace(),
+            project_id="project-1",
+            payload={"assistant_id": "assistant-1"},
+        )
+
+        upstream.create_global_run.assert_awaited_once_with(
+            {
+                "assistant_id": "assistant-1",
+                "context": {
+                    "project_id": "project-1",
+                    "model_id": "project-default",
                 },
             }
         )

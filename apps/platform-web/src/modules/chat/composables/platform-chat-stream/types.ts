@@ -17,6 +17,7 @@ export type UsePlatformChatStreamOptions = {
   target: ComputedRef<ChatResolvedTarget | null>
   activeThreadId: Ref<string>
   activeThreadStatus: ComputedRef<string | null>
+  activeThreadError: ComputedRef<Record<string, unknown> | string | null | undefined>
   historyItems: Ref<Record<string, unknown>[]>
   selectedBranch: Ref<string>
   runOptions: ChatRunOptions

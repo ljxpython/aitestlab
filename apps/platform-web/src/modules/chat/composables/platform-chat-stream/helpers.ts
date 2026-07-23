@@ -105,13 +105,57 @@ function extractErrorText(value: unknown): string {
   return ''
 }
 
+function extractStringField(record: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const candidate = record[key]
+    if (typeof candidate === 'string' && candidate.trim()) {
+      return candidate.trim()
+    }
+  }
+
+  return ''
+}
+
 function isCancelledRunMessage(message: string): boolean {
   return /cancellederror|aborterror|cancelled|canceled|aborted/i.test(message.trim())
 }
 
+function isGenericInternalErrorMessage(message: string): boolean {
+  return /^an internal error occurred$/i.test(message.trim())
+}
+
+function extractRuntimeErrorText(value: unknown): string {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return extractErrorText(value)
+  }
+
+  const record = value as Record<string, unknown>
+  const errorType = extractStringField(record, ['error', 'type', 'name', 'code'])
+  const errorMessage = extractStringField(record, ['message', 'detail'])
+
+  if (isCancelledRunMessage(`${errorType} ${errorMessage}`)) {
+    return ''
+  }
+
+  if (/^APIConnectionError$/i.test(errorType)) {
+    return '模型上游连接失败：OpenAI 兼容模型代理连接异常，请检查当前模型的 base_url、API key、模型名和网络。'
+  }
+
+  if (errorMessage && !isGenericInternalErrorMessage(errorMessage)) {
+    return errorMessage
+  }
+
+  if (errorType && !isGenericInternalErrorMessage(errorType)) {
+    return errorMessage && errorMessage !== errorType ? `${errorType}: ${errorMessage}` : errorType
+  }
+
+  return errorMessage || extractErrorText(value)
+}
+
 export function extractThreadFailureMessage(
   state?: Record<string, unknown> | null,
-  threadStatus?: string | null
+  threadStatus?: string | null,
+  threadError?: Record<string, unknown> | string | null
 ): string {
   const tasks = Array.isArray(state?.tasks) ? state.tasks : []
   let cancelledRunDetected = false
@@ -120,7 +164,7 @@ export function extractThreadFailureMessage(
       continue
     }
 
-    const taskError = extractErrorText((task as Record<string, unknown>).error)
+    const taskError = extractRuntimeErrorText((task as Record<string, unknown>).error)
     if (taskError) {
       if (isCancelledRunMessage(taskError)) {
         cancelledRunDetected = true
@@ -130,12 +174,20 @@ export function extractThreadFailureMessage(
     }
   }
 
-  const stateError = extractErrorText(state?.error)
+  const stateError = extractRuntimeErrorText(state?.error)
   if (stateError) {
     if (isCancelledRunMessage(stateError)) {
       return ''
     }
     return stateError
+  }
+
+  const runtimeThreadError = extractRuntimeErrorText(threadError)
+  if (runtimeThreadError) {
+    if (isCancelledRunMessage(runtimeThreadError)) {
+      return ''
+    }
+    return runtimeThreadError
   }
 
   if (cancelledRunDetected) {

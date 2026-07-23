@@ -586,6 +586,7 @@ export type ManagementThread = {
   updated_at?: string | null
   metadata?: Record<string, unknown> | null
   values?: Record<string, unknown> | null
+  error?: Record<string, unknown> | string | null
 }
 
 export type ThreadHistoryEntry = Record<string, unknown>

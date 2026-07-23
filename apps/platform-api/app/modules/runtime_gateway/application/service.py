@@ -24,6 +24,7 @@ from app.modules.assistants.infra.sqlalchemy.repository import SqlAlchemyAssista
 from app.modules.iam.application import AuthorizationRequest, IamPolicyEngine, PermissionCode
 from app.modules.projects.infra.sqlalchemy.repository import SqlAlchemyProjectsRepository
 from app.modules.runtime_gateway.application.ports import RuntimeGatewayUpstreamProtocol
+from app.modules.runtime_policies.infra import SqlAlchemyRuntimePolicyRepository
 
 _THREAD_PROJECT_ID_KEYS = PROJECT_SCOPE_ALIAS_KEYS
 _THREAD_GRAPH_ID_KEYS = ("graph_id", "graphId")
@@ -86,10 +87,12 @@ class RuntimeGatewayService:
         *,
         session_factory: sessionmaker[Session] | None,
         upstream: RuntimeGatewayUpstreamProtocol,
+        runtime_base_url: str = "",
         policy_engine: IamPolicyEngine | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._upstream = upstream
+        self._runtime_id = runtime_base_url.rstrip("/")
         self._policy_engine = policy_engine or IamPolicyEngine()
 
     def _require_session_factory(self) -> sessionmaker[Session]:
@@ -162,6 +165,35 @@ class RuntimeGatewayService:
         payload: dict[str, Any] | None,
     ) -> dict[str, Any]:
         return normalize_runtime_payload(payload=payload, project_id=project_id)
+
+    async def _inject_project_default_model(
+        self,
+        *,
+        project_id: str,
+        payload: dict[str, Any],
+        default_model_id: str | None = None,
+    ) -> dict[str, Any]:
+        context = ensure_dict(payload.get("context"))
+        if clean_str(context.get("model_id")):
+            return payload
+        if default_model_id is None:
+            default_model_id = await self._project_default_model_id(project_id=project_id)
+        if not default_model_id:
+            return payload
+
+        next_payload = dict(payload)
+        next_payload["context"] = {**context, "model_id": default_model_id}
+        return next_payload
+
+    async def _project_default_model_id(self, *, project_id: str) -> str | None:
+        session_factory = self._require_session_factory()
+        project_uuid = parse_uuid(project_id, code="invalid_project_id")
+        async with SqlAlchemyUnitOfWork(session_factory) as uow:
+            repository = SqlAlchemyRuntimePolicyRepository(uow.session)
+            return repository.get_default_model_key(
+                project_id=project_uuid,
+                runtime_id=self._runtime_id,
+            )
 
     def _assert_thread_project_scope(
         self,
@@ -449,6 +481,10 @@ class RuntimeGatewayService:
     ) -> Any:
         await self._prepare_project_scope(actor=actor, project_id=project_id, write=True)
         next_payload = self._inject_project_scope(project_id=project_id, payload=payload)
+        next_payload = await self._inject_project_default_model(
+            project_id=project_id,
+            payload=next_payload,
+        )
         assistant_id = clean_str(next_payload.get("assistant_id"))
         await self._assert_runtime_target_allowed(
             project_id=project_id,
@@ -465,6 +501,10 @@ class RuntimeGatewayService:
     ) -> Any:
         await self._prepare_project_scope(actor=actor, project_id=project_id, write=True)
         next_payload = self._inject_project_scope(project_id=project_id, payload=payload)
+        next_payload = await self._inject_project_default_model(
+            project_id=project_id,
+            payload=next_payload,
+        )
         assistant_id = clean_str(next_payload.get("assistant_id"))
         await self._assert_runtime_target_allowed(
             project_id=project_id,
@@ -481,6 +521,10 @@ class RuntimeGatewayService:
     ) -> Any:
         await self._prepare_project_scope(actor=actor, project_id=project_id, write=True)
         next_payload = self._inject_project_scope(project_id=project_id, payload=payload)
+        next_payload = await self._inject_project_default_model(
+            project_id=project_id,
+            payload=next_payload,
+        )
         assistant_id = clean_str(next_payload.get("assistant_id"))
         await self._assert_runtime_target_allowed(
             project_id=project_id,
@@ -496,9 +540,16 @@ class RuntimeGatewayService:
         payloads: list[dict[str, Any]],
     ) -> Any:
         await self._prepare_project_scope(actor=actor, project_id=project_id, write=True)
+        default_model_id = await self._project_default_model_id(project_id=project_id)
         next_payloads: list[dict[str, Any]] = []
         for item in payloads:
             next_item = self._inject_project_scope(project_id=project_id, payload=item)
+            if default_model_id:
+                next_item = await self._inject_project_default_model(
+                    project_id=project_id,
+                    payload=next_item,
+                    default_model_id=default_model_id,
+                )
             assistant_id = clean_str(next_item.get("assistant_id"))
             await self._assert_runtime_target_allowed(
                 project_id=project_id,
@@ -535,6 +586,10 @@ class RuntimeGatewayService:
     ) -> Any:
         await self._prepare_project_scope(actor=actor, project_id=project_id, write=True)
         next_payload = self._inject_project_scope(project_id=project_id, payload=payload)
+        next_payload = await self._inject_project_default_model(
+            project_id=project_id,
+            payload=next_payload,
+        )
         assistant_id = clean_str(next_payload.get("assistant_id"))
         await self._assert_runtime_target_allowed(
             project_id=project_id,
@@ -572,6 +627,10 @@ class RuntimeGatewayService:
     ) -> Any:
         await self._prepare_project_scope(actor=actor, project_id=project_id, write=True)
         next_payload = self._inject_project_scope(project_id=project_id, payload=payload)
+        next_payload = await self._inject_project_default_model(
+            project_id=project_id,
+            payload=next_payload,
+        )
         return await self._upstream.update_cron(cron_id, next_payload)
 
     async def delete_cron(
@@ -599,6 +658,10 @@ class RuntimeGatewayService:
             write=True,
         )
         next_payload = self._inject_project_scope(project_id=project_id, payload=payload)
+        next_payload = await self._inject_project_default_model(
+            project_id=project_id,
+            payload=next_payload,
+        )
         assistant_id = clean_str(next_payload.get("assistant_id"))
         await self._assert_runtime_target_allowed(
             project_id=project_id,
@@ -622,6 +685,10 @@ class RuntimeGatewayService:
             write=True,
         )
         next_payload = self._inject_project_scope(project_id=project_id, payload=payload)
+        next_payload = await self._inject_project_default_model(
+            project_id=project_id,
+            payload=next_payload,
+        )
         assistant_id = clean_str(next_payload.get("assistant_id"))
         await self._assert_runtime_target_allowed(
             project_id=project_id,
@@ -645,6 +712,10 @@ class RuntimeGatewayService:
             write=True,
         )
         next_payload = self._inject_project_scope(project_id=project_id, payload=payload)
+        next_payload = await self._inject_project_default_model(
+            project_id=project_id,
+            payload=next_payload,
+        )
         assistant_id = clean_str(next_payload.get("assistant_id"))
         await self._assert_runtime_target_allowed(
             project_id=project_id,
@@ -753,6 +824,10 @@ class RuntimeGatewayService:
             write=True,
         )
         next_payload = self._inject_project_scope(project_id=project_id, payload=payload)
+        next_payload = await self._inject_project_default_model(
+            project_id=project_id,
+            payload=next_payload,
+        )
         assistant_id = clean_str(next_payload.get("assistant_id"))
         await self._assert_runtime_target_allowed(
             project_id=project_id,

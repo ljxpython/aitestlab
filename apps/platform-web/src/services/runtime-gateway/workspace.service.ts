@@ -61,13 +61,18 @@ export type ListRuntimeThreadsOptions = {
 }
 
 function normalizeThread(thread: LanggraphThread<Record<string, unknown>>): ManagementThread {
+  const runtimeThread = thread as LanggraphThread<Record<string, unknown>> & {
+    error?: ManagementThread['error']
+  }
+
   return {
-    thread_id: thread.thread_id,
-    status: thread.status,
-    created_at: thread.created_at,
-    updated_at: thread.updated_at,
-    metadata: thread.metadata,
-    values: thread.values
+    thread_id: runtimeThread.thread_id,
+    status: runtimeThread.status,
+    created_at: runtimeThread.created_at,
+    updated_at: runtimeThread.updated_at,
+    metadata: runtimeThread.metadata,
+    values: runtimeThread.values,
+    error: runtimeThread.error ?? null
   }
 }
 
@@ -247,7 +252,7 @@ export async function listRuntimeThreadsPage(
     offset,
     sort_by: 'updated_at',
     sort_order: 'desc',
-    select: ['thread_id', 'metadata', 'status', 'created_at', 'updated_at']
+    select: ['thread_id', 'metadata', 'status', 'created_at', 'updated_at', 'error']
   }
 
   if (Object.keys(metadata).length > 0) {
@@ -291,7 +296,8 @@ export async function listRuntimeThreadsPage(
     status: thread.status,
     created_at: thread.created_at,
     updated_at: thread.updated_at,
-    values: thread.values
+    values: thread.values,
+    error: thread.error ?? null
   })) as ManagementThread[]
 
   const query = options?.query?.trim().toLowerCase() || ''

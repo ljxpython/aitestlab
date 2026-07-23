@@ -131,12 +131,19 @@ const showContinueAction = computed(
 const hasBlockingInterrupt = computed(
   () => workspace.interruptPayload.value !== undefined && !workspace.canContinueDebug.value
 )
+
+function isGenericInternalRuntimeError(message: string) {
+  return /^an internal error occurred$/i.test(message.trim())
+}
+
 const activeRunFailureDescription = computed(() => {
+  const threadFailure = workspace.threadFailureMessage.value.trim()
   if (workspace.detailError.value.trim()) {
-    return workspace.detailError.value.trim()
+    const detailError = workspace.detailError.value.trim()
+    return threadFailure && isGenericInternalRuntimeError(detailError) ? threadFailure : detailError
   }
 
-  return workspace.threadFailureMessage.value.trim()
+  return threadFailure
 })
 const canSendFreshMessage = computed(
   () =>
@@ -868,7 +875,7 @@ function restoreDraftRunOptions() {
 }
 
 function applyDraftRunOptions() {
-  workspace.runOptions.modelId = draftRunOptions.modelId
+  workspace.runOptions.modelId = draftRunOptions.modelId || workspace.defaultModelId.value
   workspace.runOptions.enableTools = draftRunOptions.enableTools
   workspace.runOptions.toolNames = [...draftRunOptions.toolNames]
   workspace.runOptions.temperature = draftRunOptions.temperature
