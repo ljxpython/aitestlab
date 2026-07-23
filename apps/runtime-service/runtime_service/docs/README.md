@@ -80,6 +80,24 @@ export BG_JOB_ISOLATED_LOOPS=true
 
 - 需要注意：`BG_JOB_ISOLATED_LOOPS=true` 对后台 worker/部署环境有价值，但单独配置它并不能替代当前本地 dev 的 `--allow-blocking`。
 
+## 持久化配置
+
+默认本地开发不变，不设置持久化环境变量时使用内存：
+
+```bash
+uv run langgraph dev --config runtime_service/langgraph.json --port 8123 --no-browser --allow-blocking
+```
+
+生产试验直接设置 LangGraph API 官方环境变量：
+
+```bash
+export POSTGRES_URI=postgresql://runtime_service:runtime_service@127.0.0.1:5432/runtime_service
+export REDIS_URI=redis://127.0.0.1:6379/0
+uv run langgraph dev --config runtime_service/langgraph.json --port 8123 --no-browser --allow-blocking
+```
+
+Redis 持久化依赖 Redis Stack，或带 RedisJSON 与 RediSearch 模块的 Redis 8+。普通 Redis 会在 `FT._LIST` 处失败。只试 Postgres 时只设置 `POSTGRES_URI`。
+
 常用验证：
 
 ```bash
