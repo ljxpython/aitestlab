@@ -120,6 +120,58 @@ class UserPlatformRolesApiTest(unittest.TestCase):
         payload = response.json()
         self.assertEqual(payload["error"]["code"], "last_super_admin_protected")
 
+    def test_operator_cannot_create_or_promote_super_admin(self) -> None:
+        operator_response = self.client.post(
+            "/api/users",
+            headers=self._auth_headers(),
+            json={
+                "username": "limited-operator",
+                "password": "operator123456",
+                "platform_roles": ["platform_operator"],
+            },
+        )
+        self.assertEqual(operator_response.status_code, 200, operator_response.text)
+        operator_id = operator_response.json()["id"]
+        operator_token = create_access_token(
+            user_id=operator_id,
+            username="limited-operator",
+            settings=self.app.state.settings,
+        )
+
+        create_response = self.client.post(
+            "/api/users",
+            headers=self._auth_headers(operator_token),
+            json={
+                "username": "forged-admin",
+                "password": "forged123456",
+                "platform_roles": ["platform_super_admin"],
+            },
+        )
+        self.assertEqual(create_response.status_code, 403, create_response.text)
+
+        promote_response = self.client.patch(
+            f"/api/users/{operator_id}",
+            headers=self._auth_headers(operator_token),
+            json={"platform_roles": ["platform_super_admin"]},
+        )
+        self.assertEqual(promote_response.status_code, 403, promote_response.text)
+
+        demote_response = self.client.patch(
+            f"/api/users/{self.admin_user_id}",
+            headers=self._auth_headers(operator_token),
+            json={"platform_roles": []},
+        )
+        self.assertEqual(demote_response.status_code, 403, demote_response.text)
+
+    def test_create_user_rejects_short_password(self) -> None:
+        response = self.client.post(
+            "/api/users",
+            headers=self._auth_headers(),
+            json={"username": "short-password", "password": "x"},
+        )
+
+        self.assertEqual(response.status_code, 422, response.text)
+
 
 if __name__ == "__main__":
     unittest.main()

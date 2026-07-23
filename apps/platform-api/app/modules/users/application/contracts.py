@@ -20,7 +20,7 @@ class CreateUserCommand(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     username: str = Field(min_length=1, max_length=64)
-    password: str = Field(min_length=1)
+    password: str = Field(min_length=8)
     platform_roles: tuple[PlatformRole, ...] = ()
     is_super_admin: bool = False
 

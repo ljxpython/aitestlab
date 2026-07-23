@@ -66,6 +66,23 @@ class IamPolicyEngineTest(unittest.TestCase):
 
         self.assertEqual(ctx.exception.code, "project_role_missing")
 
+    def test_super_admin_still_requires_project_role(self) -> None:
+        actor = ActorContext(
+            user_id="user-1",
+            platform_roles=("platform_super_admin",),
+        )
+
+        with self.assertRaises(ForbiddenError) as ctx:
+            self.engine.require(
+                actor=actor,
+                authorization=AuthorizationRequest(
+                    permission=PermissionCode.PROJECT_MEMBER_READ,
+                    project_id="p-1",
+                ),
+            )
+
+        self.assertEqual(ctx.exception.code, "project_role_missing")
+
     def test_require_raises_not_authenticated(self) -> None:
         with self.assertRaises(NotAuthenticatedError):
             self.engine.require(

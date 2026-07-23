@@ -128,7 +128,7 @@ class IdentityService:
             refresh_token=refresh_token,
         )
 
-    async def login(self, command: LoginCommand) -> AuthenticatedSession:
+    async def login(self, command: LoginCommand) -> tuple[AuthenticatedSession, ActorContext]:
         session_factory = self._require_session_factory()
         async with SqlAlchemyUnitOfWork(session_factory) as uow:
             repository = self._build_repository(uow.session)
@@ -144,12 +144,20 @@ class IdentityService:
                     message="Invalid username or password",
                 )
             tokens = self._issue_session_tokens(repository=repository, user=user)
-            return AuthenticatedSession(
+            project_roles = self._project_roles(uow.session, user_id=user.id)
+            session = AuthenticatedSession(
                 tokens=tokens,
                 user=self._user_profile(
                     user,
-                    project_roles=self._project_roles(uow.session, user_id=user.id),
+                    project_roles=project_roles,
                 ),
+            )
+            return session, ActorContext(
+                user_id=str(user.id),
+                subject=user.external_subject,
+                email=user.email,
+                platform_roles=user.platform_roles,
+                project_roles=project_roles,
             )
 
     async def refresh(self, command: RefreshSessionCommand) -> SessionTokens:

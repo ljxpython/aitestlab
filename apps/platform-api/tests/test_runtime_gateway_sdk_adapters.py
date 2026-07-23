@@ -130,7 +130,7 @@ class RuntimeGatewayRouterSmokeTest(unittest.TestCase):
         actor = ActorContext(
             user_id="user-1",
             platform_roles=("platform_super_admin",),
-            project_roles={project_id: ("admin",)},
+            project_roles={project_id: ("project_admin",)},
         )
 
         class _FakeService:

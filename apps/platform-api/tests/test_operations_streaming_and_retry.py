@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from contextlib import suppress
+from uuid import UUID
 
 import httpx
 import uvicorn
@@ -20,6 +21,7 @@ from app.modules.operations.application.service import build_operation_page_sign
 from app.modules.operations.application.worker import OperationWorker
 from app.modules.operations.domain import OperationPage, OperationStatus
 from app.modules.identity.infra.sqlalchemy.repository import SqlAlchemyIdentityRepository
+from app.modules.iam.domain import ProjectRole
 from app.modules.projects.infra.sqlalchemy.repository import SqlAlchemyProjectsRepository
 
 
@@ -60,7 +62,7 @@ class OperationsStreamingAndRetryTest(unittest.IsolatedAsyncioTestCase):
         self.actor = ActorContext(
             user_id=self.user_id,
             platform_roles=("platform_super_admin",),
-            project_roles={self.project_id: ("admin",)},
+            project_roles={self.project_id: ("project_admin",)},
         )
         self.executor = _FlakyExecutor(succeed_on_attempt=3)
         self.service = OperationsService(
@@ -98,6 +100,11 @@ class OperationsStreamingAndRetryTest(unittest.IsolatedAsyncioTestCase):
                 external_subject="stream-admin",
                 email=None,
                 is_super_admin=True,
+            )
+            SqlAlchemyProjectsRepository(session).upsert_project_member(
+                project_id=UUID(self.project_id),
+                user_id=user.id,
+                role=ProjectRole.ADMIN,
             )
             return str(user.id)
 

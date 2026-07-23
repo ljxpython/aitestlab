@@ -32,7 +32,7 @@ class OperationsBulkArchiveTest(unittest.IsolatedAsyncioTestCase):
         self.actor = ActorContext(
             user_id=str(uuid4()),
             platform_roles=("platform_super_admin",),
-            project_roles={self.project_id: ("admin",)},
+            project_roles={self.project_id: ("project_admin",)},
         )
         self.service = OperationsService(
             session_factory=self._session_factory,

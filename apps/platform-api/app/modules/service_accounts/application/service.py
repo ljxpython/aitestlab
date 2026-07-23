@@ -74,6 +74,9 @@ class ServiceAccountsService:
             authorization=AuthorizationRequest(permission=permission),
         )
 
+    def _require_super_admin_role_permission(self, *, actor: ActorContext) -> None:
+        self._require_permission(actor=actor, permission=PermissionCode.PLATFORM_SUPER_ADMIN_MANAGE)
+
     def _token_item(self, item) -> ServiceAccountTokenItem:
         return ServiceAccountTokenItem(
             id=str(item.id),
@@ -133,6 +136,8 @@ class ServiceAccountsService:
         self._require_permission(actor=actor, permission=PermissionCode.PLATFORM_SERVICE_ACCOUNT_WRITE)
         name = _normalize_name(command.name)
         roles = _normalize_roles(command.platform_roles)
+        if PlatformRole.SUPER_ADMIN.value in roles:
+            self._require_super_admin_role_permission(actor=actor)
         async with SqlAlchemyUnitOfWork(session_factory) as uow:
             repository = SqlAlchemyServiceAccountsRepository(uow.session)
             if repository.get_service_account_by_name(name) is not None:
@@ -160,11 +165,23 @@ class ServiceAccountsService:
         account_uuid = parse_uuid(service_account_id, code="invalid_service_account_id")
         async with SqlAlchemyUnitOfWork(session_factory) as uow:
             repository = SqlAlchemyServiceAccountsRepository(uow.session)
+            current = repository.get_service_account_by_id(account_uuid)
+            if current is None:
+                raise NotFoundError(code="service_account_not_found", message="Service account not found")
+            next_roles = (
+                _normalize_roles(command.platform_roles)
+                if command.platform_roles is not None
+                else current.platform_roles
+            )
+            if (PlatformRole.SUPER_ADMIN.value in current.platform_roles) != (
+                PlatformRole.SUPER_ADMIN.value in next_roles
+            ):
+                self._require_super_admin_role_permission(actor=actor)
             updated = repository.update_service_account(
                 service_account_id=account_uuid,
                 description=command.description.strip() if command.description is not None else None,
                 status=command.status,
-                platform_roles=_normalize_roles(command.platform_roles) if command.platform_roles is not None else None,
+                platform_roles=next_roles if command.platform_roles is not None else None,
                 updated_by=_actor_identity(actor),
             )
             if updated is None:
@@ -192,6 +209,8 @@ class ServiceAccountsService:
             account = repository.get_service_account_by_id(account_uuid)
             if account is None:
                 raise NotFoundError(code="service_account_not_found", message="Service account not found")
+            if PlatformRole.SUPER_ADMIN.value in account.platform_roles:
+                self._require_super_admin_role_permission(actor=actor)
             token = repository.create_token(
                 service_account_id=account_uuid,
                 name=_normalize_name(command.name),

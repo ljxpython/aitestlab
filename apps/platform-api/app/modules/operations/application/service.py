@@ -145,6 +145,8 @@ class OperationsService:
         )
 
     def _operation_view(self, item: StoredOperation) -> OperationView:
+        metadata = dict(item.metadata)
+        metadata.pop("actor_snapshot", None)
         return OperationView(
             id=item.id,
             kind=item.kind,
@@ -156,7 +158,7 @@ class OperationsService:
             input_payload=dict(item.input_payload),
             result_payload=dict(item.result_payload),
             error_payload=dict(item.error_payload),
-            metadata=dict(item.metadata),
+            metadata=metadata,
             cancel_requested_at=item.cancel_requested_at,
             started_at=item.started_at,
             finished_at=item.finished_at,

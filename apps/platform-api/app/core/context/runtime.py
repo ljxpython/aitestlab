@@ -27,12 +27,6 @@ def _clean(value: str | None) -> str | None:
     return stripped or None
 
 
-def _split_csv(value: str | None) -> tuple[str, ...]:
-    if not value:
-        return ()
-    return tuple(item.strip() for item in value.split(",") if item.strip())
-
-
 def _request_id(request: Request) -> str:
     incoming = _clean(request.headers.get("x-request-id"))
     return incoming or uuid.uuid4().hex
@@ -49,11 +43,6 @@ def build_request_context(request: Request) -> PlatformRequestContext:
     started_at = time.perf_counter()
     tenant_id = _clean(request.headers.get("x-tenant-id"))
     project_id = _clean(request.headers.get("x-project-id"))
-    platform_roles = _split_csv(request.headers.get("x-platform-roles"))
-    current_project_roles = _split_csv(
-        request.headers.get("x-project-roles") or request.headers.get("x-project-role")
-    )
-    project_roles = {project_id: current_project_roles} if project_id and current_project_roles else {}
     return PlatformRequestContext(
         request=RequestContext(
             request_id=request_id,
@@ -70,13 +59,7 @@ def build_request_context(request: Request) -> PlatformRequestContext:
             project_id=project_id,
             requested_by_header=project_id is not None,
         ),
-        actor=ActorContext(
-            user_id=_clean(request.headers.get("x-user-id")),
-            subject=_clean(request.headers.get("x-user-subject")),
-            email=_clean(request.headers.get("x-user-email")),
-            platform_roles=platform_roles,
-            project_roles=project_roles,
-        ),
+        actor=ActorContext(),
     )
 
 

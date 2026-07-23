@@ -60,6 +60,24 @@ class Phase4ObservabilityAndServiceAccountsTest(unittest.TestCase):
             )
             return str(user.id)
 
+    def _create_operator_user(self) -> tuple[str, str]:
+        with session_scope(self._session_factory) as session:
+            repository = SqlAlchemyIdentityRepository(session)
+            user = repository.create_user(
+                username="phase4-operator",
+                password_hash=hash_password("operator123456"),
+                external_subject="phase4-operator",
+                email="operator@example.com",
+                platform_roles=("platform_operator",),
+                is_super_admin=False,
+            )
+        token = create_access_token(
+            user_id=str(user.id),
+            username=user.username,
+            settings=self.app.state.settings,
+        )
+        return str(user.id), token
+
     def _auth_headers(self) -> dict[str, str]:
         return {
             "Authorization": f"Bearer {self.access_token}",
@@ -135,6 +153,48 @@ class Phase4ObservabilityAndServiceAccountsTest(unittest.TestCase):
         health_response = self.client.get("/_system/health")
         self.assertEqual(health_response.status_code, 200, health_response.text)
         self.assertEqual(health_response.json()["status"], "ok")
+
+    def test_operator_cannot_manage_super_admin_service_account_credentials(self) -> None:
+        _, operator_token = self._create_operator_user()
+        operator_headers = {
+            "Authorization": f"Bearer {operator_token}",
+            "Content-Type": "application/json",
+        }
+        create_response = self.client.post(
+            "/api/service-accounts",
+            headers=operator_headers,
+            json={
+                "name": "forged-super-admin",
+                "platform_roles": ["platform_super_admin"],
+            },
+        )
+        self.assertEqual(create_response.status_code, 403, create_response.text)
+
+        admin_create_response = self.client.post(
+            "/api/service-accounts",
+            headers=self._auth_headers(),
+            json={
+                "name": "protected-super-admin",
+                "platform_roles": ["platform_super_admin"],
+            },
+        )
+        self.assertEqual(admin_create_response.status_code, 200, admin_create_response.text)
+        account_id = admin_create_response.json()["id"]
+
+        token_response = self.client.post(
+            f"/api/service-accounts/{account_id}/tokens",
+            headers=operator_headers,
+            json={"name": "forged-token"},
+        )
+        self.assertEqual(token_response.status_code, 403, token_response.text)
+
+        demote_response = self.client.patch(
+            f"/api/service-accounts/{account_id}",
+            headers=operator_headers,
+            json={"platform_roles": ["platform_viewer"]},
+        )
+        self.assertEqual(demote_response.status_code, 403, demote_response.text)
+
 
     @staticmethod
     def _run_async(coro):

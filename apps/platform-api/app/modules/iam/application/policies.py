@@ -20,6 +20,7 @@ class PermissionCode(StrEnum):
     PLATFORM_CONFIG_WRITE = "platform.config.write"
     PLATFORM_SERVICE_ACCOUNT_READ = "platform.service_account.read"
     PLATFORM_SERVICE_ACCOUNT_WRITE = "platform.service_account.write"
+    PLATFORM_SUPER_ADMIN_MANAGE = "platform.super_admin.manage"
     PROJECT_MEMBER_READ = "project.member.read"
     PROJECT_MEMBER_WRITE = "project.member.write"
     PROJECT_AUDIT_READ = "project.audit.read"
@@ -83,6 +84,7 @@ PLATFORM_PERMISSION_MAP: dict[PermissionCode, frozenset[PlatformRole]] = {
     PermissionCode.PLATFORM_SERVICE_ACCOUNT_WRITE: frozenset(
         {PlatformRole.SUPER_ADMIN, PlatformRole.OPERATOR}
     ),
+    PermissionCode.PLATFORM_SUPER_ADMIN_MANAGE: frozenset({PlatformRole.SUPER_ADMIN}),
 }
 
 PROJECT_PERMISSION_MAP: dict[PermissionCode, frozenset[ProjectRole]] = {
@@ -159,17 +161,7 @@ class IamPolicyEngine:
         if not actor.is_authenticated:
             return PolicyDecision(allowed=False, reason=PolicyReason.NOT_AUTHENTICATED)
 
-        if actor.has_platform_role(PlatformRole.SUPER_ADMIN.value):
-            return PolicyDecision(allowed=True, reason=PolicyReason.PLATFORM_SUPER_ADMIN)
-
         permission = authorization.permission
-        if permission in PLATFORM_PERMISSION_MAP:
-            required_roles = PLATFORM_PERMISSION_MAP[permission]
-            matched = {PlatformRole(role) for role in actor.platform_roles if role in required_roles}
-            if matched:
-                return PolicyDecision(allowed=True, reason=PolicyReason.PLATFORM_ROLE_ALLOWED)
-            return PolicyDecision(allowed=False, reason=PolicyReason.MISSING_PLATFORM_ROLE)
-
         if permission in PROJECT_PERMISSION_MAP:
             if not authorization.project_id:
                 return PolicyDecision(allowed=False, reason=PolicyReason.PROJECT_SCOPE_REQUIRED)
@@ -179,6 +171,15 @@ class IamPolicyEngine:
             if matched:
                 return PolicyDecision(allowed=True, reason=PolicyReason.PROJECT_ROLE_ALLOWED)
             return PolicyDecision(allowed=False, reason=PolicyReason.MISSING_PROJECT_ROLE)
+
+        if permission in PLATFORM_PERMISSION_MAP:
+            if actor.has_platform_role(PlatformRole.SUPER_ADMIN.value):
+                return PolicyDecision(allowed=True, reason=PolicyReason.PLATFORM_SUPER_ADMIN)
+            required_roles = PLATFORM_PERMISSION_MAP[permission]
+            matched = {PlatformRole(role) for role in actor.platform_roles if role in required_roles}
+            if matched:
+                return PolicyDecision(allowed=True, reason=PolicyReason.PLATFORM_ROLE_ALLOWED)
+            return PolicyDecision(allowed=False, reason=PolicyReason.MISSING_PLATFORM_ROLE)
 
         return PolicyDecision(allowed=False, reason=PolicyReason.PERMISSION_NOT_REGISTERED)
 

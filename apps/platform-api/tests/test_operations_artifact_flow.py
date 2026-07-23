@@ -72,7 +72,7 @@ class OperationsArtifactFlowTest(unittest.IsolatedAsyncioTestCase):
         self.actor = ActorContext(
             user_id=str(uuid4()),
             platform_roles=("platform_super_admin",),
-            project_roles={self.project_id: ("admin",)},
+            project_roles={self.project_id: ("project_admin",)},
         )
         self.artifact_store = LocalOperationArtifactStore(str(Path(self._tmpdir.name) / "artifacts"))
         self.fake_assistants = _FakeAssistantsService()

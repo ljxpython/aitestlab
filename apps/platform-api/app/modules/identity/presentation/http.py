@@ -40,9 +40,12 @@ def get_identity_service(request: Request) -> IdentityService:
 @router.post("/session", response_model=AuthenticatedSession)
 async def login(
     payload: LoginCommand,
+    request: Request,
     service: IdentityService = Depends(get_identity_service),
 ) -> AuthenticatedSession:
-    return await service.login(payload)
+    session, actor = await service.login(payload)
+    request.state.audit_actor = actor
+    return session
 
 
 @router.post("/session/refresh", response_model=SessionTokens)

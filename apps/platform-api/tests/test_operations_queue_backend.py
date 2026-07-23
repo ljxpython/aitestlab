@@ -10,6 +10,7 @@ from app.core.context.models import ActorContext
 from app.core.db import build_engine, build_session_factory, create_core_tables, session_scope
 from app.modules.operations.application import CreateOperationCommand, OperationsService
 from app.modules.operations.application.execution import OperationExecutorRegistry
+from app.modules.operations.application.execution import actor_from_operation
 from app.modules.operations.application.ports import OperationExecutionResult, StoredOperation
 from app.modules.operations.application.worker import OperationWorker
 from app.modules.operations.domain import OperationStatus
@@ -67,7 +68,7 @@ class OperationsQueueBackendTest(unittest.IsolatedAsyncioTestCase):
         self.actor = ActorContext(
             user_id=str(uuid4()),
             platform_roles=("platform_super_admin",),
-            project_roles={self.project_id: ("admin",)},
+            project_roles={self.project_id: ("project_admin",)},
         )
         self.queue = _InMemoryQueue()
         self.service = OperationsService(
@@ -109,6 +110,16 @@ class OperationsQueueBackendTest(unittest.IsolatedAsyncioTestCase):
                 metadata={"_retry_policy": {"max_attempts": 2}},
             ),
         )
+
+        self.assertNotIn("actor_snapshot", submitted.metadata)
+        with session_scope(self._session_factory) as session:
+            from app.modules.operations.infra.sqlalchemy.repository import SqlAlchemyOperationsRepository
+
+            stored = SqlAlchemyOperationsRepository(session).get_by_id(submitted.id)
+            self.assertIsNotNone(stored)
+            assert stored is not None
+            self.assertIn("actor_snapshot", stored.metadata)
+            self.assertEqual(actor_from_operation(stored).user_id, self.actor.user_id)
 
         self.assertEqual(self.queue.dispatched_ids, [submitted.id])
 

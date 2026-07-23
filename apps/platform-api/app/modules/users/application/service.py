@@ -68,6 +68,9 @@ class UsersService:
             authorization=AuthorizationRequest(permission=permission),
         )
 
+    def _require_super_admin_role_permission(self, *, actor: ActorContext) -> None:
+        self._require_permission(actor=actor, permission=PermissionCode.PLATFORM_SUPER_ADMIN_MANAGE)
+
     def _user_item(self, item) -> UserItem:
         return UserItem(
             id=str(item.id),
@@ -129,6 +132,8 @@ class UsersService:
         session_factory = self._require_session_factory()
         self._require_permission(actor=actor, permission=PermissionCode.PLATFORM_USER_WRITE)
         platform_roles = _resolve_platform_roles_for_create(command)
+        if PlatformRole.SUPER_ADMIN.value in platform_roles:
+            self._require_super_admin_role_permission(actor=actor)
         async with SqlAlchemyUnitOfWork(session_factory) as uow:
             repository = SqlAlchemyUsersRepository(uow.session)
             if repository.get_user_by_username(command.username.strip()) is not None:
@@ -203,6 +208,10 @@ class UsersService:
                 current_roles=current.platform_roles,
                 command=command,
             )
+            if (PlatformRole.SUPER_ADMIN.value in current.platform_roles) != (
+                PlatformRole.SUPER_ADMIN.value in next_platform_roles
+            ):
+                self._require_super_admin_role_permission(actor=actor)
             next_is_super_admin = PlatformRole.SUPER_ADMIN.value in next_platform_roles
             if next_username != current.username:
                 existing = repository.get_user_by_username(next_username)
