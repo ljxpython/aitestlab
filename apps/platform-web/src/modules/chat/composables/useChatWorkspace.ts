@@ -1,4 +1,5 @@
 import { computed, reactive, ref, watch, type ComputedRef, type Ref, type WritableComputedRef } from 'vue'
+import { listRuntimeModelPolicies } from '@/services/runtime-policies/runtime-policies.service'
 import { listRuntimeModels, listRuntimeTools } from '@/services/runtime/runtime.service'
 import {
   normalizeRuntimeGatewayError,
@@ -8,6 +9,7 @@ import {
 import type { ManagementThread } from '@/types/management'
 import { summarizeMessageContent } from '@/utils/chat-content'
 import type { ChatMessageMetadata } from '../branching'
+import { resolveChatDefaultModelId } from '../runtime-model-default'
 import { useChatThreadWorkspace } from './useChatThreadWorkspace'
 import { usePlatformChatStream } from './usePlatformChatStream'
 import type { ChatResolvedTarget, ChatRunOptions } from '../types'
@@ -25,6 +27,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions) {
   const historyItems = ref<Record<string, unknown>[]>([])
   const loadingRuntime = ref(false)
   const runtimeError = ref('')
+  const defaultModelId = ref('')
   const runOptions = reactive<ChatRunOptions>({
     modelId: '',
     enableTools: false,
@@ -41,6 +44,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions) {
     target: computed(() => options.target.value),
     activeThreadId,
     activeThreadStatus: computed(() => activeThread.value?.status || null),
+    activeThreadError: computed(() => activeThread.value?.error || null),
     historyItems,
     selectedBranch,
     runOptions,
@@ -80,6 +84,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions) {
     if (!projectId) {
       runtimeModels.value = awaitableEmptyModels()
       runtimeTools.value = awaitableEmptyTools()
+      defaultModelId.value = ''
       runtimeError.value = ''
       return
     }
@@ -88,22 +93,24 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions) {
     runtimeError.value = ''
 
     try {
-      const [modelsPayload, toolsPayload] = await Promise.all([
+      const [modelsPayload, toolsPayload, modelPoliciesPayload] = await Promise.all([
         listRuntimeModels(projectId),
-        listRuntimeTools(projectId)
+        listRuntimeTools(projectId),
+        listRuntimeModelPolicies(projectId).catch(() => null)
       ])
       runtimeModels.value = Array.isArray(modelsPayload.models) ? modelsPayload.models : awaitableEmptyModels()
       runtimeTools.value = Array.isArray(toolsPayload.tools) ? toolsPayload.tools : awaitableEmptyTools()
+      const modelPolicies = Array.isArray(modelPoliciesPayload?.items) ? modelPoliciesPayload.items : []
+      defaultModelId.value = resolveChatDefaultModelId(runtimeModels.value, modelPolicies)
 
       if (!runOptions.modelId.trim()) {
-        const defaultModel =
-          runtimeModels.value.find((item) => item.is_default)?.model_id || runtimeModels.value[0]?.model_id || ''
-        runOptions.modelId = defaultModel
+        runOptions.modelId = defaultModelId.value
       }
     } catch (loadError) {
       const normalizedError = normalizeRuntimeGatewayError(loadError, '运行时目录加载失败')
       runtimeModels.value = awaitableEmptyModels()
       runtimeTools.value = awaitableEmptyTools()
+      defaultModelId.value = ''
       runtimeError.value = normalizedError.message
     } finally {
       loadingRuntime.value = false
@@ -189,6 +196,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions) {
     accessDeniedMessage,
     detailError: streamState.detailError,
     detailInfo: streamState.detailInfo,
+    defaultModelId,
     detailWarning: threadWorkspace.detailWarning,
     deleteThread: threadWorkspace.deleteThread,
     editHumanMessage: streamState.editHumanMessage,

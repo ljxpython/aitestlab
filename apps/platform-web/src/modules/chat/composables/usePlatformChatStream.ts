@@ -130,7 +130,11 @@ export function usePlatformChatStream(options: UsePlatformChatStreamOptions) {
   })
 
   const threadFailureMessage = computed(() =>
-    extractThreadFailureMessage(displayStateRaw.value, options.activeThreadStatus.value)
+    extractThreadFailureMessage(
+      displayStateRaw.value,
+      options.activeThreadStatus.value,
+      options.activeThreadError.value
+    )
   )
   const hasBreakpointInterrupt = computed(() => isBreakpointInterrupt(interruptPayload.value))
   const canContinueDebug = computed(() => {

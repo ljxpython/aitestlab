@@ -52,6 +52,7 @@ def get_runtime_gateway_service(request: Request) -> RuntimeGatewayService:
     return RuntimeGatewayService(
         session_factory=session_factory,
         upstream=upstream,
+        runtime_base_url=settings.langgraph_upstream_url,
     )
 
 

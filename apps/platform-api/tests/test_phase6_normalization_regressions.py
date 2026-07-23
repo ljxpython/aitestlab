@@ -68,6 +68,7 @@ class RuntimeGatewayNormalizationRegressionTest(unittest.IsolatedAsyncioTestCase
                 },
             }
         )
+        service._project_default_model_id = AsyncMock(return_value=None)  # type: ignore[method-assign]
         service._inject_project_scope = lambda project_id, payload: payload or {}  # type: ignore[assignment]
         service._assert_runtime_target_allowed = AsyncMock()  # type: ignore[method-assign]
 
@@ -99,6 +100,7 @@ class RuntimeGatewayNormalizationRegressionTest(unittest.IsolatedAsyncioTestCase
             upstream=upstream,
         )
         service._prepare_project_scope = AsyncMock()  # type: ignore[method-assign]
+        service._project_default_model_id = AsyncMock(return_value=None)  # type: ignore[method-assign]
         service._assert_runtime_target_allowed = AsyncMock()  # type: ignore[method-assign]
 
         payload = await service.create_global_run(

@@ -6,6 +6,7 @@ from uuid import UUID
 from sqlalchemy import asc, desc, select
 from sqlalchemy.orm import Session
 
+from app.modules.runtime_catalog.infra.sqlalchemy.models import RuntimeCatalogModelRecord
 from app.modules.runtime_policies.infra.sqlalchemy.models import (
     ProjectGraphPolicyRecord,
     ProjectModelPolicyRecord,
@@ -91,6 +92,27 @@ class SqlAlchemyRuntimePolicyRepository:
         )
         return list(self.session.scalars(stmt).all())
 
+    def get_default_model_key(self, *, project_id: UUID, runtime_id: str) -> str | None:
+        stmt = (
+            select(RuntimeCatalogModelRecord.model_key)
+            .join(
+                ProjectModelPolicyRecord,
+                ProjectModelPolicyRecord.model_catalog_id == RuntimeCatalogModelRecord.id,
+            )
+            .where(
+                ProjectModelPolicyRecord.project_id == project_id,
+                ProjectModelPolicyRecord.is_enabled.is_(True),
+                ProjectModelPolicyRecord.is_default_for_project.is_(True),
+                RuntimeCatalogModelRecord.runtime_id == runtime_id,
+                RuntimeCatalogModelRecord.is_deleted.is_(False),
+            )
+            .order_by(
+                desc(RuntimeCatalogModelRecord.is_default_runtime),
+                asc(RuntimeCatalogModelRecord.model_key),
+            )
+        )
+        return self.session.scalar(stmt)
+
     def upsert_model_policy(
         self,
         *,
@@ -117,4 +139,3 @@ class SqlAlchemyRuntimePolicyRepository:
         row.updated_by = updated_by
         self.session.flush()
         return row
-

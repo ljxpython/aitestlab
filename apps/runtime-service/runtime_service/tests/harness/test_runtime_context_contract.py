@@ -26,6 +26,7 @@ def test_runtime_context_fields_match_v1_contract() -> None:
         "top_p",
         "enable_tools",
         "tools",
+        "multimodal_parser_model_id",
     ]
 
 

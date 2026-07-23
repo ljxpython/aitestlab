@@ -41,6 +41,18 @@ from runtime_service.devtools.multimodal_frontend_compat import (  # noqa: E402
 )
 
 
+def _fake_success_parser(
+    artifact: AttachmentArtifact, block: Mapping[str, Any]
+) -> AttachmentArtifact:
+    del block
+    next_artifact = dict(artifact)
+    next_artifact["status"] = "parsed"
+    next_artifact["summary_for_model"] = f"{artifact['kind']} 已解析：{artifact['name']}"
+    next_artifact["parsed_text"] = "测试解析文本"
+    next_artifact["structured_data"] = {"key_points": ["测试解析"]}
+    return cast(AttachmentArtifact, next_artifact)
+
+
 def test_build_attachment_artifact_for_frontend_image_block() -> None:
     artifact = build_attachment_artifact(
         {
@@ -285,7 +297,7 @@ def test_multimodal_middleware_preserves_model_with_attachments() -> None:
             return bound
 
     base_model = DummyModel()
-    middleware = MultimodalMiddleware()
+    middleware = MultimodalMiddleware(parser=_fake_success_parser)
     request = ModelRequest(
         model=cast(BaseChatModel, base_model),
         messages=[
@@ -303,7 +315,7 @@ def test_multimodal_middleware_preserves_model_with_attachments() -> None:
         ],
         system_message=SystemMessage(content="Base prompt"),
         state=cast(Any, {}),
-        )
+    )
 
     def handler(updated_request: ModelRequest) -> ModelResponse:
         assert updated_request.model is base_model
@@ -594,7 +606,7 @@ def test_multimodal_summary_not_reinjected_on_follow_up_text_turn() -> None:
 
 
 def test_multimodal_middleware_accumulates_pdf_artifacts_across_turns() -> None:
-    middleware = MultimodalMiddleware()
+    middleware = MultimodalMiddleware(parser=_fake_success_parser)
     first_state: dict[str, Any] = {}
 
     first_request = ModelRequest(
@@ -735,7 +747,7 @@ def test_multimodal_middleware_rewrites_only_current_turn_attachment_in_session(
 
 
 def test_multimodal_middleware_accumulates_image_and_pdf_across_turns() -> None:
-    middleware = MultimodalMiddleware()
+    middleware = MultimodalMiddleware(parser=_fake_success_parser)
     session_state: dict[str, Any] = {}
 
     image_request = ModelRequest(
