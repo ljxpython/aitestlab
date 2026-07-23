@@ -2,11 +2,10 @@ name: aitestlab-stack-nginx
 
 services:
   redis:
-    image: redis:7-alpine
+    image: redis/redis-stack-server:latest
     restart: unless-stopped
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
-    tmpfs:
-      - /data
+    volumes:
+      - stack-redis-data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -62,9 +61,6 @@ services:
       MULTIMODAL_PARSER_MODEL_ID: "${MULTIMODAL_PARSER_MODEL_ID:-gpt_5.4-ccr}"
       ENABLE_TOOLS: "${ENABLE_TOOLS:-}"
       TOOLS: "${TOOLS:-}"
-      MEMORY_BACKEND: "${MEMORY_BACKEND:-}"
-      STORE_BACKEND: "${STORE_BACKEND:-}"
-      PERSISTENCE_PROFILE: "${PERSISTENCE_PROFILE:-}"
       MIDDLEWARES: "${MIDDLEWARES:-}"
       TEST_CASE_V2_KNOWLEDGE_MCP_ENABLED: "${TEST_CASE_V2_KNOWLEDGE_MCP_ENABLED:-}"
       TEST_CASE_V2_KNOWLEDGE_MCP_URL: "${TEST_CASE_V2_KNOWLEDGE_MCP_URL:-}"
@@ -228,6 +224,8 @@ services:
         condition: service_healthy
 
 volumes:
+  stack-redis-data:
+    driver: local
   stack-postgres-data:
     driver: local
   interaction-data-storage:
