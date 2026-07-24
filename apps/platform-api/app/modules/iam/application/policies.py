@@ -11,6 +11,15 @@ from app.modules.iam.domain.roles import PlatformRole, ProjectRole
 class PermissionCode(StrEnum):
     PLATFORM_USER_READ = "platform.user.read"
     PLATFORM_USER_WRITE = "platform.user.write"
+    PLATFORM_USER_CREATE = "platform.user.create"
+    PLATFORM_USER_PROFILE_WRITE = "platform.user.profile.write"
+    PLATFORM_USER_STATUS_WRITE = "platform.user.status.write"
+    PLATFORM_USER_CREDENTIAL_RESET = "platform.user.credential.reset"
+    PLATFORM_USER_ROLE_WRITE = "platform.user.role.write"
+    PLATFORM_PROJECT_READ = "platform.project.read"
+    PLATFORM_PROJECT_CREATE = "platform.project.create"
+    PLATFORM_PROJECT_WRITE = "platform.project.write"
+    PLATFORM_PROJECT_TAKEOVER = "platform.project.takeover"
     PLATFORM_AUDIT_READ = "platform.audit.read"
     PLATFORM_CATALOG_REFRESH = "platform.catalog.refresh"
     PLATFORM_ANNOUNCEMENT_WRITE = "platform.announcement.write"
@@ -20,6 +29,7 @@ class PermissionCode(StrEnum):
     PLATFORM_CONFIG_WRITE = "platform.config.write"
     PLATFORM_SERVICE_ACCOUNT_READ = "platform.service_account.read"
     PLATFORM_SERVICE_ACCOUNT_WRITE = "platform.service_account.write"
+    PLATFORM_SERVICE_ACCOUNT_GRANT_WRITE = "platform.service_account.grant.write"
     PLATFORM_SUPER_ADMIN_MANAGE = "platform.super_admin.manage"
     PROJECT_MEMBER_READ = "project.member.read"
     PROJECT_MEMBER_WRITE = "project.member.write"
@@ -57,6 +67,23 @@ PLATFORM_PERMISSION_MAP: dict[PermissionCode, frozenset[PlatformRole]] = {
     PermissionCode.PLATFORM_USER_WRITE: frozenset(
         {PlatformRole.SUPER_ADMIN, PlatformRole.OPERATOR}
     ),
+    PermissionCode.PLATFORM_USER_CREATE: frozenset(
+        {PlatformRole.SUPER_ADMIN, PlatformRole.OPERATOR}
+    ),
+    PermissionCode.PLATFORM_USER_PROFILE_WRITE: frozenset(
+        {PlatformRole.SUPER_ADMIN, PlatformRole.OPERATOR}
+    ),
+    PermissionCode.PLATFORM_USER_STATUS_WRITE: frozenset(
+        {PlatformRole.SUPER_ADMIN, PlatformRole.OPERATOR}
+    ),
+    PermissionCode.PLATFORM_USER_CREDENTIAL_RESET: frozenset({PlatformRole.SUPER_ADMIN}),
+    PermissionCode.PLATFORM_USER_ROLE_WRITE: frozenset({PlatformRole.SUPER_ADMIN}),
+    PermissionCode.PLATFORM_PROJECT_READ: frozenset(
+        {PlatformRole.SUPER_ADMIN, PlatformRole.OPERATOR, PlatformRole.VIEWER}
+    ),
+    PermissionCode.PLATFORM_PROJECT_CREATE: frozenset({PlatformRole.SUPER_ADMIN}),
+    PermissionCode.PLATFORM_PROJECT_WRITE: frozenset({PlatformRole.SUPER_ADMIN}),
+    PermissionCode.PLATFORM_PROJECT_TAKEOVER: frozenset({PlatformRole.SUPER_ADMIN}),
     PermissionCode.PLATFORM_AUDIT_READ: frozenset(
         {PlatformRole.SUPER_ADMIN, PlatformRole.OPERATOR, PlatformRole.VIEWER}
     ),
@@ -84,6 +111,7 @@ PLATFORM_PERMISSION_MAP: dict[PermissionCode, frozenset[PlatformRole]] = {
     PermissionCode.PLATFORM_SERVICE_ACCOUNT_WRITE: frozenset(
         {PlatformRole.SUPER_ADMIN, PlatformRole.OPERATOR}
     ),
+    PermissionCode.PLATFORM_SERVICE_ACCOUNT_GRANT_WRITE: frozenset({PlatformRole.SUPER_ADMIN}),
     PermissionCode.PLATFORM_SUPER_ADMIN_MANAGE: frozenset({PlatformRole.SUPER_ADMIN}),
 }
 

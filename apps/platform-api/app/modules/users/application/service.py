@@ -11,7 +11,12 @@ from app.core.identifiers import parse_uuid
 from app.core.security import hash_password
 from app.modules.iam.application import AuthorizationRequest, IamPolicyEngine, PermissionCode
 from app.modules.iam.domain import PlatformRole
-from app.modules.users.application.contracts import CreateUserCommand, ListUsersQuery, UpdateUserCommand
+from app.modules.users.application.contracts import (
+    CreateUserCommand,
+    ListUsersQuery,
+    ResetUserPasswordCommand,
+    UpdateUserCommand,
+)
 from app.modules.users.domain import UserItem, UserPage, UserProjectItem, UserProjectPage
 from app.modules.users.infra import SqlAlchemyUsersRepository
 
@@ -81,6 +86,7 @@ class UsersService:
             email=item.email,
             created_at=item.created_at,
             updated_at=item.updated_at,
+            must_change_password=item.must_change_password,
         )
 
     def _user_project_item(self, item) -> UserProjectItem:
@@ -130,10 +136,10 @@ class UsersService:
         command: CreateUserCommand,
     ) -> UserItem:
         session_factory = self._require_session_factory()
-        self._require_permission(actor=actor, permission=PermissionCode.PLATFORM_USER_WRITE)
+        self._require_permission(actor=actor, permission=PermissionCode.PLATFORM_USER_CREATE)
         platform_roles = _resolve_platform_roles_for_create(command)
-        if PlatformRole.SUPER_ADMIN.value in platform_roles:
-            self._require_super_admin_role_permission(actor=actor)
+        if platform_roles:
+            self._require_permission(actor=actor, permission=PermissionCode.PLATFORM_USER_ROLE_WRITE)
         async with SqlAlchemyUnitOfWork(session_factory) as uow:
             repository = SqlAlchemyUsersRepository(uow.session)
             if repository.get_user_by_username(command.username.strip()) is not None:
@@ -147,6 +153,7 @@ class UsersService:
                 email=None,
                 platform_roles=platform_roles,
                 is_super_admin=PlatformRole.SUPER_ADMIN.value in platform_roles,
+                must_change_password=False,
             )
             return self._user_item(created)
 
@@ -194,13 +201,22 @@ class UsersService:
         command: UpdateUserCommand,
     ) -> UserItem:
         session_factory = self._require_session_factory()
-        self._require_permission(actor=actor, permission=PermissionCode.PLATFORM_USER_WRITE)
         user_uuid = parse_uuid(user_id, code="invalid_user_id")
         async with SqlAlchemyUnitOfWork(session_factory) as uow:
             repository = SqlAlchemyUsersRepository(uow.session)
             current = repository.get_user_by_id(user_uuid)
             if current is None:
                 raise NotFoundError(message="User not found", code="user_not_found")
+            if current.is_super_admin:
+                self._require_super_admin_role_permission(actor=actor)
+            if command.username is not None:
+                self._require_permission(actor=actor, permission=PermissionCode.PLATFORM_USER_PROFILE_WRITE)
+            if command.status is not None:
+                self._require_permission(actor=actor, permission=PermissionCode.PLATFORM_USER_STATUS_WRITE)
+            if command.password is not None:
+                self._require_permission(actor=actor, permission=PermissionCode.PLATFORM_USER_CREDENTIAL_RESET)
+            if command.platform_roles is not None or command.is_super_admin is not None:
+                self._require_permission(actor=actor, permission=PermissionCode.PLATFORM_USER_ROLE_WRITE)
 
             next_username = command.username.strip() if command.username is not None else current.username
             next_status = command.status.value if command.status is not None else current.status
@@ -238,9 +254,41 @@ class UsersService:
                 platform_roles=next_platform_roles,
                 is_super_admin=next_is_super_admin,
                 password_hash=password_hash,
+                must_change_password=False if password_hash else None,
             )
             if updated is None:
                 raise NotFoundError(message="User not found", code="user_not_found")
             if password_hash or next_status != "active":
                 repository.revoke_all_refresh_tokens_for_user(user_uuid)
+            return self._user_item(updated)
+
+    async def reset_password(
+        self,
+        *,
+        actor: ActorContext,
+        user_id: str,
+        command: ResetUserPasswordCommand,
+    ) -> UserItem:
+        self._require_permission(actor=actor, permission=PermissionCode.PLATFORM_USER_CREDENTIAL_RESET)
+        user_uuid = parse_uuid(user_id, code="invalid_user_id")
+        async with SqlAlchemyUnitOfWork(self._require_session_factory()) as uow:
+            repository = SqlAlchemyUsersRepository(uow.session)
+            current = repository.get_user_by_id(user_uuid)
+            if current is None:
+                raise NotFoundError(message="User not found", code="user_not_found")
+            if current.is_super_admin:
+                self._require_super_admin_role_permission(actor=actor)
+            updated = repository.update_user(
+                user_uuid,
+                username=current.username,
+                email=current.email,
+                status=current.status,
+                platform_roles=current.platform_roles,
+                is_super_admin=current.is_super_admin,
+                password_hash=hash_password(command.temporary_password),
+                must_change_password=False,
+            )
+            repository.revoke_all_refresh_tokens_for_user(user_uuid)
+            if updated is None:
+                raise NotFoundError(message="User not found", code="user_not_found")
             return self._user_item(updated)

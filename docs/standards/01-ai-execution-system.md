@@ -111,6 +111,17 @@ Harness 与 OpenSpec 的职责不能混用：
 - B2 只在第 3.2 节的持久对齐条件命中时创建 change
 - B3 实施前必须创建 change
 
+OpenSpec 的标准产物（`proposal.md`、`specs/**/*.md`、`design.md`、`tasks.md`
+和 `verification.md`）统一使用中文正文，并作为规划、实施、验证、同步和归档的
+唯一权威内容。Agent 与开发人员直接读取同一套产物，不维护完整英文镜像、中文
+镜像或 `summary.zh-CN.md`，避免产生重复事实源。
+
+OpenSpec schema 需要识别的英文文件名、标题关键字、场景关键字和任务复选框格式
+必须保留；代码标识、路径、命令、API 名称和其他技术标识也保留英文原文。现有
+change 无需批量迁移，新建或主动更新的 change 采用本约定。任何语言 token 成本
+结论都必须使用实际执行模型对应的 tokenizer 和对等语义输入测量；无法取得对应
+tokenizer 时不得声称具体差异。
+
 默认流程：
 
 ```text

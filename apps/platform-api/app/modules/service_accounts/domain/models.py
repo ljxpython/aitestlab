@@ -5,6 +5,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 
 from app.core.schemas import OffsetPage
+from app.modules.iam.domain import ProjectRole
 
 
 class ServiceAccountTokenItem(BaseModel):
@@ -45,3 +46,14 @@ class ServiceAccountItem(BaseModel):
 
 class ServiceAccountPage(OffsetPage[ServiceAccountItem]):
     pass
+
+
+class ServiceAccountProjectGrantItem(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    service_account_id: str
+    project_id: str
+    role: ProjectRole
+    created_at: datetime | None = None
+    updated_at: datetime | None = None

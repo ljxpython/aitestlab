@@ -14,6 +14,8 @@ from app.core.context.models import (
     TenantContext,
 )
 
+DEFAULT_TENANT_ID = "__default"
+
 _REQUEST_CONTEXT: ContextVar[PlatformRequestContext | None] = ContextVar(
     "platform_api_request_context",
     default=None,
@@ -37,12 +39,20 @@ def _trace_id(request: Request, request_id: str) -> str:
     return incoming or request_id
 
 
+def _route_project_id(path: str) -> str | None:
+    segments = [segment for segment in path.strip("/").split("/") if segment]
+    if len(segments) >= 3 and segments[:2] == ["api", "projects"]:
+        return _clean(segments[2])
+    return None
+
+
 def build_request_context(request: Request) -> PlatformRequestContext:
     request_id = _request_id(request)
     trace_id = _trace_id(request, request_id)
     started_at = time.perf_counter()
-    tenant_id = _clean(request.headers.get("x-tenant-id"))
-    project_id = _clean(request.headers.get("x-project-id"))
+    header_project_id = _clean(request.headers.get("x-project-id"))
+    query_project_id = _clean(request.query_params.get("project_id"))
+    project_id = _route_project_id(request.url.path) or header_project_id or query_project_id
     return PlatformRequestContext(
         request=RequestContext(
             request_id=request_id,
@@ -54,10 +64,10 @@ def build_request_context(request: Request) -> PlatformRequestContext:
             client_ip=request.client.host if request.client else None,
             user_agent=_clean(request.headers.get("user-agent")),
         ),
-        tenant=TenantContext(tenant_id=tenant_id),
+        tenant=TenantContext(tenant_id=DEFAULT_TENANT_ID),
         project=ProjectContext(
             project_id=project_id,
-            requested_by_header=project_id is not None,
+            requested_by_header=header_project_id is not None,
         ),
         actor=ActorContext(),
     )

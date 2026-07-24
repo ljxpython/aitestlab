@@ -118,6 +118,19 @@
 - 通过项目上下文和用户身份访问平台资源
 - 遇到长任务统一走 `operations`
 
+### 4.1.1 当前 IAM 使用口径
+
+- 一个部署实例只对应一个服务端租户，不提供租户选择或切换。
+- 管理员创建或重置的密码可直接用于正常登录；用户需要时可在账户安全页主动修改。
+- 登录和当前资料响应不返回完整 `project_roles`，前端切换项目时调用
+  `GET /api/projects/{project_id}/access`。
+- 平台超级管理员治理项目元数据和生命周期，但只有显式接管成为
+  `project_admin` 后才能访问项目内容。
+- 项目可通过 `POST /api/projects/{project_id}/archive` 归档，并通过
+  `POST /api/projects/{project_id}/restore` 恢复。
+- 服务账号项目授权使用 `/api/service-accounts/{id}/project-grants/*`，与 API key
+  令牌生命周期分开管理。
+
 如果你想确认“当前哪些后端能力已经真正被前端用起来，哪些只是 internal 或弱接入”，继续看：
 
 - `../decisions/platform-capability-reconciliation.md`

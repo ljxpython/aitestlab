@@ -13,20 +13,26 @@ from app.core.errors import (
 )
 from app.core.identifiers import parse_actor_user_id, parse_uuid
 from app.modules.iam.application import AuthorizationRequest, IamPolicyEngine, PermissionCode
+from app.modules.iam.application.policies import PROJECT_PERMISSION_MAP
 from app.modules.iam.domain import ProjectRole
 from app.modules.projects.application.contracts import (
     CreateProjectCommand,
     ListProjectMembersQuery,
     ListProjectsQuery,
+    ProjectTakeoverCommand,
+    RestoreProjectAdminCommand,
     UpsertProjectMemberCommand,
 )
 from app.modules.projects.application.ports import StoredProject, StoredProjectMemberView
 from app.modules.projects.domain import (
     ProjectMemberPage,
+    ProjectMemberCandidate,
+    ProjectMemberCandidatePage,
     ProjectMemberView,
     ProjectPage,
     ProjectStatus,
     ProjectSummary,
+    ProjectAccess,
 )
 from app.modules.projects.infra.sqlalchemy.repository import SqlAlchemyProjectsRepository
 
@@ -78,7 +84,10 @@ class ProjectsService:
         actor_user_id = parse_actor_user_id(actor)
         async with SqlAlchemyUnitOfWork(session_factory) as uow:
             repository = SqlAlchemyProjectsRepository(uow.session)
-            if actor.has_platform_role("platform_super_admin"):
+            if self._policy_engine.evaluate(
+                actor=actor,
+                authorization=AuthorizationRequest(permission=PermissionCode.PLATFORM_PROJECT_READ),
+            ).allowed:
                 items, total = repository.list_projects(
                     limit=query.limit,
                     offset=query.offset,
@@ -104,6 +113,10 @@ class ProjectsService:
     ) -> ProjectSummary:
         session_factory = self._require_session_factory()
         actor_user_id = parse_actor_user_id(actor)
+        self._policy_engine.require(
+            actor=actor,
+            authorization=AuthorizationRequest(permission=PermissionCode.PLATFORM_PROJECT_CREATE),
+        )
         async with SqlAlchemyUnitOfWork(session_factory) as uow:
             repository = SqlAlchemyProjectsRepository(uow.session)
             tenant = repository.get_or_create_default_tenant()
@@ -129,17 +142,58 @@ class ProjectsService:
         project_uuid = parse_uuid(project_id, code="invalid_project_id")
         self._policy_engine.require(
             actor=actor,
-            authorization=AuthorizationRequest(
-                permission=PermissionCode.PROJECT_MEMBER_WRITE,
-                project_id=project_id,
-            ),
+            authorization=AuthorizationRequest(permission=PermissionCode.PLATFORM_PROJECT_WRITE),
         )
         async with SqlAlchemyUnitOfWork(session_factory) as uow:
             repository = SqlAlchemyProjectsRepository(uow.session)
-            project = repository.get_project_by_id(project_uuid)
+            project = repository.get_project_by_id(project_uuid, include_inactive=True)
             if project is None or project.status == "deleted":
                 raise NotFoundError(message="Project not found", code="project_not_found")
             repository.soft_delete_project(project_uuid)
+
+    async def archive_project(self, *, actor: ActorContext, project_id: str) -> ProjectSummary:
+        return await self._set_project_lifecycle(
+            actor=actor,
+            project_id=project_id,
+            expected_status="active",
+            next_status="disabled",
+        )
+
+    async def restore_project(self, *, actor: ActorContext, project_id: str) -> ProjectSummary:
+        return await self._set_project_lifecycle(
+            actor=actor,
+            project_id=project_id,
+            expected_status="disabled",
+            next_status="active",
+        )
+
+    async def _set_project_lifecycle(
+        self,
+        *,
+        actor: ActorContext,
+        project_id: str,
+        expected_status: str,
+        next_status: str,
+    ) -> ProjectSummary:
+        project_uuid = parse_uuid(project_id, code="invalid_project_id")
+        self._policy_engine.require(
+            actor=actor,
+            authorization=AuthorizationRequest(permission=PermissionCode.PLATFORM_PROJECT_WRITE),
+        )
+        async with SqlAlchemyUnitOfWork(self._require_session_factory()) as uow:
+            repository = SqlAlchemyProjectsRepository(uow.session)
+            project = repository.get_project_by_id(project_uuid, include_inactive=True)
+            if project is None or project.status == "deleted":
+                raise NotFoundError(message="Project not found", code="project_not_found")
+            if project.status != expected_status:
+                raise ConflictError(
+                    code="invalid_project_status",
+                    message=f"Project status must be {expected_status}",
+                )
+            updated = repository.set_project_status(project_uuid, next_status)
+            if updated is None:
+                raise NotFoundError(message="Project not found", code="project_not_found")
+            return self._project_summary(updated)
 
     async def list_members(
         self,
@@ -160,7 +214,7 @@ class ProjectsService:
         async with SqlAlchemyUnitOfWork(session_factory) as uow:
             repository = SqlAlchemyProjectsRepository(uow.session)
             project = repository.get_project_by_id(project_uuid)
-            if project is None or project.status == "deleted":
+            if project is None:
                 raise NotFoundError(message="Project not found", code="project_not_found")
             items = repository.list_project_members(
                 project_id=project_uuid,
@@ -189,7 +243,7 @@ class ProjectsService:
         async with SqlAlchemyUnitOfWork(session_factory) as uow:
             repository = SqlAlchemyProjectsRepository(uow.session)
             project = repository.get_project_by_id(project_uuid)
-            if project is None or project.status == "deleted":
+            if project is None:
                 raise NotFoundError(message="Project not found", code="project_not_found")
             if not repository.user_exists(user_id=target_user_id):
                 raise NotFoundError(message="User not found", code="user_not_found")
@@ -246,3 +300,130 @@ class ProjectsService:
                     message="Cannot remove the last project admin",
                 )
             repository.remove_project_member(project_id=project_uuid, user_id=target_user_id)
+
+    async def get_access(self, *, actor: ActorContext, project_id: str) -> ProjectAccess:
+        session_factory = self._require_session_factory()
+        project_uuid = parse_uuid(project_id, code="invalid_project_id")
+        async with SqlAlchemyUnitOfWork(session_factory) as uow:
+            repository = SqlAlchemyProjectsRepository(uow.session)
+            project = repository.get_project_by_id(project_uuid, include_inactive=True)
+            if project is None or project.status == "deleted":
+                raise NotFoundError(message="Project not found", code="project_not_found")
+            if project.status != "active":
+                return ProjectAccess(project_id=project_id)
+            roles: tuple[ProjectRole, ...] = ()
+            if actor.principal_type == "user":
+                role = repository.get_project_member_role(
+                    project_id=project_uuid,
+                    user_id=parse_actor_user_id(actor),
+                )
+                roles = (role,) if role is not None else ()
+            else:
+                from app.modules.service_accounts.infra.sqlalchemy.repository import SqlAlchemyServiceAccountsRepository
+
+                role = SqlAlchemyServiceAccountsRepository(uow.session).get_project_grant_role(
+                    credential_id=actor.credential_id,
+                    project_id=project_uuid,
+                )
+                roles = (role,) if role is not None else ()
+            scoped_actor = ActorContext(
+                user_id=actor.user_id,
+                subject=actor.subject,
+                principal_type=actor.principal_type,
+                platform_roles=actor.platform_roles,
+                project_roles={project_id: tuple(role.value for role in roles)},
+            )
+            permissions = tuple(
+                permission.value
+                for permission in PROJECT_PERMISSION_MAP
+                if self._policy_engine.evaluate(
+                    actor=scoped_actor,
+                    authorization=AuthorizationRequest(permission=permission, project_id=project_id),
+                ).allowed
+            )
+            return ProjectAccess(project_id=project_id, roles=roles, permissions=permissions)
+
+    async def list_member_candidates(
+        self,
+        *,
+        actor: ActorContext,
+        project_id: str,
+        limit: int,
+        offset: int,
+        query: str | None,
+    ) -> ProjectMemberCandidatePage:
+        project_uuid = parse_uuid(project_id, code="invalid_project_id")
+        self._policy_engine.require(
+            actor=actor,
+            authorization=AuthorizationRequest(
+                permission=PermissionCode.PROJECT_MEMBER_WRITE,
+                project_id=project_id,
+            ),
+        )
+        async with SqlAlchemyUnitOfWork(self._require_session_factory()) as uow:
+            repository = SqlAlchemyProjectsRepository(uow.session)
+            project = repository.get_project_by_id(project_uuid)
+            if project is None or project.status == "deleted":
+                raise NotFoundError(message="Project not found", code="project_not_found")
+            items, total = repository.list_member_candidates(
+                project_id=project_uuid,
+                limit=limit,
+                offset=offset,
+                query=query,
+            )
+            return ProjectMemberCandidatePage(
+                items=[
+                    ProjectMemberCandidate(
+                        user_id=str(item.user_id),
+                        username=item.username,
+                        email=item.email,
+                    )
+                    for item in items
+                ],
+                total=total,
+            )
+
+    async def takeover(
+        self,
+        *,
+        actor: ActorContext,
+        project_id: str,
+        command: ProjectTakeoverCommand,
+    ) -> ProjectMemberView:
+        self._policy_engine.require(
+            actor=actor,
+            authorization=AuthorizationRequest(permission=PermissionCode.PLATFORM_PROJECT_TAKEOVER),
+        )
+        return await self._restore_admin(project_id=project_id, user_id=actor.user_id)
+
+    async def restore_admin(
+        self,
+        *,
+        actor: ActorContext,
+        project_id: str,
+        command: RestoreProjectAdminCommand,
+    ) -> ProjectMemberView:
+        self._policy_engine.require(
+            actor=actor,
+            authorization=AuthorizationRequest(permission=PermissionCode.PLATFORM_PROJECT_WRITE),
+        )
+        return await self._restore_admin(project_id=project_id, user_id=command.user_id)
+
+    async def _restore_admin(self, *, project_id: str, user_id: str | None) -> ProjectMemberView:
+        session_factory = self._require_session_factory()
+        project_uuid = parse_uuid(project_id, code="invalid_project_id")
+        target_user_id = parse_uuid(user_id or "", code="invalid_user_id")
+        async with SqlAlchemyUnitOfWork(session_factory) as uow:
+            repository = SqlAlchemyProjectsRepository(uow.session)
+            project = repository.get_project_by_id(project_uuid)
+            if project is None or project.status == "deleted":
+                raise NotFoundError(message="Project not found", code="project_not_found")
+            if not repository.user_exists(user_id=target_user_id):
+                raise NotFoundError(message="User not found", code="user_not_found")
+            return self._member_view(
+                repository.upsert_project_member(
+                    project_id=project_uuid,
+                    user_id=target_user_id,
+                    role=ProjectRole.ADMIN,
+                )
+            )

@@ -16,11 +16,11 @@ import StateBanner from '@/components/platform/StateBanner.vue'
 import StatusPill from '@/components/platform/StatusPill.vue'
 import {
   deleteProjectMember,
+  listProjectMemberCandidates,
   listProjectMembers,
   upsertProjectMember
 } from '@/services/members/members.service'
-import { listUsersPage } from '@/services/users/users.service'
-import type { ManagementProjectMember, ManagementUser, ProjectRole } from '@/types/management'
+import type { ManagementProjectMember, ProjectMemberCandidate, ProjectRole } from '@/types/management'
 import { formatProjectRoleLabel, isProjectAdminRole, isProjectEditorRole } from '@/services/auth/permissions'
 
 function getRoleTone(role: string): 'info' | 'success' | 'warning' {
@@ -50,7 +50,7 @@ const memberQuery = ref('')
 const memberSearchInput = ref('')
 const userId = ref('')
 const userSearch = ref('')
-const userCandidates = ref<ManagementUser[]>([])
+const userCandidates = ref<ProjectMemberCandidate[]>([])
 const searchingUsers = ref(false)
 const role = ref<ProjectRole>('project_executor')
 const loading = ref(false)
@@ -60,7 +60,6 @@ const pendingDeleteMember = ref<ManagementProjectMember | null>(null)
 const error = ref('')
 const notice = ref('')
 
-const existingMemberUserIds = computed(() => new Set(items.value.map((item) => item.user_id)))
 const adminCount = computed(() => items.value.filter((item) => isProjectAdminRole(item.role)).length)
 const targetExistingMember = computed(() =>
   items.value.find((item) => item.user_id === userId.value.trim())
@@ -71,7 +70,7 @@ const downgradeLastAdminBlocked = computed(
     !isProjectAdminRole(role.value) &&
     adminCount.value <= 1
 )
-const canManageMembers = computed(() => authorization.can('project.member.write', projectId.value))
+const canManageMembers = computed(() => authorization.currentProjectCan('project.member.write'))
 const roleOptions: Array<{ value: ProjectRole; label: string }> = [
   { value: 'project_admin', label: formatProjectRoleLabel('project_admin') },
   { value: 'project_editor', label: formatProjectRoleLabel('project_editor') },
@@ -185,8 +184,8 @@ async function confirmDelete(member: ManagementProjectMember) {
   }
 }
 
-function selectCandidate(candidate: ManagementUser) {
-  userId.value = candidate.id
+function selectCandidate(candidate: ProjectMemberCandidate) {
+  userId.value = candidate.user_id
   userSearch.value = candidate.username
 }
 
@@ -221,17 +220,13 @@ watch(
     const timerId = window.setTimeout(async () => {
       searchingUsers.value = true
       try {
-        const payload = await listUsersPage({
+        const payload = await listProjectMemberCandidates(projectId.value, {
           limit: 20,
           offset: 0,
-          query: nextValue,
-          status: 'active',
-          excludeUserIds: Array.from(existingMemberUserIds.value)
+          query: nextValue
         })
         if (!cancelled) {
-          userCandidates.value = payload.items.filter(
-            (candidate) => !existingMemberUserIds.value.has(candidate.id)
-          )
+          userCandidates.value = payload.items
         }
       } catch {
         if (!cancelled) {
@@ -337,13 +332,13 @@ watch(
             >
               <button
                 v-for="candidate in userCandidates"
-                :key="candidate.id"
+                :key="candidate.user_id"
                 type="button"
                 class="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition hover:bg-white dark:hover:bg-dark-800"
                 @click="selectCandidate(candidate)"
               >
                 <span class="font-medium text-gray-900 dark:text-white">{{ candidate.username }}</span>
-                <span class="font-mono text-[11px] text-gray-400 dark:text-dark-400">{{ candidate.id }}</span>
+                <span class="font-mono text-[11px] text-gray-400 dark:text-dark-400">{{ candidate.user_id }}</span>
               </button>
             </div>
           </div>

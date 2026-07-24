@@ -1,5 +1,5 @@
 import { platformHttpClient } from '@/services/http/client'
-import type { ManagementProject, ManagementProjectListResponse } from '@/types/management'
+import type { ManagementProject, ManagementProjectListResponse, ProjectAccess } from '@/types/management'
 
 export async function listProjectsPage(options?: {
   limit?: number
@@ -55,4 +55,33 @@ export async function deleteProject(
 ): Promise<{ ok: boolean }> {
   const response = await platformHttpClient.delete(`/api/projects/${projectId}`)
   return response.data as { ok: boolean }
+}
+
+export async function archiveProject(projectId: string): Promise<ManagementProject> {
+  const response = await platformHttpClient.post(`/api/projects/${projectId}/archive`)
+  return response.data as ManagementProject
+}
+
+export async function restoreProject(projectId: string): Promise<ManagementProject> {
+  const response = await platformHttpClient.post(`/api/projects/${projectId}/restore`)
+  return response.data as ManagementProject
+}
+
+export async function getProjectAccess(projectId: string): Promise<ProjectAccess> {
+  const response = await platformHttpClient.get(`/api/projects/${projectId}/access`)
+  return response.data as ProjectAccess
+}
+
+export async function takeoverProject(projectId: string, reason: string) {
+  const response = await platformHttpClient.post(`/api/projects/${projectId}/takeover`, {
+    reason: reason.trim()
+  })
+  return response.data
+}
+
+export async function restoreProjectAdmin(projectId: string, userId: string) {
+  const response = await platformHttpClient.post(`/api/projects/${projectId}/admin-recovery`, {
+    user_id: userId
+  })
+  return response.data
 }

@@ -16,6 +16,7 @@ class StoredPlatformUser:
     platform_roles: tuple[str, ...]
     created_at: datetime | None
     updated_at: datetime | None
+    must_change_password: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +52,7 @@ class UsersRepositoryProtocol(Protocol):
         email: str | None,
         platform_roles: tuple[str, ...] = (),
         is_super_admin: bool,
+        must_change_password: bool = False,
     ) -> StoredPlatformUser: ...
 
     def update_user(
@@ -63,6 +65,7 @@ class UsersRepositoryProtocol(Protocol):
         platform_roles: tuple[str, ...],
         is_super_admin: bool,
         password_hash: str | None,
+        must_change_password: bool | None = None,
     ) -> StoredPlatformUser | None: ...
 
     def list_user_projects(self, *, user_id: UUID) -> list[StoredUserProjectMembership]: ...

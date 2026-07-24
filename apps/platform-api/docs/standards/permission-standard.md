@@ -46,18 +46,22 @@
 
 ## 3. Actor 模型
 
-后续所有权限判定统一基于 `ActorContext`：
+所有权限判定统一基于 `ActorContext`：
 
 - `user_id`
 - `subject`
 - `platform_roles`
-- `project_roles`
+- 当前请求项目对应的 `project_roles`
 
 来源规则：
 
 - 身份信息由 `identity` 模块解析
-- 项目归属由 `projects` 模块或请求上下文提供
+- 项目归属由 `projects` 模块按当前项目解析，不加载用户全部项目关系
+- 服务账号的项目角色来自显式 `service_account_project_grants`
 - policy engine 只消费 `ActorContext`，不依赖 FastAPI `Request`
+
+当前部署是单租户：租户固定为服务端默认租户 `__default`，客户端的
+`x-tenant-id` 不得影响授权、过滤、转发或审计归属。
 
 ## 4. 默认角色基线
 
@@ -82,7 +86,16 @@
 示例：
 
 - `platform.user.read`
-- `platform.user.write`
+- `platform.user.create`
+- `platform.user.profile.write`
+- `platform.user.status.write`
+- `platform.user.credential.reset`
+- `platform.user.role.write`
+- `platform.project.read`
+- `platform.project.create`
+- `platform.project.write`
+- `platform.project.takeover`
+- `platform.service_account.grant.write`
 - `platform.audit.read`
 - `platform.operation.read`
 - `platform.operation.write`
@@ -107,6 +120,14 @@
 3. 如果是项目级，必须先拿到当前 `project_id`
 4. 用 policy engine 给出 allow/deny
 5. deny 时抛显式错误码，并落审计
+
+## 6.1 平台项目治理与项目内容
+
+- 超级管理员可以查看全局项目元数据、创建、归档、恢复、删除项目和恢复管理员。
+- 超级管理员不自动获得项目知识库、助手、测试用例或 runtime 内容权限。
+- 接管项目必须调用独立接口并填写原因；成功后建立显式 `project_admin` 成员关系。
+- 项目归档后所有项目内容权限和服务账号 grant 暂停生效，恢复后重新按原成员/grant 判定。
+- 服务账号只有在当前项目存在活动 grant 时才获得对应项目角色，平台角色不能替代 grant。
 
 ## 7. 代码落点
 

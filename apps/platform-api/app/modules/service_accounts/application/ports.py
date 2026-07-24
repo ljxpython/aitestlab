@@ -34,6 +34,16 @@ class StoredServiceAccountToken:
     created_at: datetime
 
 
+@dataclass(frozen=True, slots=True)
+class StoredServiceAccountProjectGrant:
+    id: UUID
+    service_account_id: UUID
+    project_id: UUID
+    role: str
+    created_at: datetime
+    updated_at: datetime
+
+
 class ServiceAccountsRepositoryProtocol(Protocol):
     def list_service_accounts(
         self,

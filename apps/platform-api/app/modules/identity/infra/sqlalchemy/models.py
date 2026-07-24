@@ -66,6 +66,9 @@ class UserRecord(Base):
         nullable=False,
         default=list,
     )
+    must_change_password: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    failed_login_attempts: Mapped[int] = mapped_column(nullable=False, default=0)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -98,7 +101,9 @@ class RefreshTokenRecord(Base):
         nullable=False,
     )
     token_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    family_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,

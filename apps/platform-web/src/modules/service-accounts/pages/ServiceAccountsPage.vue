@@ -19,14 +19,22 @@ import { usePagination } from '@/composables/usePagination'
 import {
   createServiceAccount,
   createServiceAccountToken,
+  deleteServiceAccountProjectGrant,
+  listServiceAccountProjectGrants,
   listServiceAccounts,
   revokeServiceAccountToken,
+  upsertServiceAccountProjectGrant,
   updateServiceAccount
 } from '@/services/system/service-accounts.service'
-import { formatPlatformRoleLabel } from '@/services/auth/permissions'
+import { formatPlatformRoleLabel, formatProjectRoleLabel } from '@/services/auth/permissions'
 import { getPlatformConfigSnapshot } from '@/services/system/platform-config.service'
 import { useUiStore } from '@/stores/ui'
-import type { ManagementServiceAccount, ManagementServiceAccountToken } from '@/types/management'
+import type {
+  ManagementServiceAccount,
+  ManagementServiceAccountToken,
+  ProjectRole,
+  ServiceAccountProjectGrant
+} from '@/types/management'
 import { copyText } from '@/utils/clipboard'
 import { formatDateTime, shortId } from '@/utils/format'
 import { resolvePlatformHttpErrorMessage } from '@/utils/http-error'
@@ -36,6 +44,12 @@ type RevokeTokenTarget = {
   accountName: string
   tokenId: string
   tokenName: string
+}
+
+type DeleteGrantTarget = {
+  accountId: string
+  accountName: string
+  projectId: string
 }
 
 const uiStore = useUiStore()
@@ -63,15 +77,22 @@ const tokenDialogOpen = ref(false)
 const detailDrawerOpen = ref(false)
 const editDialogOpen = ref(false)
 const revokeConfirmOpen = ref(false)
+const deleteGrantConfirmOpen = ref(false)
 const selectedAccount = ref<ManagementServiceAccount | null>(null)
 const pendingRevokeTarget = ref<RevokeTokenTarget | null>(null)
+const pendingDeleteGrant = ref<DeleteGrantTarget | null>(null)
 const tokenSecret = ref('')
+const projectGrants = ref<ServiceAccountProjectGrant[]>([])
+const loadingProjectGrants = ref(false)
+const savingProjectGrant = ref(false)
+const projectGrantError = ref('')
 const SERVICE_ACCOUNTS_FETCH_LIMIT = 200
 const pagination = usePagination({
   initialPageSize: 10,
   storageKey: 'pw:service-accounts:page-size'
 })
 const canManageServiceAccounts = computed(() => authorization.can('platform.service_account.write'))
+const canManageProjectGrants = computed(() => authorization.can('platform.service_account.grant.write'))
 
 const createForm = ref({
   name: '',
@@ -89,10 +110,21 @@ const tokenForm = ref({
   expires_in_days: '90'
 })
 
+const projectGrantForm = ref<{ project_id: string; role: ProjectRole }>({
+  project_id: '',
+  role: 'project_executor'
+})
+
 const roleOptions = [
   { value: 'platform_viewer', label: formatPlatformRoleLabel('platform_viewer') },
   { value: 'platform_operator', label: formatPlatformRoleLabel('platform_operator') },
   { value: 'platform_super_admin', label: formatPlatformRoleLabel('platform_super_admin') }
+]
+
+const projectRoleOptions = [
+  { value: 'project_admin', label: formatProjectRoleLabel('project_admin') },
+  { value: 'project_editor', label: formatProjectRoleLabel('project_editor') },
+  { value: 'project_executor', label: formatProjectRoleLabel('project_executor') }
 ]
 
 const statusOptions = [
@@ -254,10 +286,106 @@ function openEditDialog(account: ManagementServiceAccount) {
   editDialogOpen.value = true
 }
 
+async function loadProjectGrants(accountId: string) {
+  loadingProjectGrants.value = true
+  projectGrantError.value = ''
+  try {
+    projectGrants.value = await listServiceAccountProjectGrants(accountId)
+  } catch (loadError) {
+    projectGrants.value = []
+    projectGrantError.value = resolvePlatformHttpErrorMessage(
+      loadError,
+      '项目授权加载失败',
+      'service account project grant'
+    )
+  } finally {
+    loadingProjectGrants.value = false
+  }
+}
+
 function openAccountDetail(account: ManagementServiceAccount) {
   selectedAccount.value = account
   tokenSearch.value = ''
+  projectGrantForm.value = { project_id: '', role: 'project_executor' }
+  projectGrants.value = []
+  projectGrantError.value = ''
   detailDrawerOpen.value = true
+  if (canManageProjectGrants.value) {
+    void loadProjectGrants(account.id)
+  }
+}
+
+async function saveProjectGrant() {
+  const account = selectedAccount.value
+  const projectId = projectGrantForm.value.project_id.trim()
+  if (!account || !projectId || !canManageProjectGrants.value) {
+    return
+  }
+
+  savingProjectGrant.value = true
+  projectGrantError.value = ''
+  try {
+    await upsertServiceAccountProjectGrant(account.id, projectId, projectGrantForm.value.role)
+    projectGrantForm.value = { project_id: '', role: 'project_executor' }
+    await loadProjectGrants(account.id)
+    uiStore.pushToast({
+      type: 'success',
+      title: '项目授权已保存',
+      message: `${account.name} / ${projectId}`
+    })
+  } catch (saveError) {
+    projectGrantError.value = resolvePlatformHttpErrorMessage(
+      saveError,
+      '项目授权保存失败',
+      'service account project grant'
+    )
+  } finally {
+    savingProjectGrant.value = false
+  }
+}
+
+function requestDeleteProjectGrant(grant: ServiceAccountProjectGrant) {
+  const account = selectedAccount.value
+  if (!account || !canManageProjectGrants.value) {
+    return
+  }
+  pendingDeleteGrant.value = {
+    accountId: account.id,
+    accountName: account.name,
+    projectId: grant.project_id
+  }
+  deleteGrantConfirmOpen.value = true
+}
+
+async function confirmDeleteProjectGrant() {
+  const target = pendingDeleteGrant.value
+  if (!target || !canManageProjectGrants.value) {
+    return
+  }
+
+  projectGrantError.value = ''
+  try {
+    await deleteServiceAccountProjectGrant(target.accountId, target.projectId)
+    deleteGrantConfirmOpen.value = false
+    pendingDeleteGrant.value = null
+    await loadProjectGrants(target.accountId)
+    uiStore.pushToast({
+      type: 'success',
+      title: '项目授权已删除',
+      message: `${target.accountName} / ${target.projectId}`
+    })
+  } catch (deleteError) {
+    projectGrantError.value = resolvePlatformHttpErrorMessage(
+      deleteError,
+      '项目授权删除失败',
+      'service account project grant'
+    )
+  }
+}
+
+function closeDeleteProjectGrantDialog() {
+  deleteGrantConfirmOpen.value = false
+  pendingDeleteGrant.value = null
 }
 
 async function submitCreateForm() {
@@ -491,7 +619,7 @@ onMounted(() => {
     <GuidePanel
       guide-id="service-account-governance"
       title="治理边界说明"
-      description="当前只做平台级 service account，不做项目级细粒度授权，不做 token 明文二次查询。token 只会在创建当下返回一次，这个规矩别瞎破。"
+      description="平台角色、项目授权和 API key 生命周期分开治理。项目访问必须显式授予，token 明文仍只在创建当下返回一次。"
       tone="info"
     />
 
@@ -643,6 +771,87 @@ onMounted(() => {
               {{ account.status === 'active' ? '停用' : '启用' }}
             </BaseButton>
           </div>
+        </div>
+
+        <div class="space-y-3">
+          <div>
+            <div class="text-xs font-semibold uppercase tracking-[0.16em] text-gray-400 dark:text-dark-400">
+              Project Grants
+            </div>
+            <div class="mt-1 text-xs text-gray-500 dark:text-dark-300">
+              项目授权与 API key 分开管理；删除授权后现有 key 无需轮换。
+            </div>
+          </div>
+
+          <div
+            v-if="!canManageProjectGrants"
+            class="pw-card-subtle px-4 py-4 text-sm text-gray-500 dark:text-dark-300"
+          >
+            当前账号没有管理项目授权的权限。
+          </div>
+
+          <StateBanner
+            v-if="projectGrantError"
+            title="项目授权操作失败"
+            :description="projectGrantError"
+            variant="danger"
+          />
+
+          <div
+            v-if="canManageProjectGrants"
+            class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_200px_auto]"
+          >
+            <BaseInput
+              v-model="projectGrantForm.project_id"
+              placeholder="项目 UUID"
+            />
+            <BaseSelect
+              v-model="projectGrantForm.role"
+              :options="projectRoleOptions"
+            />
+            <BaseButton
+              :disabled="savingProjectGrant || !projectGrantForm.project_id.trim()"
+              @click="saveProjectGrant"
+            >
+              {{ savingProjectGrant ? '保存中...' : '保存授权' }}
+            </BaseButton>
+          </div>
+
+          <div
+            v-if="canManageProjectGrants && loadingProjectGrants"
+            class="pw-card-subtle h-20 animate-pulse"
+          />
+          <EmptyState
+            v-else-if="canManageProjectGrants && !projectGrants.length"
+            title="该账号暂无项目授权"
+            description="没有 grant 时，API key 不能访问任何项目内容。"
+            icon="project"
+          />
+          <template v-else-if="canManageProjectGrants">
+            <article
+              v-for="grant in projectGrants"
+              :key="grant.project_id"
+              class="pw-card-subtle px-4 py-4"
+            >
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="break-all text-sm font-semibold text-gray-900 dark:text-white">
+                    {{ grant.project_id }}
+                  </div>
+                  <div class="mt-1 text-xs text-gray-500 dark:text-dark-300">
+                    {{ formatProjectRoleLabel(grant.role) }} · 更新于 {{ formatDateTime(grant.updated_at) }}
+                  </div>
+                </div>
+                <BaseButton
+                  variant="secondary"
+                  :disabled="!canManageProjectGrants"
+                  @click="requestDeleteProjectGrant(grant)"
+                >
+                  删除授权
+                </BaseButton>
+              </div>
+            </article>
+          </template>
         </div>
 
         <div class="space-y-3">
@@ -1025,6 +1234,19 @@ onMounted(() => {
       danger
       @cancel="closeRevokeDialog"
       @confirm="confirmRevokeToken"
+    />
+
+    <ConfirmDialog
+      :show="deleteGrantConfirmOpen"
+      title="删除项目授权"
+      :message="pendingDeleteGrant
+        ? `删除后 ${pendingDeleteGrant.accountName} 将立即失去项目 ${pendingDeleteGrant.projectId} 的访问权，确定继续吗？`
+        : '删除后该项目授权将立即失效。'"
+      confirm-text="确认删除"
+      cancel-text="取消"
+      danger
+      @cancel="closeDeleteProjectGrantDialog"
+      @confirm="confirmDeleteProjectGrant"
     />
   </section>
 </template>

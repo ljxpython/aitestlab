@@ -30,3 +30,15 @@ class ListProjectMembersQuery(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     query: str | None = Field(default=None, max_length=128)
+
+
+class ProjectTakeoverCommand(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class RestoreProjectAdminCommand(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    user_id: str = Field(min_length=1)

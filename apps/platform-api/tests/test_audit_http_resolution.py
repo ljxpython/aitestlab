@@ -57,6 +57,84 @@ class AuditHttpResolutionTest(unittest.TestCase):
         self.assertEqual(resolved.project_id, "project-2")
         self.assertEqual(resolved.metadata["response_size"], 64)
 
+    def test_project_lifecycle_and_service_account_grant_use_semantic_actions(self) -> None:
+        archive = resolve_http_audit(
+            request=AuditHttpRequest(
+                method="POST",
+                path="/api/projects/project-1/archive",
+                query_params={},
+                query_string=None,
+                state_project_id="project-1",
+                client_ip=None,
+                user_agent=None,
+                response_content_length=None,
+            ),
+            response_payload=None,
+            actor_user_id="admin-1",
+            status_code=200,
+            result=AuditResult.SUCCESS,
+        )
+        grant = resolve_http_audit(
+            request=AuditHttpRequest(
+                method="PUT",
+                path="/api/service-accounts/account-1/project-grants/project-1",
+                query_params={},
+                query_string=None,
+                state_project_id=None,
+                client_ip=None,
+                user_agent=None,
+                response_content_length=None,
+            ),
+            response_payload=None,
+            actor_user_id="admin-1",
+            status_code=200,
+            result=AuditResult.SUCCESS,
+        )
+
+        self.assertEqual(archive.action, "project.project.archived")
+        self.assertEqual(archive.target_id, "project-1")
+        self.assertEqual(grant.action, "service_account.project_grant.upserted")
+        self.assertEqual(grant.target_id, "project-1")
+
+    def test_user_patch_accepts_only_controlled_semantic_action_override(self) -> None:
+        resolved = resolve_http_audit(
+            request=AuditHttpRequest(
+                method="PATCH",
+                path="/api/users/user-1",
+                query_params={},
+                query_string=None,
+                state_project_id=None,
+                client_ip=None,
+                user_agent=None,
+                response_content_length=None,
+                action_override="user.status.updated",
+            ),
+            response_payload=None,
+            actor_user_id="admin-1",
+            status_code=200,
+            result=AuditResult.SUCCESS,
+        )
+        rejected_override = resolve_http_audit(
+            request=AuditHttpRequest(
+                method="PATCH",
+                path="/api/users/user-1",
+                query_params={},
+                query_string=None,
+                state_project_id=None,
+                client_ip=None,
+                user_agent=None,
+                response_content_length=None,
+                action_override="attacker.custom.action",
+            ),
+            response_payload=None,
+            actor_user_id="admin-1",
+            status_code=200,
+            result=AuditResult.SUCCESS,
+        )
+
+        self.assertEqual(resolved.action, "user.status.updated")
+        self.assertEqual(rejected_override.action, "user.item.updated")
+
 
 if __name__ == "__main__":
     unittest.main()

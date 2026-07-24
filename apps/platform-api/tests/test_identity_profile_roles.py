@@ -78,16 +78,16 @@ class IdentityProfileRolesTest(unittest.TestCase):
             "Content-Type": "application/json",
         }
 
-    def test_identity_me_returns_project_roles(self) -> None:
+    def test_identity_me_omits_project_roles(self) -> None:
         response = self.client.get("/api/identity/me", headers=self._auth_headers())
 
         self.assertEqual(response.status_code, 200, response.text)
         payload = response.json()
         self.assertEqual(payload["username"], self.username)
         self.assertEqual(payload["platform_roles"], [])
-        self.assertEqual(payload["project_roles"][self.project_id], ["project_admin"])
+        self.assertNotIn("project_roles", payload)
 
-    def test_login_response_user_contains_project_roles(self) -> None:
+    def test_login_response_omits_project_roles_and_access_is_project_scoped(self) -> None:
         response = self.client.post(
             "/api/identity/session",
             json={
@@ -100,7 +100,16 @@ class IdentityProfileRolesTest(unittest.TestCase):
         payload = response.json()
         self.assertEqual(payload["user"]["username"], self.username)
         self.assertEqual(payload["user"]["platform_roles"], [])
-        self.assertEqual(payload["user"]["project_roles"][self.project_id], ["project_admin"])
+        self.assertNotIn("project_roles", payload["user"])
+
+        access_response = self.client.get(
+            f"/api/projects/{self.project_id}/access",
+            headers=self._auth_headers(),
+        )
+        self.assertEqual(access_response.status_code, 200, access_response.text)
+        access = access_response.json()
+        self.assertEqual(access["roles"], ["project_admin"])
+        self.assertIn("project.member.write", access["permissions"])
 
 
 if __name__ == "__main__":

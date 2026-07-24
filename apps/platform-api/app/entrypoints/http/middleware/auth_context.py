@@ -31,6 +31,7 @@ def _load_actor(
     *,
     session_factory: sessionmaker[Session] | None,
     user_id: str,
+    project_id: str | None,
 ) -> ActorContext | None:
     if session_factory is None:
         return None
@@ -46,15 +47,25 @@ def _load_actor(
         user = repository.get_user_by_id(normalized_user_id)
         if user is None or user.status != "active":
             return None
-        projects_repository = SqlAlchemyProjectsRepository(session)
+        project_roles: dict[str, tuple[str, ...]] = {}
+        if project_id:
+            try:
+                project_uuid = UUID(project_id)
+            except ValueError:
+                return None
+            role = SqlAlchemyProjectsRepository(session).get_project_member_role(
+                project_id=project_uuid,
+                user_id=normalized_user_id,
+            )
+            if role is not None:
+                project_roles[project_id] = (role.value,)
         return ActorContext(
             user_id=str(user.id),
             subject=user.external_subject,
             email=user.email,
             platform_roles=user.platform_roles,
-            project_roles=projects_repository.list_user_project_roles(
-                user_id=normalized_user_id
-            ),
+            must_change_password=user.must_change_password,
+            project_roles=project_roles,
         )
     finally:
         session.close()
@@ -97,6 +108,21 @@ def register_auth_context_middleware(app: FastAPI, settings: Settings) -> None:
 
     @app.middleware("http")
     async def auth_context_middleware(request: Request, call_next):
+        header_project_id = request.headers.get("x-project-id")
+        context_project_id = request.state.platform_context.project.project_id
+        path_segments = [segment for segment in request.url.path.strip("/").split("/") if segment]
+        route_project_id = (
+            path_segments[2]
+            if len(path_segments) >= 3 and path_segments[:2] == ["api", "projects"]
+            else None
+        )
+        if header_project_id and route_project_id and header_project_id.strip() != route_project_id:
+            return build_error_response(
+                status_code=400,
+                code="project_scope_mismatch",
+                message="Route and header project scopes do not match",
+                request_id=getattr(request.state, "request_id", None),
+            )
         if (
             request.method.upper() == "OPTIONS"
             or request.url.path in public_paths
@@ -149,7 +175,12 @@ def register_auth_context_middleware(app: FastAPI, settings: Settings) -> None:
                     request_id=getattr(request.state, "request_id", None),
                     headers={"WWW-Authenticate": "Bearer"},
                 )
-            actor = _load_actor(session_factory=session_factory, user_id=user_id)
+            project_id = context_project_id
+            actor = _load_actor(
+                session_factory=session_factory,
+                user_id=user_id,
+                project_id=project_id,
+            )
             if actor is None:
                 return build_error_response(
                     status_code=403,
@@ -158,7 +189,10 @@ def register_auth_context_middleware(app: FastAPI, settings: Settings) -> None:
                     request_id=getattr(request.state, "request_id", None),
                 )
         elif api_key:
-            actor = ServiceAccountsService(session_factory=session_factory).authenticate_api_key(api_key)
+            actor = ServiceAccountsService(session_factory=session_factory).authenticate_api_key(
+                api_key,
+                project_id=request.state.platform_context.project.project_id,
+            )
             if actor is None:
                 return build_error_response(
                     status_code=401,

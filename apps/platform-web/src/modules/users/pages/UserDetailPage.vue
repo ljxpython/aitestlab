@@ -25,7 +25,7 @@ import { useUiStore } from '@/stores/ui'
 import type { ManagementAuditRow, ManagementUser, ManagementUserProject, PlatformRole, ProjectRole } from '@/types/management'
 import { copyText } from '@/utils/clipboard'
 import { formatDateTime, shortId } from '@/utils/format'
-import { getUser, listUserProjects, updateUser } from '@/services/users/users.service'
+import { getUser, listUserProjects, resetUserPassword, updateUser } from '@/services/users/users.service'
 
 function getRoleTone(role: string): 'info' | 'success' | 'warning' {
   if (isProjectAdminRole(role as ProjectRole)) {
@@ -74,7 +74,10 @@ const projectSearchInput = ref('')
 const projectQuery = ref('')
 const auditSearchInput = ref('')
 const auditQuery = ref('')
-const canManageUsers = computed(() => authorization.can('platform.user.write'))
+const canEditProfile = computed(() => authorization.can('platform.user.profile.write'))
+const canEditStatus = computed(() => authorization.can('platform.user.status.write'))
+const canAssignRole = computed(() => authorization.can('platform.user.role.write'))
+const canResetPassword = computed(() => authorization.can('platform.user.credential.reset'))
 const platformRoleOptions: Array<{ value: PlatformRole | ''; label: string }> = [
   { value: '', label: '无平台角色' },
   { value: 'platform_viewer', label: formatPlatformRoleLabel('platform_viewer') },
@@ -182,7 +185,7 @@ async function saveProfile() {
     return
   }
 
-  if (!canManageUsers.value) {
+  if (!canEditProfile.value && !canEditStatus.value && !canAssignRole.value) {
     error.value = '当前账号没有用户治理写权限'
     return
   }
@@ -199,10 +202,10 @@ async function saveProfile() {
 
   try {
     const updated = await updateUser(user.value.id, {
-      username: normalizedUsername,
-      status: status.value,
-      platform_roles: platformRole.value ? [platformRole.value] : [],
-      is_super_admin: platformRole.value === 'platform_super_admin'
+      username: canEditProfile.value ? normalizedUsername : undefined,
+      status: canEditStatus.value ? status.value : undefined,
+      platform_roles: canAssignRole.value ? (platformRole.value ? [platformRole.value] : []) : undefined,
+      is_super_admin: canAssignRole.value ? platformRole.value === 'platform_super_admin' : undefined
     })
     user.value = updated
     platformRole.value = primaryPlatformRole(updated) || ''
@@ -219,7 +222,7 @@ async function updatePassword() {
     return
   }
 
-  if (!canManageUsers.value) {
+  if (!canResetPassword.value) {
     error.value = '当前账号没有用户治理写权限'
     return
   }
@@ -239,10 +242,7 @@ async function updatePassword() {
   notice.value = ''
 
   try {
-    await updateUser(
-      user.value.id,
-      { password: newPassword.value }
-    )
+    user.value = await resetUserPassword(user.value.id, newPassword.value)
     newPassword.value = ''
     confirmNewPassword.value = ''
     notice.value = '密码已更新'
@@ -363,14 +363,14 @@ watch(
                 <input
                   v-model="username"
                   class="pw-input"
-                  :disabled="savingProfile || !canManageUsers"
+                  :disabled="savingProfile || !canEditProfile"
                 >
               </label>
               <label class="block">
                 <span class="pw-input-label">状态</span>
                 <BaseSelect
                   v-model="status"
-                  :disabled="savingProfile || !canManageUsers"
+                  :disabled="savingProfile || !canEditStatus"
                 >
                   <option value="active">active</option>
                   <option value="disabled">disabled</option>
@@ -382,7 +382,7 @@ watch(
               <span class="pw-input-label">平台角色</span>
               <BaseSelect
                 v-model="platformRole"
-                :disabled="savingProfile || !canManageUsers"
+                :disabled="savingProfile || !canAssignRole"
                 :options="platformRoleOptions"
               />
             </label>
@@ -427,10 +427,10 @@ watch(
 
             <div class="flex justify-end">
               <BaseButton
-                :disabled="savingProfile || !canManageUsers"
+                :disabled="savingProfile || (!canEditProfile && !canEditStatus && !canAssignRole)"
                 @click="saveProfile"
               >
-                {{ canManageUsers ? (savingProfile ? '保存中...' : '保存资料') : '当前账号只读' }}
+                {{ (canEditProfile || canEditStatus || canAssignRole) ? (savingProfile ? '保存中...' : '保存资料') : '当前账号只读' }}
               </BaseButton>
             </div>
           </SurfaceCard>
@@ -452,7 +452,7 @@ watch(
                   v-model="newPassword"
                   type="password"
                   class="pw-input"
-                  :disabled="updatingPassword || !canManageUsers"
+                  :disabled="updatingPassword || !canResetPassword"
                 >
               </label>
               <label class="block">
@@ -461,7 +461,7 @@ watch(
                   v-model="confirmNewPassword"
                   type="password"
                   class="pw-input"
-                  :disabled="updatingPassword || !canManageUsers"
+                  :disabled="updatingPassword || !canResetPassword"
                 >
               </label>
             </div>
@@ -469,16 +469,16 @@ watch(
             <div class="flex flex-wrap justify-end gap-3">
               <BaseButton
                 variant="secondary"
-                :disabled="updatingPassword || !canManageUsers"
+                :disabled="updatingPassword || !canResetPassword"
                 @click="clearPasswordInputs"
               >
                 清空
               </BaseButton>
               <BaseButton
-                :disabled="updatingPassword || !canManageUsers"
+                :disabled="updatingPassword || !canResetPassword"
                 @click="updatePassword"
               >
-                {{ canManageUsers ? (updatingPassword ? '更新中...' : '更新密码') : '当前账号只读' }}
+                {{ canResetPassword ? (updatingPassword ? '更新中...' : '重置密码') : '当前账号无凭据重置权限' }}
               </BaseButton>
             </div>
           </SurfaceCard>

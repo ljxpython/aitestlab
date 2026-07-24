@@ -1,6 +1,6 @@
 import { platformHttpClient } from '@/services/http/client'
 import { normalizeProjectRole } from '@/services/auth/permissions'
-import type { ManagementProjectMember } from '@/types/management'
+import type { ManagementProjectMember, PaginatedResponse, ProjectMemberCandidate } from '@/types/management'
 
 type MemberListResponse = {
   items: ManagementProjectMember[]
@@ -53,4 +53,18 @@ export async function deleteProjectMember(
   const response = await platformHttpClient.delete(`/api/projects/${projectId}/members/${userId}`)
 
   return response.data as { ok: boolean }
+}
+
+export async function listProjectMemberCandidates(
+  projectId: string,
+  options?: { query?: string; limit?: number; offset?: number }
+): Promise<PaginatedResponse<ProjectMemberCandidate>> {
+  const response = await platformHttpClient.get(`/api/projects/${projectId}/member-candidates`, {
+    params: {
+      query: options?.query?.trim() || undefined,
+      limit: options?.limit ?? 50,
+      offset: options?.offset ?? 0
+    }
+  })
+  return response.data as PaginatedResponse<ProjectMemberCandidate>
 }

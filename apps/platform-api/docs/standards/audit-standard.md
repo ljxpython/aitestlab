@@ -36,6 +36,11 @@ action 统一使用：
 - `assistant.updated`
 - `catalog.graph.refresh_requested`
 - `runtime.thread.cancelled`
+- `user.credentials.reset`
+- `project.project.archived`
+- `project.project.restored`
+- `project.takeover.completed`
+- `service_account.project_grant.upserted`
 
 禁止继续用一大片 `http.request` 糊弄过去。
 
@@ -114,6 +119,10 @@ operation/job 必须单独记录生命周期事件：
 - 完整 Authorization header
 
 需要记录时只能做掩码或 hash 摘要。
+
+项目接管允许在 metadata 中记录非空 `reason`。审计 metadata 采用允许列表，
+不得因为“方便排查”直接复制请求体。租户归属固定使用服务端默认租户，不能使用
+客户端提交的 `x-tenant-id`。
 
 ## 8. 代码落点
 

@@ -30,6 +30,7 @@ def _to_user(record: UserRecord) -> StoredPlatformUser:
         platform_roles=platform_roles,
         created_at=record.created_at,
         updated_at=record.updated_at,
+        must_change_password=record.must_change_password,
     )
 
 
@@ -81,6 +82,7 @@ class SqlAlchemyUsersRepository:
         email: str | None,
         platform_roles: tuple[str, ...] = (),
         is_super_admin: bool,
+        must_change_password: bool = False,
     ) -> StoredPlatformUser:
         normalized_roles = normalize_user_platform_roles(
             platform_roles,
@@ -94,6 +96,7 @@ class SqlAlchemyUsersRepository:
             status="active",
             is_super_admin=has_super_admin_platform_role(normalized_roles),
             platform_roles_json=list(normalized_roles),
+            must_change_password=must_change_password,
         )
         self.session.add(record)
         self.session.flush()
@@ -109,6 +112,7 @@ class SqlAlchemyUsersRepository:
         platform_roles: tuple[str, ...],
         is_super_admin: bool,
         password_hash: str | None,
+        must_change_password: bool | None = None,
     ) -> StoredPlatformUser | None:
         record = self.session.get(UserRecord, user_id)
         if record is None:
@@ -125,6 +129,8 @@ class SqlAlchemyUsersRepository:
         record.platform_roles_json = list(normalized_roles)
         if password_hash:
             record.password_hash = password_hash
+        if must_change_password is not None:
+            record.must_change_password = must_change_password
         self.session.flush()
         return _to_user(record)
 

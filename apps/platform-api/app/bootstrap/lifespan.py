@@ -8,7 +8,6 @@ from fastapi import FastAPI
 from app.core.config import Settings
 from app.core.db import build_engine, build_session_factory, create_core_tables
 from app.modules.identity.application.service import IdentityService
-from app.modules.projects.infra.sqlalchemy.repository import SqlAlchemyProjectsRepository
 
 
 @asynccontextmanager
@@ -26,7 +25,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             service = IdentityService(
                 settings=settings,
                 session_factory=session_factory,
-                project_roles_reader_factory=SqlAlchemyProjectsRepository,
             )
             await service.ensure_bootstrap_admin()
 

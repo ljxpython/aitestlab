@@ -65,6 +65,24 @@ class UserPlatformRolesApiTest(unittest.TestCase):
             "Content-Type": "application/json",
         }
 
+    def _create_operator(self, username: str) -> tuple[str, str]:
+        with session_scope(self._session_factory) as session:
+            user = SqlAlchemyIdentityRepository(session).create_user(
+                username=username,
+                password_hash=hash_password("operator123456"),
+                external_subject=username,
+                email=None,
+                platform_roles=("platform_operator",),
+                is_super_admin=False,
+            )
+            user_id = str(user.id)
+        token = create_access_token(
+            user_id=user_id,
+            username=username,
+            settings=self.app.state.settings,
+        )
+        return user_id, token
+
     def test_create_update_and_resolve_user_platform_roles(self) -> None:
         create_response = self.client.post(
             "/api/users",
@@ -121,22 +139,7 @@ class UserPlatformRolesApiTest(unittest.TestCase):
         self.assertEqual(payload["error"]["code"], "last_super_admin_protected")
 
     def test_operator_cannot_create_or_promote_super_admin(self) -> None:
-        operator_response = self.client.post(
-            "/api/users",
-            headers=self._auth_headers(),
-            json={
-                "username": "limited-operator",
-                "password": "operator123456",
-                "platform_roles": ["platform_operator"],
-            },
-        )
-        self.assertEqual(operator_response.status_code, 200, operator_response.text)
-        operator_id = operator_response.json()["id"]
-        operator_token = create_access_token(
-            user_id=operator_id,
-            username="limited-operator",
-            settings=self.app.state.settings,
-        )
+        operator_id, operator_token = self._create_operator("limited-operator")
 
         create_response = self.client.post(
             "/api/users",
@@ -163,6 +166,35 @@ class UserPlatformRolesApiTest(unittest.TestCase):
         )
         self.assertEqual(demote_response.status_code, 403, demote_response.text)
 
+    def test_operator_can_manage_plain_users_but_cannot_reset_credentials(self) -> None:
+        _, operator_token = self._create_operator("governance-operator")
+
+        created = self.client.post(
+            "/api/users",
+            headers=self._auth_headers(operator_token),
+            json={"username": "plain-user", "password": "plain-user123"},
+        )
+        self.assertEqual(created.status_code, 200, created.text)
+        self.assertEqual(created.json()["platform_roles"], [])
+        self.assertFalse(created.json()["must_change_password"])
+        plain_user_id = created.json()["id"]
+
+        updated = self.client.patch(
+            f"/api/users/{plain_user_id}",
+            headers=self._auth_headers(operator_token),
+            json={"username": "plain-user-renamed", "status": "disabled"},
+        )
+        self.assertEqual(updated.status_code, 200, updated.text)
+        self.assertEqual(updated.json()["username"], "plain-user-renamed")
+        self.assertEqual(updated.json()["status"], "disabled")
+
+        reset = self.client.post(
+            f"/api/users/{plain_user_id}/credentials/reset",
+            headers=self._auth_headers(operator_token),
+            json={"temporary_password": "replacement123"},
+        )
+        self.assertEqual(reset.status_code, 403, reset.text)
+
     def test_create_user_rejects_short_password(self) -> None:
         response = self.client.post(
             "/api/users",
@@ -171,6 +203,64 @@ class UserPlatformRolesApiTest(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 422, response.text)
+
+    def test_reset_and_disable_revoke_existing_sessions(self) -> None:
+        created = self.client.post(
+            "/api/users",
+            headers=self._auth_headers(),
+            json={"username": "session-user", "password": "temporary123"},
+        )
+        user_id = created.json()["id"]
+        login = self.client.post(
+            "/api/identity/session",
+            json={"username": "session-user", "password": "temporary123"},
+        )
+        access_token = login.json()["tokens"]["access_token"]
+        refresh_token = login.json()["tokens"]["refresh_token"]
+
+        reset = self.client.post(
+            f"/api/users/{user_id}/credentials/reset",
+            headers=self._auth_headers(),
+            json={"temporary_password": "replacement123"},
+        )
+        self.assertEqual(reset.status_code, 200, reset.text)
+        self.assertFalse(reset.json()["must_change_password"])
+        old_refresh = self.client.post(
+            "/api/identity/session/refresh",
+            json={"refresh_token": refresh_token},
+        )
+        self.assertEqual(old_refresh.status_code, 401, old_refresh.text)
+
+        changed_login = self.client.post(
+            "/api/identity/session",
+            json={"username": "session-user", "password": "replacement123"},
+        )
+        changed_access = changed_login.json()["tokens"]["access_token"]
+        changed_refresh = changed_login.json()["tokens"]["refresh_token"]
+        disabled = self.client.patch(
+            f"/api/users/{user_id}",
+            headers=self._auth_headers(),
+            json={"status": "disabled"},
+        )
+        self.assertEqual(disabled.status_code, 200, disabled.text)
+        access_denied = self.client.get(
+            "/api/identity/me",
+            headers={"Authorization": f"Bearer {changed_access}"},
+        )
+        self.assertEqual(access_denied.status_code, 403, access_denied.text)
+        self.assertEqual(access_denied.json()["error"]["code"], "user_not_active")
+        refresh_denied = self.client.post(
+            "/api/identity/session/refresh",
+            json={"refresh_token": changed_refresh},
+        )
+        self.assertEqual(refresh_denied.status_code, 401, refresh_denied.text)
+
+        old_access_denied = self.client.get(
+            "/api/identity/me",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        self.assertEqual(old_access_denied.status_code, 403, old_access_denied.text)
+        self.assertEqual(old_access_denied.json()["error"]["code"], "user_not_active")
 
 
 if __name__ == "__main__":

@@ -279,6 +279,37 @@ OpenSpec 负责 change lifecycle；下面这些仍由仓库 Harness 负责：
 `.harness/plans/` 再复制一套 PRD/TODO。多个真实 change 反复暴露同一缺口后，
 再评估自定义 schema。
 
+### 5.1 OpenSpec 文档语言
+
+OpenSpec 标准产物使用中文正文，开发人员和 LLM 直接读取同一套权威内容。不要
+再生成完整英文镜像、中文镜像或 `summary.zh-CN.md`，否则既增加上下文成本，又
+制造容易漂移的第二份事实源。
+
+下列机器结构和技术标识仍保留英文：
+
+- 标准文件名，例如 `proposal.md`、`design.md`、`tasks.md`
+- schema 关键字，例如 `## ADDED Requirements`、`### Requirement:`、
+  `#### Scenario:`、`WHEN` 和 `THEN`
+- 任务复选框格式 `- [ ]`
+- 代码标识、路径、命令、API 名称和协议字段
+
+示例：
+
+```markdown
+## ADDED Requirements
+
+### Requirement: 用户可以导出数据
+系统 SHALL 允许用户导出 CSV 文件。
+
+#### Scenario: 导出成功
+- **WHEN** 用户点击“导出”
+- **THEN** 系统下载包含用户数据的 CSV 文件
+```
+
+现有 change 无需批量迁移；新建或主动更新的 change 采用中文正文。是否增加或
+减少 token，必须用实际模型 tokenizer 对同等语义的中英文内容测量；没有测量就
+不要写具体差异或百分比。
+
 ## 6. Ponytail 和 Caveman 怎么参与
 
 它们都不是 Harness 或 SDD 框架，也不管理 OpenSpec change：

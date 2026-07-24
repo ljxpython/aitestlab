@@ -89,3 +89,13 @@ export async function updateUser(
   const response = await platformHttpClient.patch(`/api/users/${userId}`, payload)
   return normalizeManagementUser(response.data as ManagementUser)
 }
+
+export async function resetUserPassword(
+  userId: string,
+  temporaryPassword: string
+): Promise<ManagementUser> {
+  const response = await platformHttpClient.post(`/api/users/${userId}/credentials/reset`, {
+    temporary_password: temporaryPassword
+  })
+  return normalizeManagementUser(response.data as ManagementUser)
+}

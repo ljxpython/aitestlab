@@ -83,6 +83,8 @@ def _write_audit_event(
                 client_ip=request.client.host if request.client else None,
                 user_agent=request.headers.get("user-agent") or None,
                 response_content_length=getattr(request.state, "response_content_length", None),
+                metadata=getattr(request.state, "audit_metadata", None),
+                action_override=getattr(request.state, "audit_action", None),
             ),
             actor_user_id=actor.user_id if actor is not None else None,
             actor_subject=actor.subject if actor is not None else None,

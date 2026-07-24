@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.core.context import build_request_context
+from app.adapters.langgraph.assistants_client import build_forward_headers
 from app.core.db import build_engine, create_core_tables, session_scope
 from app.core.security import hash_password
 from app.entrypoints.http.middleware.audit_log import _should_capture_response
@@ -66,6 +67,32 @@ class SecurityBoundariesTest(unittest.TestCase):
         )
 
         self.assertFalse(build_request_context(request).actor.is_authenticated)
+
+    def test_client_tenant_header_is_ignored_and_not_forwarded(self) -> None:
+        request = Request(
+            {
+                "type": "http",
+                "method": "GET",
+                "path": "/api/projects/project-1/access",
+                "query_string": b"",
+                "headers": [(b"x-tenant-id", b"forged-tenant")],
+                "client": ("127.0.0.1", 1),
+                "server": ("testserver", 80),
+                "scheme": "http",
+            }
+        )
+
+        context = build_request_context(request)
+        forwarded = build_forward_headers(
+            {
+                "authorization": "Bearer token",
+                "x-project-id": "project-1",
+                "x-tenant-id": "forged-tenant",
+            }
+        )
+
+        self.assertEqual(context.tenant.tenant_id, "__default")
+        self.assertNotIn("x-tenant-id", forwarded)
 
     def test_successful_login_audit_records_authenticated_actor(self) -> None:
         session_factory = self.app.state.db_session_factory

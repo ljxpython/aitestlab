@@ -33,3 +33,9 @@ class UpdateUserCommand(BaseModel):
     status: UserStatus | None = None
     platform_roles: tuple[PlatformRole, ...] | None = None
     is_super_admin: bool | None = None
+
+
+class ResetUserPasswordCommand(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    temporary_password: str = Field(min_length=8)

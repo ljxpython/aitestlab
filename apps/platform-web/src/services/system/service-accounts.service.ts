@@ -2,7 +2,8 @@ import { platformHttpClient } from '@/services/http/client'
 import type {
   CreatedServiceAccountToken,
   ManagementServiceAccount,
-  ManagementServiceAccountPage
+  ManagementServiceAccountPage,
+  ServiceAccountProjectGrant
 } from '@/types/management'
 
 export async function listServiceAccounts(options?: {
@@ -62,4 +63,34 @@ export async function revokeServiceAccountToken(
   tokenId: string
 ): Promise<void> {
   await platformHttpClient.delete(`/api/service-accounts/${serviceAccountId}/tokens/${tokenId}`)
+}
+
+export async function listServiceAccountProjectGrants(
+  serviceAccountId: string
+): Promise<ServiceAccountProjectGrant[]> {
+  const response = await platformHttpClient.get(
+    `/api/service-accounts/${serviceAccountId}/project-grants`
+  )
+  return response.data as ServiceAccountProjectGrant[]
+}
+
+export async function upsertServiceAccountProjectGrant(
+  serviceAccountId: string,
+  projectId: string,
+  role: ServiceAccountProjectGrant['role']
+): Promise<ServiceAccountProjectGrant> {
+  const response = await platformHttpClient.put(
+    `/api/service-accounts/${serviceAccountId}/project-grants/${projectId}`,
+    { role }
+  )
+  return response.data as ServiceAccountProjectGrant
+}
+
+export async function deleteServiceAccountProjectGrant(
+  serviceAccountId: string,
+  projectId: string
+): Promise<void> {
+  await platformHttpClient.delete(
+    `/api/service-accounts/${serviceAccountId}/project-grants/${projectId}`
+  )
 }

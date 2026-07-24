@@ -10,6 +10,15 @@ export type LegacyProjectRole = 'admin' | 'editor' | 'executor'
 export type PermissionCode =
   | 'platform.user.read'
   | 'platform.user.write'
+  | 'platform.user.create'
+  | 'platform.user.profile.write'
+  | 'platform.user.status.write'
+  | 'platform.user.credential.reset'
+  | 'platform.user.role.write'
+  | 'platform.project.read'
+  | 'platform.project.create'
+  | 'platform.project.write'
+  | 'platform.project.takeover'
   | 'platform.audit.read'
   | 'platform.catalog.refresh'
   | 'platform.announcement.write'
@@ -19,6 +28,7 @@ export type PermissionCode =
   | 'platform.config.write'
   | 'platform.service_account.read'
   | 'platform.service_account.write'
+  | 'platform.service_account.grant.write'
   | 'project.member.read'
   | 'project.member.write'
   | 'project.audit.read'
@@ -47,7 +57,7 @@ export type ManagementUser = {
   status: string
   is_super_admin: boolean
   platform_roles: PlatformRole[]
-  project_roles: Record<string, ProjectRole[]>
+  must_change_password: boolean
   email?: string | null
   created_at?: string | null
   updated_at?: string | null
@@ -73,6 +83,18 @@ export type ManagementProjectMember = {
   user_id: string
   username: string
   role: ProjectRole
+}
+
+export type ProjectAccess = {
+  project_id: string
+  roles: ProjectRole[]
+  permissions: PermissionCode[]
+}
+
+export type ProjectMemberCandidate = {
+  user_id: string
+  username: string
+  email?: string | null
 }
 
 export type ManagementAssistant = {
@@ -404,6 +426,15 @@ export type ManagementServiceAccountPage = PaginatedResponse<ManagementServiceAc
 export type CreatedServiceAccountToken = {
   token: ManagementServiceAccountToken
   plain_text_token: string
+}
+
+export type ServiceAccountProjectGrant = {
+  id: string
+  service_account_id: string
+  project_id: string
+  role: ProjectRole
+  created_at: string | null
+  updated_at: string | null
 }
 
 export type RuntimeModelItem = {

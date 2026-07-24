@@ -9,9 +9,12 @@ from sqlalchemy.orm import Session
 from app.modules.service_accounts.application.ports import (
     StoredServiceAccount,
     StoredServiceAccountToken,
+    StoredServiceAccountProjectGrant,
 )
+from app.modules.iam.domain import ProjectRole
 from app.modules.service_accounts.infra.sqlalchemy.models import (
     ServiceAccountRecord,
+    ServiceAccountProjectGrantRecord,
     ServiceAccountTokenRecord,
 )
 
@@ -43,6 +46,17 @@ def _to_token(record: ServiceAccountTokenRecord) -> StoredServiceAccountToken:
         revoked_at=record.revoked_at,
         created_by=record.created_by,
         created_at=record.created_at,
+    )
+
+
+def _to_grant(record: ServiceAccountProjectGrantRecord) -> StoredServiceAccountProjectGrant:
+    return StoredServiceAccountProjectGrant(
+        id=record.id,
+        service_account_id=record.service_account_id,
+        project_id=record.project_id,
+        role=ProjectRole.from_db(record.role).value,
+        created_at=record.created_at,
+        updated_at=record.updated_at,
     )
 
 
@@ -222,6 +236,80 @@ class SqlAlchemyServiceAccountsRepository:
         if account is not None:
             account.last_used_at = used_at
         self.session.flush()
+
+    def list_project_grants(self, *, service_account_id: UUID) -> list[StoredServiceAccountProjectGrant]:
+        stmt = select(ServiceAccountProjectGrantRecord).where(
+            ServiceAccountProjectGrantRecord.service_account_id == service_account_id
+        )
+        return [_to_grant(row) for row in self.session.scalars(stmt).all()]
+
+    def upsert_project_grant(
+        self,
+        *,
+        service_account_id: UUID,
+        project_id: UUID,
+        role: ProjectRole,
+        actor_id: str | None,
+    ) -> StoredServiceAccountProjectGrant:
+        stmt = select(ServiceAccountProjectGrantRecord).where(
+            ServiceAccountProjectGrantRecord.service_account_id == service_account_id,
+            ServiceAccountProjectGrantRecord.project_id == project_id,
+        )
+        record = self.session.scalar(stmt)
+        if record is None:
+            record = ServiceAccountProjectGrantRecord(
+                service_account_id=service_account_id,
+                project_id=project_id,
+                role=role.to_db(),
+                created_by=actor_id,
+                updated_by=actor_id,
+            )
+            self.session.add(record)
+        else:
+            record.role = role.to_db()
+            record.updated_by = actor_id
+        self.session.flush()
+        self.session.refresh(record)
+        return _to_grant(record)
+
+    def delete_project_grant(self, *, service_account_id: UUID, project_id: UUID) -> bool:
+        stmt = select(ServiceAccountProjectGrantRecord).where(
+            ServiceAccountProjectGrantRecord.service_account_id == service_account_id,
+            ServiceAccountProjectGrantRecord.project_id == project_id,
+        )
+        record = self.session.scalar(stmt)
+        if record is None:
+            return False
+        self.session.delete(record)
+        self.session.flush()
+        return True
+
+    def get_project_grant_role(
+        self,
+        *,
+        credential_id: str | None,
+        project_id: UUID,
+    ) -> ProjectRole | None:
+        if not credential_id:
+            return None
+        try:
+            token_id = UUID(credential_id)
+        except ValueError:
+            return None
+        stmt = (
+            select(ServiceAccountProjectGrantRecord.role)
+            .join(
+                ServiceAccountTokenRecord,
+                ServiceAccountTokenRecord.service_account_id
+                == ServiceAccountProjectGrantRecord.service_account_id,
+            )
+            .where(
+                ServiceAccountTokenRecord.id == token_id,
+                ServiceAccountProjectGrantRecord.project_id == project_id,
+            )
+        )
+        role = self.session.scalar(stmt)
+        return ProjectRole.from_db(role) if role else None
 
     def summarize(self) -> dict[str, int]:
         total_accounts = int(self.session.scalar(select(func.count()).select_from(ServiceAccountRecord)) or 0)

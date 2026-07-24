@@ -10,10 +10,19 @@ from app.modules.projects.application.contracts import (
     CreateProjectCommand,
     ListProjectMembersQuery,
     ListProjectsQuery,
+    ProjectTakeoverCommand,
+    RestoreProjectAdminCommand,
     UpsertProjectMemberCommand,
 )
 from app.modules.projects.application.service import ProjectsService
-from app.modules.projects.domain import ProjectMemberPage, ProjectMemberView, ProjectPage, ProjectSummary
+from app.modules.projects.domain import (
+    ProjectAccess,
+    ProjectMemberPage,
+    ProjectMemberCandidatePage,
+    ProjectMemberView,
+    ProjectPage,
+    ProjectSummary,
+)
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -48,6 +57,55 @@ async def create_project(
     return await service.create_project(actor=actor, command=payload)
 
 
+@router.get("/{project_id}/access", response_model=ProjectAccess)
+async def get_project_access(
+    project_id: str,
+    actor: ActorContext = Depends(get_actor_context),
+    service: ProjectsService = Depends(get_projects_service),
+) -> ProjectAccess:
+    return await service.get_access(actor=actor, project_id=project_id)
+
+
+@router.post("/{project_id}/takeover", response_model=ProjectMemberView)
+async def takeover_project(
+    project_id: str,
+    payload: ProjectTakeoverCommand,
+    request: Request,
+    actor: ActorContext = Depends(get_actor_context),
+    service: ProjectsService = Depends(get_projects_service),
+) -> ProjectMemberView:
+    request.state.audit_metadata = {"reason": payload.reason.strip()}
+    return await service.takeover(actor=actor, project_id=project_id, command=payload)
+
+
+@router.post("/{project_id}/admin-recovery", response_model=ProjectMemberView)
+async def restore_project_admin(
+    project_id: str,
+    payload: RestoreProjectAdminCommand,
+    actor: ActorContext = Depends(get_actor_context),
+    service: ProjectsService = Depends(get_projects_service),
+) -> ProjectMemberView:
+    return await service.restore_admin(actor=actor, project_id=project_id, command=payload)
+
+
+@router.post("/{project_id}/archive", response_model=ProjectSummary)
+async def archive_project(
+    project_id: str,
+    actor: ActorContext = Depends(get_actor_context),
+    service: ProjectsService = Depends(get_projects_service),
+) -> ProjectSummary:
+    return await service.archive_project(actor=actor, project_id=project_id)
+
+
+@router.post("/{project_id}/restore", response_model=ProjectSummary)
+async def restore_project(
+    project_id: str,
+    actor: ActorContext = Depends(get_actor_context),
+    service: ProjectsService = Depends(get_projects_service),
+) -> ProjectSummary:
+    return await service.restore_project(actor=actor, project_id=project_id)
+
+
 @router.delete("/{project_id}", response_model=AckResponse)
 async def delete_project(
     project_id: str,
@@ -69,6 +127,24 @@ async def list_project_members(
         actor=actor,
         project_id=project_id,
         query=ListProjectMembersQuery(query=query),
+    )
+
+
+@router.get("/{project_id}/member-candidates", response_model=ProjectMemberCandidatePage)
+async def list_project_member_candidates(
+    project_id: str,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    query: str | None = Query(default=None),
+    actor: ActorContext = Depends(get_actor_context),
+    service: ProjectsService = Depends(get_projects_service),
+) -> ProjectMemberCandidatePage:
+    return await service.list_member_candidates(
+        actor=actor,
+        project_id=project_id,
+        limit=limit,
+        offset=offset,
+        query=query,
     )
 
 

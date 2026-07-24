@@ -40,6 +40,8 @@ class AuditHttpRequest:
     client_ip: str | None
     user_agent: str | None
     response_content_length: str | None
+    metadata: Mapping[str, Any] | None = None
+    action_override: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +82,15 @@ def _resolve_action(
     path = request.path
     method = request.method
     segments = _route_segments(path)
+    action_override = clean_str(request.action_override)
+    if action_override in {
+        "user.profile.updated",
+        "user.status.updated",
+        "user.roles.updated",
+        "user.credentials.reset",
+        "user.governance.updated",
+    } and len(segments) == 3 and segments[:2] == ["api", "users"] and method == "PATCH":
+        return action_override, "user", clean_str(segments[2])
     if segments == ["_system", "health"] and method == "GET":
         return "system.health.read", "system", "health"
     if segments == ["_system", "probes", "live"] and method == "GET":
@@ -101,6 +112,18 @@ def _resolve_action(
         if segments[2:] == ["password", "change"] and method == "POST":
             return "identity.password.changed", "user", None
 
+    if len(segments) >= 2 and segments[:2] == ["api", "users"]:
+        if len(segments) == 2 and method == "GET":
+            return "user.collection.listed", "user", None
+        if len(segments) == 2 and method == "POST":
+            return "user.item.created", "user", None
+        if len(segments) == 3 and method == "GET":
+            return "user.item.read", "user", clean_str(segments[2])
+        if len(segments) == 3 and method == "PATCH":
+            return "user.item.updated", "user", clean_str(segments[2])
+        if len(segments) == 5 and segments[3:] == ["credentials", "reset"] and method == "POST":
+            return "user.credentials.reset", "user", clean_str(segments[2])
+
     if len(segments) >= 2 and segments[:2] == ["api", "projects"]:
         if len(segments) == 2 and method == "GET":
             return "project.collection.listed", "project", None
@@ -108,6 +131,18 @@ def _resolve_action(
             return "project.project.created", "project", None
         if len(segments) == 3 and method == "DELETE":
             return "project.project.deleted", "project", clean_str(segments[2])
+        if len(segments) == 4 and segments[3] == "access" and method == "GET":
+            return "project.access.read", "project", clean_str(segments[2])
+        if len(segments) == 4 and segments[3] == "takeover" and method == "POST":
+            return "project.takeover.completed", "project", clean_str(segments[2])
+        if len(segments) == 4 and segments[3] == "admin-recovery" and method == "POST":
+            return "project.admin.recovered", "project", clean_str(segments[2])
+        if len(segments) == 4 and segments[3] == "archive" and method == "POST":
+            return "project.project.archived", "project", clean_str(segments[2])
+        if len(segments) == 4 and segments[3] == "restore" and method == "POST":
+            return "project.project.restored", "project", clean_str(segments[2])
+        if len(segments) == 4 and segments[3] == "member-candidates" and method == "GET":
+            return "project.member.candidates.listed", "project", clean_str(segments[2])
         if len(segments) >= 4 and segments[3] == "members":
             project_id = clean_str(segments[2])
             if len(segments) == 4 and method == "GET":
@@ -176,6 +211,12 @@ def _resolve_action(
             return "service_account.token.created", "service_account_token", clean_str(segments[2])
         if len(segments) == 5 and segments[3] == "tokens" and method == "DELETE":
             return "service_account.token.revoked", "service_account_token", clean_str(segments[4])
+        if len(segments) == 4 and segments[3] == "project-grants" and method == "GET":
+            return "service_account.project_grant.listed", "service_account", clean_str(segments[2])
+        if len(segments) == 5 and segments[3] == "project-grants" and method == "PUT":
+            return "service_account.project_grant.upserted", "project", clean_str(segments[4])
+        if len(segments) == 5 and segments[3] == "project-grants" and method == "DELETE":
+            return "service_account.project_grant.removed", "project", clean_str(segments[4])
 
     if len(segments) >= 2 and segments[:2] == ["api", "assistants"]:
         if len(segments) == 3 and method == "GET":
@@ -331,6 +372,8 @@ def _resolve_target_id_from_payload(
             return actor_user_id
     if segments == ["api", "projects"] and method == "POST":
         return _nested_value(payload, "id")
+    if segments == ["api", "users"] and method == "POST":
+        return _nested_value(payload, "id")
     if len(segments) >= 2 and segments[:2] == ["api", "announcements"]:
         return _nested_value(payload, "id")
     if len(segments) >= 4 and segments[:2] == ["api", "projects"]:
@@ -370,6 +413,14 @@ def _resolve_metadata(
     }
     if status_code >= 400:
         metadata["is_error"] = True
+    if request.metadata:
+        metadata.update(
+            {
+                str(key): value
+                for key, value in request.metadata.items()
+                if key in {"reason"} and isinstance(value, (str, int, float, bool))
+            }
+        )
     return {key: value for key, value in metadata.items() if value is not None}
 
 

@@ -2,8 +2,10 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import BaseButton from '@/components/base/BaseButton.vue'
+import BaseDialog from '@/components/base/BaseDialog.vue'
 import ConfirmDialog from '@/components/base/ConfirmDialog.vue'
 import BaseIcon from '@/components/base/BaseIcon.vue'
+import BaseInput from '@/components/base/BaseInput.vue'
 import { useAuthorization } from '@/composables/useAuthorization'
 import { useWorkspaceProjectContext } from '@/composables/useWorkspaceProjectContext'
 import SurfaceCard from '@/components/base/SurfaceCard.vue'
@@ -13,7 +15,13 @@ import MetricCard from '@/components/platform/MetricCard.vue'
 import StateBanner from '@/components/platform/StateBanner.vue'
 import StatusPill from '@/components/platform/StatusPill.vue'
 import { formatProjectRoleLabel, isProjectAdminRole, isProjectEditorRole } from '@/services/auth/permissions'
-import { deleteProject } from '@/services/projects/projects.service'
+import {
+  archiveProject,
+  deleteProject,
+  restoreProjectAdmin,
+  restoreProject,
+  takeoverProject
+} from '@/services/projects/projects.service'
 import { listProjectMembers } from '@/services/members/members.service'
 import { useUiStore } from '@/stores/ui'
 import type { ManagementProjectMember, ProjectRole } from '@/types/management'
@@ -49,7 +57,20 @@ const loadingMembers = ref(false)
 const membersError = ref('')
 const deletingProject = ref(false)
 const showDeleteDialog = ref(false)
-const canManageProject = computed(() => authorization.can('project.member.write', projectId.value))
+const lifecycleDialogOpen = ref(false)
+const lifecycleAction = ref<'archive' | 'restore'>('archive')
+const takeoverDialogOpen = ref(false)
+const recoveryDialogOpen = ref(false)
+const governingProject = ref(false)
+const takeoverReason = ref('')
+const recoveryUserId = ref('')
+const canManageProject = computed(() => authorization.can('platform.project.write'))
+const canTakeoverProject = computed(() => authorization.can('platform.project.takeover'))
+const canReadMembers = computed(() => authorization.currentProjectCan('project.member.read'))
+const canReadKnowledge = computed(() => authorization.currentProjectCan('project.knowledge.read'))
+const canReadAudit = computed(() =>
+  authorization.can('platform.audit.read') || authorization.currentProjectCan('project.audit.read')
+)
 
 const stats = computed(() => [
   {
@@ -98,12 +119,12 @@ async function handleCopyProjectId() {
   })
 }
 
-function focusProject() {
+async function focusProject() {
   if (!project.value) {
     return
   }
 
-  setActiveProjectId(project.value.id)
+  await setActiveProjectId(project.value.id)
   uiStore.pushToast({
     type: 'success',
     title: '已切换当前项目',
@@ -111,26 +132,117 @@ function focusProject() {
   })
 }
 
-function openAudit() {
-  if (!project.value) {
+async function openAudit() {
+  if (!project.value || !canReadAudit.value) {
     return
   }
 
-  setActiveProjectId(project.value.id)
+  await setActiveProjectId(project.value.id)
   void router.push('/workspace/audit')
 }
 
-function openKnowledgeWorkspace() {
-  if (!project.value) {
+async function openKnowledgeWorkspace() {
+  if (!project.value || !canReadKnowledge.value) {
     return
   }
 
-  setActiveProjectId(project.value.id)
+  await setActiveProjectId(project.value.id)
   void router.push(`/workspace/projects/${project.value.id}/knowledge/documents`)
 }
 
+async function refreshProjectAccess() {
+  if (!project.value) {
+    return
+  }
+  await setActiveProjectId(project.value.id)
+  await loadMembers()
+}
+
+async function confirmTakeoverProject() {
+  if (!project.value || !takeoverReason.value.trim() || !canTakeoverProject.value) {
+    return
+  }
+
+  governingProject.value = true
+  membersError.value = ''
+  try {
+    await takeoverProject(project.value.id, takeoverReason.value)
+    takeoverDialogOpen.value = false
+    takeoverReason.value = ''
+    await refreshProjectAccess()
+    uiStore.pushToast({
+      type: 'success',
+      title: '项目接管完成',
+      message: `你已成为 ${project.value.name} 的项目管理员`
+    })
+  } catch (takeoverError) {
+    membersError.value = takeoverError instanceof Error ? takeoverError.message : '项目接管失败'
+  } finally {
+    governingProject.value = false
+  }
+}
+
+async function confirmRestoreProjectAdmin() {
+  if (!project.value || !recoveryUserId.value.trim() || !canManageProject.value) {
+    return
+  }
+
+  governingProject.value = true
+  membersError.value = ''
+  try {
+    await restoreProjectAdmin(project.value.id, recoveryUserId.value.trim())
+    recoveryDialogOpen.value = false
+    recoveryUserId.value = ''
+    await loadMembers()
+    uiStore.pushToast({
+      type: 'success',
+      title: '项目管理员已恢复',
+      message: project.value.name
+    })
+  } catch (recoveryError) {
+    membersError.value = recoveryError instanceof Error ? recoveryError.message : '项目管理员恢复失败'
+  } finally {
+    governingProject.value = false
+  }
+}
+
+function openLifecycleDialog(action: 'archive' | 'restore') {
+  if (!project.value || !canManageProject.value) {
+    return
+  }
+  lifecycleAction.value = action
+  lifecycleDialogOpen.value = true
+}
+
+async function confirmProjectLifecycle() {
+  if (!project.value || !canManageProject.value) {
+    return
+  }
+
+  governingProject.value = true
+  membersError.value = ''
+  try {
+    if (lifecycleAction.value === 'archive') {
+      await archiveProject(project.value.id)
+    } else {
+      await restoreProject(project.value.id)
+    }
+    lifecycleDialogOpen.value = false
+    await workspaceStore.hydrateContext()
+    uiStore.pushToast({
+      type: 'success',
+      title: lifecycleAction.value === 'archive' ? '项目已归档' : '项目已恢复',
+      message: project.value?.name || projectId.value
+    })
+  } catch (lifecycleError) {
+    membersError.value = lifecycleError instanceof Error ? lifecycleError.message : '项目生命周期更新失败'
+  } finally {
+    governingProject.value = false
+  }
+}
+
 async function loadMembers() {
-  if (!projectId.value) {
+  if (!projectId.value || !canReadMembers.value) {
     members.value = []
     membersError.value = ''
     return
@@ -216,7 +328,7 @@ watch(
         </BaseButton>
         <BaseButton
           variant="secondary"
-          :disabled="!project"
+          :disabled="!project || !canReadKnowledge"
           @click="handleCopyProjectId"
         >
           <BaseIcon
@@ -245,6 +357,38 @@ watch(
             size="sm"
           />
           知识库工作台
+        </BaseButton>
+        <BaseButton
+          v-if="canTakeoverProject"
+          variant="secondary"
+          :disabled="!project || project.status !== 'active' || governingProject"
+          @click="takeoverDialogOpen = true"
+        >
+          接管项目
+        </BaseButton>
+        <BaseButton
+          v-if="canManageProject"
+          variant="secondary"
+          :disabled="!project || project.status !== 'active' || governingProject"
+          @click="recoveryDialogOpen = true"
+        >
+          恢复管理员
+        </BaseButton>
+        <BaseButton
+          v-if="canManageProject && project?.status === 'active'"
+          variant="secondary"
+          :disabled="governingProject"
+          @click="openLifecycleDialog('archive')"
+        >
+          归档项目
+        </BaseButton>
+        <BaseButton
+          v-if="canManageProject && project?.status === 'disabled'"
+          variant="secondary"
+          :disabled="governingProject"
+          @click="openLifecycleDialog('restore')"
+        >
+          恢复项目
         </BaseButton>
         <BaseButton
           v-if="canManageProject"
@@ -340,6 +484,7 @@ watch(
           <div class="flex flex-wrap gap-3">
             <BaseButton
               variant="secondary"
+              :disabled="!canReadMembers"
               @click="void router.push(`/workspace/projects/${projectId}/members`)"
             >
               <BaseIcon
@@ -350,6 +495,7 @@ watch(
             </BaseButton>
             <BaseButton
               variant="secondary"
+              :disabled="!canReadAudit"
               @click="openAudit"
             >
               <BaseIcon
@@ -373,7 +519,7 @@ watch(
             </div>
             <BaseButton
               variant="ghost"
-              :disabled="loadingMembers"
+              :disabled="loadingMembers || !canReadMembers"
               @click="loadMembers"
             >
               <BaseIcon
@@ -399,7 +545,9 @@ watch(
             v-else-if="members.length === 0"
             icon="users"
             title="当前没有可展示的成员"
-            description="如果这是新项目，成员列表可能还没建立；后续进入成员管理页会补更完整的增删改流程。"
+            :description="canReadMembers
+              ? '如果这是新项目，成员列表可能还没建立；可进入成员管理页继续治理。'
+              : '平台治理权限不等于项目成员权限；接管项目后才可查看项目成员和内容。'"
           />
 
           <div
@@ -438,6 +586,91 @@ watch(
         danger
         @cancel="closeDeleteDialog"
         @confirm="confirmDeleteProject"
+      />
+
+      <BaseDialog
+        :show="takeoverDialogOpen"
+        title="接管项目"
+        width="normal"
+        @close="takeoverDialogOpen = false"
+      >
+        <div class="space-y-4">
+          <p class="text-sm leading-6 text-gray-600 dark:text-dark-200">
+            接管后你会成为显式项目管理员，并获得项目内容权限。原因会写入审计记录。
+          </p>
+          <label class="block space-y-2">
+            <span class="text-sm font-medium text-gray-700 dark:text-dark-100">接管原因</span>
+            <BaseInput
+              v-model="takeoverReason"
+              placeholder="请输入非空接管原因"
+            />
+          </label>
+        </div>
+        <template #footer>
+          <div class="flex gap-3">
+            <BaseButton
+              variant="secondary"
+              @click="takeoverDialogOpen = false"
+            >
+              取消
+            </BaseButton>
+            <BaseButton
+              :disabled="governingProject || !takeoverReason.trim()"
+              @click="confirmTakeoverProject"
+            >
+              {{ governingProject ? '接管中...' : '确认接管' }}
+            </BaseButton>
+          </div>
+        </template>
+      </BaseDialog>
+
+      <BaseDialog
+        :show="recoveryDialogOpen"
+        title="恢复项目管理员"
+        width="normal"
+        @close="recoveryDialogOpen = false"
+      >
+        <div class="space-y-4">
+          <p class="text-sm leading-6 text-gray-600 dark:text-dark-200">
+            输入活动用户 ID，将其新增或提升为本项目管理员。
+          </p>
+          <label class="block space-y-2">
+            <span class="text-sm font-medium text-gray-700 dark:text-dark-100">用户 ID</span>
+            <BaseInput
+              v-model="recoveryUserId"
+              placeholder="请输入用户 UUID"
+            />
+          </label>
+        </div>
+        <template #footer>
+          <div class="flex gap-3">
+            <BaseButton
+              variant="secondary"
+              @click="recoveryDialogOpen = false"
+            >
+              取消
+            </BaseButton>
+            <BaseButton
+              :disabled="governingProject || !recoveryUserId.trim()"
+              @click="confirmRestoreProjectAdmin"
+            >
+              {{ governingProject ? '恢复中...' : '确认恢复' }}
+            </BaseButton>
+          </div>
+        </template>
+      </BaseDialog>
+
+      <ConfirmDialog
+        :show="lifecycleDialogOpen"
+        :title="lifecycleAction === 'archive' ? '归档项目' : '恢复项目'"
+        :message="lifecycleAction === 'archive'
+          ? '归档后项目内容和机器身份访问会立即停止，确认继续吗？'
+          : '恢复后项目成员和有效服务账号授权会重新生效，确认继续吗？'"
+        :confirm-text="lifecycleAction === 'archive' ? '确认归档' : '确认恢复'"
+        cancel-text="取消"
+        :danger="lifecycleAction === 'archive'"
+        @cancel="lifecycleDialogOpen = false"
+        @confirm="confirmProjectLifecycle"
       />
     </template>
   </section>

@@ -8,8 +8,8 @@ export function useWorkspaceProjectContext() {
   const activeProject = computed(() => workspaceStore.currentProject)
   const activeProjects = computed(() => workspaceStore.projects)
 
-  function setActiveProjectId(projectId: string) {
-    workspaceStore.setProjectId(projectId)
+  async function setActiveProjectId(projectId: string) {
+    await workspaceStore.setProjectId(projectId)
   }
 
   return {

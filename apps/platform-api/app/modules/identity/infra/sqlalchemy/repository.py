@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.modules.identity.application.ports import (
@@ -32,6 +32,9 @@ def _to_user(record: UserRecord) -> StoredUser:
         password_hash=record.password_hash,
         is_super_admin=has_super_admin_platform_role(platform_roles),
         platform_roles=platform_roles,
+        must_change_password=record.must_change_password,
+        failed_login_attempts=record.failed_login_attempts,
+        locked_until=record.locked_until,
     )
 
 
@@ -41,6 +44,8 @@ def _to_refresh_token(record: RefreshTokenRecord) -> StoredRefreshToken:
         user_id=record.user_id,
         expires_at=record.expires_at,
         revoked_at=record.revoked_at,
+        family_id=record.family_id,
+        consumed_at=record.consumed_at,
     )
 
 
@@ -66,6 +71,7 @@ class SqlAlchemyIdentityRepository:
         email: str | None,
         platform_roles: tuple[str, ...] = (),
         is_super_admin: bool,
+        must_change_password: bool = False,
     ) -> StoredUser:
         normalized_roles = normalize_user_platform_roles(
             platform_roles,
@@ -79,6 +85,7 @@ class SqlAlchemyIdentityRepository:
             status="active",
             is_super_admin=has_super_admin_platform_role(normalized_roles),
             platform_roles_json=list(normalized_roles),
+            must_change_password=must_change_password,
         )
         self.session.add(record)
         self.session.flush()
@@ -105,16 +112,42 @@ class SqlAlchemyIdentityRepository:
         *,
         user_id: UUID,
         token_id: str,
+        family_id: str,
         expires_at: datetime,
     ) -> StoredRefreshToken:
         record = RefreshTokenRecord(
             user_id=user_id,
             token_id=token_id,
+            family_id=family_id,
             expires_at=expires_at,
         )
         self.session.add(record)
         self.session.flush()
         return _to_refresh_token(record)
+
+    def consume_refresh_token(self, token_id: str) -> tuple[StoredRefreshToken | None, str | None]:
+        now = datetime.now(timezone.utc)
+        result = self.session.execute(
+            update(RefreshTokenRecord)
+            .where(
+                RefreshTokenRecord.token_id == token_id,
+                RefreshTokenRecord.revoked_at.is_(None),
+                RefreshTokenRecord.consumed_at.is_(None),
+                RefreshTokenRecord.expires_at > now,
+            )
+            .values(consumed_at=now, revoked_at=now)
+        )
+        if result.rowcount == 1:
+            self.session.flush()
+            return self.get_refresh_token(token_id), "consumed"
+        token = self.get_refresh_token(token_id)
+        if token is None:
+            return None, "missing"
+        if token.consumed_at is not None:
+            return token, "replayed"
+        if token.revoked_at is not None:
+            return token, "revoked"
+        return token, "expired"
 
     def revoke_refresh_token(self, token_id: str) -> None:
         stmt = select(RefreshTokenRecord).where(RefreshTokenRecord.token_id == token_id)
@@ -124,6 +157,18 @@ class SqlAlchemyIdentityRepository:
         if record.revoked_at is None:
             record.revoked_at = datetime.now(timezone.utc)
             self.session.flush()
+
+    def revoke_refresh_token_family(self, family_id: str) -> int:
+        now = datetime.now(timezone.utc)
+        result = self.session.execute(
+            update(RefreshTokenRecord)
+            .where(
+                RefreshTokenRecord.family_id == family_id,
+                RefreshTokenRecord.revoked_at.is_(None),
+            )
+            .values(revoked_at=now)
+        )
+        return int(result.rowcount or 0)
 
     def revoke_all_refresh_tokens_for_user(self, user_id: UUID) -> int:
         stmt = select(RefreshTokenRecord).where(
@@ -139,11 +184,34 @@ class SqlAlchemyIdentityRepository:
             self.session.flush()
         return changed
 
-    def update_user_password_hash(self, user_id: UUID, password_hash: str) -> None:
+    def update_user_password_hash(
+        self,
+        user_id: UUID,
+        password_hash: str,
+        *,
+        must_change_password: bool,
+    ) -> None:
         record = self.session.get(UserRecord, user_id)
         if record is None:
             return
         record.password_hash = password_hash
+        record.must_change_password = must_change_password
+        self.session.flush()
+
+    def record_login_failure(self, user_id: UUID, *, locked_until: datetime | None) -> None:
+        record = self.session.get(UserRecord, user_id)
+        if record is None:
+            return
+        record.failed_login_attempts += 1
+        record.locked_until = locked_until
+        self.session.flush()
+
+    def clear_login_failures(self, user_id: UUID) -> None:
+        record = self.session.get(UserRecord, user_id)
+        if record is None:
+            return
+        record.failed_login_attempts = 0
+        record.locked_until = None
         self.session.flush()
 
     def update_user_profile(

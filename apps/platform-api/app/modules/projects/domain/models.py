@@ -52,3 +52,23 @@ class ProjectPage(OffsetPage[ProjectSummary]):
 
 class ProjectMemberPage(OffsetPage[ProjectMemberView]):
     pass
+
+
+class ProjectAccess(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    project_id: str
+    roles: tuple[ProjectRole, ...] = ()
+    permissions: tuple[str, ...] = ()
+
+
+class ProjectMemberCandidate(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    user_id: str
+    username: str
+    email: str | None = None
+
+
+class ProjectMemberCandidatePage(OffsetPage[ProjectMemberCandidate]):
+    pass

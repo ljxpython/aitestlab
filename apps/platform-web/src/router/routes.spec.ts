@@ -75,3 +75,27 @@ describe('workspace knowledge routes', () => {
     }
   })
 })
+
+describe('workspace project governance routes', () => {
+  it('allows project detail through platform governance or project membership', () => {
+    const projectDetailRoute = getWorkspaceChildren().find(
+      (route) => route.name === 'workspace-project-detail'
+    )
+
+    expect(projectDetailRoute?.meta).toMatchObject({
+      requiredPermissions: ['platform.project.read', 'project.member.read'],
+      permissionMode: 'any',
+      permissionProjectSource: 'route'
+    })
+  })
+})
+
+describe('workspace account routes', () => {
+  it('registers the password change route used by the first-login guard', () => {
+    const securityRoute = getWorkspaceChildren().find(
+      (route) => route.name === 'workspace-security'
+    )
+
+    expect(securityRoute?.path).toBe('security')
+  })
+})

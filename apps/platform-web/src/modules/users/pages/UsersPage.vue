@@ -329,14 +329,14 @@ onMounted(() => {
     >
       <template #actions>
         <BaseButton
-          :disabled="!authorization.can('platform.user.write')"
+          :disabled="!authorization.can('platform.user.create')"
           @click="void router.push('/workspace/users/new')"
         >
           <BaseIcon
             name="users"
             size="sm"
           />
-          {{ authorization.can('platform.user.write') ? '新建用户' : '当前账号只读' }}
+          {{ authorization.can('platform.user.create') ? '新建用户' : '当前账号只读' }}
         </BaseButton>
         <BaseButton
           variant="secondary"

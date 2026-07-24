@@ -42,8 +42,15 @@ class Settings(BaseSettings):
     observability_metrics_top_paths_limit: int = Field(default=10, ge=1, le=50)
 
     auth_required: bool = True
-    jwt_access_secret: str = "change-me-access-secret"
-    jwt_refresh_secret: str = "change-me-refresh-secret"
+    jwt_access_secret: str = "change-me-access-secret-at-least-32-bytes"
+    jwt_refresh_secret: str = "change-me-refresh-secret-at-least-32-bytes"
+    jwt_algorithm: str = "HS256"
+    jwt_issuer: str = "platform-api"
+    jwt_audience: str = "platform-control-plane"
+    jwt_access_kid: str = "access-v1"
+    jwt_refresh_kid: str = "refresh-v1"
+    jwt_access_verification_keys: dict[str, str] = Field(default_factory=dict)
+    jwt_refresh_verification_keys: dict[str, str] = Field(default_factory=dict)
     jwt_access_ttl_seconds: int = Field(default=1800, ge=60)
     jwt_refresh_ttl_seconds: int = Field(default=7 * 24 * 3600, ge=300)
     oidc_enabled: bool = False
@@ -106,14 +113,16 @@ class Settings(BaseSettings):
             )
         if self.oidc_enabled and (not self.oidc_issuer_url or not self.oidc_client_id):
             raise ValueError("oidc_issuer_url and oidc_client_id are required when oidc_enabled=true")
+        if self.jwt_algorithm not in {"HS256", "HS384", "HS512"}:
+            raise ValueError("jwt_algorithm must be one of HS256/HS384/HS512")
         if is_production:
             if self.api_docs_enabled:
                 raise ValueError("API docs must be disabled in production")
             if self.bootstrap_admin_enabled:
                 raise ValueError("Bootstrap admin must be disabled in production")
-            if self.jwt_access_secret == "change-me-access-secret":
+            if self.jwt_access_secret == "change-me-access-secret-at-least-32-bytes":
                 raise ValueError("JWT access secret must be overridden in production")
-            if self.jwt_refresh_secret == "change-me-refresh-secret":
+            if self.jwt_refresh_secret == "change-me-refresh-secret-at-least-32-bytes":
                 raise ValueError("JWT refresh secret must be overridden in production")
         return self
 

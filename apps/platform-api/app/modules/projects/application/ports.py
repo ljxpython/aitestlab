@@ -35,6 +35,13 @@ class StoredProjectMemberView:
     role: ProjectRole
 
 
+@dataclass(frozen=True, slots=True)
+class StoredProjectMemberCandidate:
+    user_id: UUID
+    username: str
+    email: str | None
+
+
 class ProjectsRepositoryProtocol(Protocol):
     def get_or_create_default_tenant(self) -> StoredTenant: ...
 
@@ -63,7 +70,14 @@ class ProjectsRepositoryProtocol(Protocol):
         description: str,
     ) -> StoredProject: ...
 
-    def get_project_by_id(self, project_id: UUID) -> StoredProject | None: ...
+    def get_project_by_id(
+        self,
+        project_id: UUID,
+        *,
+        include_inactive: bool = False,
+    ) -> StoredProject | None: ...
+
+    def set_project_status(self, project_id: UUID, status: str) -> StoredProject | None: ...
 
     def soft_delete_project(self, project_id: UUID) -> None: ...
 
@@ -99,5 +113,14 @@ class ProjectsRepositoryProtocol(Protocol):
     ) -> None: ...
 
     def count_project_admins(self, *, project_id: UUID) -> int: ...
+
+    def list_member_candidates(
+        self,
+        *,
+        project_id: UUID,
+        limit: int,
+        offset: int,
+        query: str | None,
+    ) -> tuple[list[StoredProjectMemberCandidate], int]: ...
 
     def user_exists(self, *, user_id: UUID) -> bool: ...

@@ -18,6 +18,7 @@ class UserItem(BaseModel):
     email: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    must_change_password: bool = False
 
 
 class UserProjectItem(BaseModel):

@@ -15,7 +15,7 @@ from runtime_service.runtime.modeling import resolve_model_by_id  # noqa: E402
 
 
 def _build_model() -> Any:
-    return resolve_model_by_id("openai_proxy_1").bind(
+    return resolve_model_by_id("openai_proxy_2").bind(
         temperature=0.2,
         max_tokens=512,
         top_p=0.95,

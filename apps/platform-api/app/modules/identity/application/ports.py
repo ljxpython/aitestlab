@@ -16,6 +16,9 @@ class StoredUser:
     password_hash: str
     is_super_admin: bool
     platform_roles: tuple[str, ...]
+    must_change_password: bool
+    failed_login_attempts: int
+    locked_until: datetime | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,6 +27,8 @@ class StoredRefreshToken:
     user_id: UUID
     expires_at: datetime
     revoked_at: datetime | None
+    family_id: str
+    consumed_at: datetime | None
 
 
 class ProjectRolesReader(Protocol):
@@ -44,6 +49,7 @@ class IdentityRepository(Protocol):
         email: str | None,
         platform_roles: tuple[str, ...] = (),
         is_super_admin: bool,
+        must_change_password: bool = False,
     ) -> StoredUser: ...
 
     def count_super_admins(self) -> int: ...
@@ -55,14 +61,29 @@ class IdentityRepository(Protocol):
         *,
         user_id: UUID,
         token_id: str,
+        family_id: str,
         expires_at: datetime,
     ) -> StoredRefreshToken: ...
 
+    def consume_refresh_token(self, token_id: str) -> tuple[StoredRefreshToken | None, str | None]: ...
+
     def revoke_refresh_token(self, token_id: str) -> None: ...
+
+    def revoke_refresh_token_family(self, family_id: str) -> int: ...
 
     def revoke_all_refresh_tokens_for_user(self, user_id: UUID) -> int: ...
 
-    def update_user_password_hash(self, user_id: UUID, password_hash: str) -> None: ...
+    def update_user_password_hash(
+        self,
+        user_id: UUID,
+        password_hash: str,
+        *,
+        must_change_password: bool,
+    ) -> None: ...
+
+    def record_login_failure(self, user_id: UUID, *, locked_until: datetime | None) -> None: ...
+
+    def clear_login_failures(self, user_id: UUID) -> None: ...
 
     def update_user_profile(
         self,

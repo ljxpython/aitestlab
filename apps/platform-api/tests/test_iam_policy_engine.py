@@ -83,6 +83,68 @@ class IamPolicyEngineTest(unittest.TestCase):
 
         self.assertEqual(ctx.exception.code, "project_role_missing")
 
+    def test_fixed_platform_and_project_role_matrix(self) -> None:
+        viewer = ActorContext(user_id="viewer", platform_roles=("platform_viewer",))
+        operator = ActorContext(user_id="operator", platform_roles=("platform_operator",))
+        self.assertTrue(
+            self.engine.evaluate(
+                actor=viewer,
+                authorization=AuthorizationRequest(permission=PermissionCode.PLATFORM_PROJECT_READ),
+            ).allowed
+        )
+        self.assertFalse(
+            self.engine.evaluate(
+                actor=viewer,
+                authorization=AuthorizationRequest(permission=PermissionCode.PLATFORM_USER_CREATE),
+            ).allowed
+        )
+        self.assertTrue(
+            self.engine.evaluate(
+                actor=operator,
+                authorization=AuthorizationRequest(permission=PermissionCode.PLATFORM_USER_CREATE),
+            ).allowed
+        )
+        self.assertFalse(
+            self.engine.evaluate(
+                actor=operator,
+                authorization=AuthorizationRequest(
+                    permission=PermissionCode.PLATFORM_USER_CREDENTIAL_RESET
+                ),
+            ).allowed
+        )
+
+        roles = {
+            "project_admin": (True, True, True),
+            "project_editor": (True, False, True),
+            "project_executor": (True, False, False),
+        }
+        for role, expected in roles.items():
+            actor = ActorContext(user_id=role, project_roles={"p-1": (role,)})
+            decisions = (
+                self.engine.evaluate(
+                    actor=actor,
+                    authorization=AuthorizationRequest(
+                        permission=PermissionCode.PROJECT_MEMBER_READ,
+                        project_id="p-1",
+                    ),
+                ).allowed,
+                self.engine.evaluate(
+                    actor=actor,
+                    authorization=AuthorizationRequest(
+                        permission=PermissionCode.PROJECT_MEMBER_WRITE,
+                        project_id="p-1",
+                    ),
+                ).allowed,
+                self.engine.evaluate(
+                    actor=actor,
+                    authorization=AuthorizationRequest(
+                        permission=PermissionCode.PROJECT_TESTCASE_WRITE,
+                        project_id="p-1",
+                    ),
+                ).allowed,
+            )
+            self.assertEqual(decisions, expected, role)
+
     def test_require_raises_not_authenticated(self) -> None:
         with self.assertRaises(NotAuthenticatedError):
             self.engine.require(

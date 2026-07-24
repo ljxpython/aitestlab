@@ -382,6 +382,10 @@ uploads
 **/aitestlab.db
 **/migrations
 migrations
+!apps/platform-api/migrations/
+!apps/platform-api/migrations/**
+apps/platform-api/migrations/**/__pycache__/
+apps/platform-api/migrations/**/*.py[cod]
 
 # ==================== apps layout local env/runtime artifacts ====================
 apps/.tmp/

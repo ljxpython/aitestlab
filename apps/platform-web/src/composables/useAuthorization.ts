@@ -2,9 +2,8 @@ import { computed } from 'vue'
 import {
   describePrimaryRole,
   describePlatformRole,
-  hasAnyProjectPermission,
   hasPermission,
-  projectRoleFor
+  isProjectPermission
 } from '@/services/auth/permissions'
 import { useAuthStore } from '@/stores/auth'
 import { useWorkspaceProjectContext } from '@/composables/useWorkspaceProjectContext'
@@ -12,22 +11,27 @@ import type { PermissionCode } from '@/types/management'
 
 export function useAuthorization() {
   const authStore = useAuthStore()
-  const { activeProjectId } = useWorkspaceProjectContext()
+  const { activeProjectId, workspaceStore } = useWorkspaceProjectContext()
 
-  const currentProjectRole = computed(() => projectRoleFor(authStore.user, activeProjectId.value))
+  const currentProjectRole = computed(() => workspaceStore.currentProjectAccess?.roles[0] || null)
   const platformRoleLabel = computed(() => describePlatformRole(authStore.user))
-  const roleLabel = computed(() => describePrimaryRole(authStore.user, activeProjectId.value))
+  const roleLabel = computed(() => describePrimaryRole(authStore.user, currentProjectRole.value))
 
   function can(permission: PermissionCode, projectId?: string | null) {
-    return hasPermission(authStore.user, permission, projectId)
+    if (isProjectPermission(permission)) {
+      const targetProjectId = projectId?.trim() || activeProjectId.value
+      return workspaceStore.currentProjectAccess?.project_id === targetProjectId
+        && workspaceStore.currentProjectAccess.permissions.includes(permission)
+    }
+    return hasPermission(authStore.user, permission)
   }
 
   function canAnyProject(permission: PermissionCode) {
-    return hasAnyProjectPermission(authStore.user, permission)
+    return workspaceStore.currentProjectAccess?.permissions.includes(permission) ?? false
   }
 
   function currentProjectCan(permission: PermissionCode) {
-    return hasPermission(authStore.user, permission, activeProjectId.value)
+    return workspaceStore.currentProjectAccess?.permissions.includes(permission) ?? false
   }
 
   return {

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy.orm import sessionmaker
 
 from app.core.config import Settings
@@ -11,6 +11,7 @@ from app.modules.service_accounts.application.contracts import (
     CreateServiceAccountTokenCommand,
     ListServiceAccountsQuery,
     UpdateServiceAccountCommand,
+    UpsertServiceAccountProjectGrantCommand,
 )
 from app.modules.service_accounts.application.service import ServiceAccountsService
 from app.modules.service_accounts.domain import (
@@ -18,6 +19,7 @@ from app.modules.service_accounts.domain import (
     ServiceAccountItem,
     ServiceAccountPage,
     ServiceAccountTokenItem,
+    ServiceAccountProjectGrantItem,
 )
 
 router = APIRouter(prefix="/api/service-accounts", tags=["service-accounts"])
@@ -33,6 +35,48 @@ def get_service_accounts_service(request: Request) -> ServiceAccountsService:
         default_token_ttl_days=settings.service_account_token_default_ttl_days,
     )
 
+
+@router.get("/{service_account_id}/project-grants", response_model=list[ServiceAccountProjectGrantItem])
+async def list_service_account_project_grants(
+    service_account_id: str,
+    actor: ActorContext = Depends(get_actor_context),
+    service: ServiceAccountsService = Depends(get_service_accounts_service),
+) -> list[ServiceAccountProjectGrantItem]:
+    return await service.list_project_grants(actor=actor, service_account_id=service_account_id)
+
+
+@router.put(
+    "/{service_account_id}/project-grants/{project_id}",
+    response_model=ServiceAccountProjectGrantItem,
+)
+async def upsert_service_account_project_grant(
+    service_account_id: str,
+    project_id: str,
+    payload: UpsertServiceAccountProjectGrantCommand,
+    actor: ActorContext = Depends(get_actor_context),
+    service: ServiceAccountsService = Depends(get_service_accounts_service),
+) -> ServiceAccountProjectGrantItem:
+    return await service.upsert_project_grant(
+        actor=actor,
+        service_account_id=service_account_id,
+        project_id=project_id,
+        command=payload,
+    )
+
+
+@router.delete("/{service_account_id}/project-grants/{project_id}", status_code=204)
+async def delete_service_account_project_grant(
+    service_account_id: str,
+    project_id: str,
+    actor: ActorContext = Depends(get_actor_context),
+    service: ServiceAccountsService = Depends(get_service_accounts_service),
+) -> Response:
+    await service.delete_project_grant(
+        actor=actor,
+        service_account_id=service_account_id,
+        project_id=project_id,
+    )
+    return Response(status_code=204)
 
 @router.get("", response_model=ServiceAccountPage)
 async def list_service_accounts(

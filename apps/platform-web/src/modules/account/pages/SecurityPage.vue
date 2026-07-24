@@ -8,6 +8,7 @@ import SurfaceCard from '@/components/base/SurfaceCard.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import StateBanner from '@/components/platform/StateBanner.vue'
 import { changeCurrentPassword } from '@/services/identity/identity.service'
+import { setTokenSet } from '@/services/auth/token'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
@@ -41,10 +42,16 @@ async function submit() {
   notice.value = ''
 
   try {
-    await changeCurrentPassword({
+    const tokens = await changeCurrentPassword({
       oldPassword: oldPassword.value,
       newPassword: newPassword.value
     })
+    setTokenSet({
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token,
+      tokenType: tokens.token_type
+    })
+    await authStore.fetchCurrentUser()
 
     oldPassword.value = ''
     newPassword.value = ''

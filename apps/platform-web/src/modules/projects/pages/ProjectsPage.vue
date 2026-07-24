@@ -276,7 +276,7 @@ function projectActions(project: ManagementProject): ActionMenuItem[] {
     }
   ]
 
-  if (authorization.can('project.member.write', project.id)) {
+  if (authorization.can('platform.project.write')) {
     actions.push({
       key: 'delete',
       label: deletingProjectId.value === project.id ? '删除中...' : '删除项目',
@@ -337,7 +337,10 @@ onMounted(() => {
       description="这里是正式项目治理入口，负责项目切换、列表检索、创建与删除闭环。"
     >
       <template #actions>
-        <BaseButton @click="void router.push('/workspace/projects/new')">
+        <BaseButton
+          :disabled="!authorization.can('platform.project.create')"
+          @click="void router.push('/workspace/projects/new')"
+        >
           <BaseIcon
             name="folder"
             size="sm"

@@ -7,6 +7,7 @@ from app.core.context.models import ActorContext
 from app.entrypoints.http.dependencies import get_actor_context
 from app.modules.identity.domain import UserStatus
 from app.modules.users.application import CreateUserCommand, ListUsersQuery, UpdateUserCommand, UsersService
+from app.modules.users.application.contracts import ResetUserPasswordCommand
 from app.modules.users.domain import UserItem, UserPage, UserProjectPage
 
 router = APIRouter(prefix="/api/users", tags=["users"])
@@ -75,7 +76,35 @@ async def list_user_projects(
 async def update_user(
     user_id: str,
     payload: UpdateUserCommand,
+    request: Request,
     actor: ActorContext = Depends(get_actor_context),
     service: UsersService = Depends(get_users_service),
 ) -> UserItem:
+    categories = {
+        category
+        for fields, category in (
+            ({"username"}, "profile"),
+            ({"status"}, "status"),
+            ({"platform_roles", "is_super_admin"}, "roles"),
+            ({"password"}, "credentials"),
+        )
+        if payload.model_fields_set & fields
+    }
+    request.state.audit_action = (
+        f"user.{next(iter(categories))}.updated"
+        if len(categories) == 1 and "credentials" not in categories
+        else "user.credentials.reset"
+        if categories == {"credentials"}
+        else "user.governance.updated"
+    )
     return await service.update_user(actor=actor, user_id=user_id, command=payload)
+
+
+@router.post("/{user_id}/credentials/reset", response_model=UserItem)
+async def reset_user_password(
+    user_id: str,
+    payload: ResetUserPasswordCommand,
+    actor: ActorContext = Depends(get_actor_context),
+    service: UsersService = Depends(get_users_service),
+) -> UserItem:
+    return await service.reset_password(actor=actor, user_id=user_id, command=payload)

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
-import { listProjects } from '@/services/projects/projects.service'
-import type { ManagementProject } from '@/types/management'
+import { getProjectAccess, listProjects } from '@/services/projects/projects.service'
+import type { ManagementProject, ProjectAccess } from '@/types/management'
 
 const PROJECT_STORAGE_KEY = 'pw:workspace:project-id'
 
@@ -29,6 +29,7 @@ export const useWorkspaceStore = defineStore('workspace', {
   state: () => ({
     currentProjectId: '',
     projects: [] as ManagementProject[],
+    currentProjectAccess: null as ProjectAccess | null,
     loading: false
   }),
   getters: {
@@ -40,9 +41,10 @@ export const useWorkspaceStore = defineStore('workspace', {
     hydrateProjectPreference() {
       this.currentProjectId = readProjectPreference(PROJECT_STORAGE_KEY)
     },
-    setProjectId(projectId: string) {
+    async setProjectId(projectId: string) {
       this.currentProjectId = projectId
       writeProjectPreference(PROJECT_STORAGE_KEY, projectId.trim())
+      this.currentProjectAccess = projectId ? await getProjectAccess(projectId) : null
     },
     async hydrateContext() {
       this.loading = true
@@ -57,17 +59,17 @@ export const useWorkspaceStore = defineStore('workspace', {
           rows[0]?.id ||
           ''
 
-        this.setProjectId(nextProjectId)
+        await this.setProjectId(nextProjectId)
       } catch {
         this.projects = []
-        this.setProjectId('')
+        await this.setProjectId('')
       } finally {
         this.loading = false
       }
     },
     reset() {
       this.projects = []
-      this.setProjectId('')
+      void this.setProjectId('')
       this.loading = false
     }
   }

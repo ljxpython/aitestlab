@@ -8,7 +8,7 @@ type RuntimeUserProfile = {
   email?: string | null
   status: string
   platform_roles?: string[]
-  project_roles?: Record<string, string[]>
+  must_change_password?: boolean
   is_super_admin?: boolean
   created_at?: string | null
   updated_at?: string | null
@@ -44,10 +44,10 @@ export async function changeCurrentPassword(
     oldPassword: string
     newPassword: string
   }
-): Promise<{ ok: boolean }> {
+): Promise<{ access_token: string; refresh_token: string; token_type: string }> {
   const response = await platformHttpClient.post('/api/identity/password/change', {
     old_password: payload.oldPassword,
     new_password: payload.newPassword
   })
-  return response.data as { ok: boolean }
+  return response.data as { access_token: string; refresh_token: string; token_type: string }
 }

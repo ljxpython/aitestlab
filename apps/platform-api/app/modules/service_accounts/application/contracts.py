@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.modules.iam.domain import PlatformRole
+from app.modules.iam.domain import PlatformRole, ProjectRole
 
 
 class ListServiceAccountsQuery(BaseModel):
@@ -35,3 +35,9 @@ class CreateServiceAccountTokenCommand(BaseModel):
 
     name: str = Field(min_length=2, max_length=64)
     expires_in_days: int | None = Field(default=None, ge=1, le=3650)
+
+
+class UpsertServiceAccountProjectGrantCommand(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    role: ProjectRole

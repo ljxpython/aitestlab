@@ -48,7 +48,7 @@ const stats = computed(() => [
   {
     label: '密码长度',
     value: password.value.length,
-    hint: '建议至少 8 位',
+    hint: '必须至少 8 位',
     icon: 'lock',
     tone: password.value.length >= 8 ? 'success' : 'danger'
   },
@@ -62,7 +62,7 @@ const stats = computed(() => [
 ])
 
 async function handleSubmit() {
-  if (!authorization.can('platform.user.write')) {
+  if (!authorization.can('platform.user.create')) {
     error.value = '当前账号没有创建用户的权限'
     return
   }
@@ -72,8 +72,8 @@ async function handleSubmit() {
     return
   }
 
-  if (!password.value.trim()) {
-    error.value = '密码不能为空'
+  if (password.value.length < 8) {
+    error.value = '密码至少需要 8 个字符'
     return
   }
 
@@ -159,7 +159,7 @@ async function handleSubmit() {
             v-model="username"
             class="pw-input"
             placeholder="请输入用户名"
-            :disabled="submitting || !authorization.can('platform.user.write')"
+            :disabled="submitting || !authorization.can('platform.user.create')"
             maxlength="64"
           >
         </label>
@@ -170,8 +170,9 @@ async function handleSubmit() {
             v-model="password"
             type="password"
             class="pw-input"
-            placeholder="请输入密码"
-            :disabled="submitting || !authorization.can('platform.user.write')"
+            placeholder="请输入至少 8 位密码"
+            minlength="8"
+            :disabled="submitting || !authorization.can('platform.user.create')"
           >
         </label>
 
@@ -179,7 +180,7 @@ async function handleSubmit() {
           <span class="pw-input-label">平台角色</span>
           <BaseSelect
             v-model="platformRole"
-            :disabled="submitting || !authorization.can('platform.user.write')"
+            :disabled="submitting || !authorization.can('platform.user.role.write')"
             :options="platformRoleOptions"
           />
         </label>
@@ -190,14 +191,14 @@ async function handleSubmit() {
 
         <div class="flex justify-end">
           <BaseButton
-            :disabled="submitting || !authorization.can('platform.user.write')"
+            :disabled="submitting || !authorization.can('platform.user.create')"
             @click="handleSubmit"
           >
             <BaseIcon
               name="users"
               size="sm"
             />
-            {{ authorization.can('platform.user.write') ? (submitting ? '创建中...' : '创建用户') : '当前账号只读' }}
+            {{ authorization.can('platform.user.create') ? (submitting ? '创建中...' : '创建用户') : '当前账号只读' }}
           </BaseButton>
         </div>
       </SurfaceCard>

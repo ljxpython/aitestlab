@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Callable
 from uuid import UUID
 
 from sqlalchemy.orm import Session, sessionmaker
@@ -33,7 +32,6 @@ from app.modules.identity.application.contracts import (
 )
 from app.modules.identity.application.ports import (
     IdentityRepository,
-    ProjectRolesReader,
     StoredUser,
 )
 from app.modules.identity.domain import AuthenticatedSession, SessionTokens, UserProfile, UserStatus
@@ -59,11 +57,9 @@ class IdentityService:
         *,
         settings: Settings,
         session_factory: sessionmaker[Session] | None,
-        project_roles_reader_factory: Callable[[Session], ProjectRolesReader] | None = None,
     ) -> None:
         self._settings = settings
         self._session_factory = session_factory
-        self._project_roles_reader_factory = project_roles_reader_factory
 
     def _require_session_factory(self) -> sessionmaker[Session]:
         if self._session_factory is None:
@@ -76,18 +72,7 @@ class IdentityService:
     def _build_repository(self, session: Session) -> IdentityRepository:
         return SqlAlchemyIdentityRepository(session)
 
-    def _project_roles(self, session: Session, *, user_id: UUID) -> dict[str, tuple[str, ...]]:
-        if self._project_roles_reader_factory is None:
-            return {}
-        repository = self._project_roles_reader_factory(session)
-        return repository.list_user_project_roles(user_id=user_id)
-
-    def _user_profile(
-        self,
-        user: StoredUser,
-        *,
-        project_roles: dict[str, tuple[str, ...]] | None = None,
-    ) -> UserProfile:
+    def _user_profile(self, user: StoredUser) -> UserProfile:
         status = (
             UserStatus.ACTIVE
             if user.status == UserStatus.ACTIVE.value
@@ -99,7 +84,7 @@ class IdentityService:
             email=user.email,
             status=status,
             platform_roles=user.platform_roles,
-            project_roles=project_roles or {},
+            must_change_password=user.must_change_password,
         )
 
     def _issue_session_tokens(
@@ -107,6 +92,7 @@ class IdentityService:
         *,
         repository: IdentityRepository,
         user: StoredUser,
+        family_id: str | None = None,
     ) -> SessionTokens:
         access_token = create_access_token(
             user_id=str(user.id),
@@ -121,6 +107,7 @@ class IdentityService:
         repository.create_refresh_token(
             user_id=user.id,
             token_id=token_id,
+            family_id=family_id or token_id,
             expires_at=_now() + timedelta(seconds=self._settings.jwt_refresh_ttl_seconds),
         )
         return SessionTokens(
@@ -130,35 +117,45 @@ class IdentityService:
 
     async def login(self, command: LoginCommand) -> tuple[AuthenticatedSession, ActorContext]:
         session_factory = self._require_session_factory()
+        authenticated: tuple[AuthenticatedSession, ActorContext] | None = None
         async with SqlAlchemyUnitOfWork(session_factory) as uow:
             repository = self._build_repository(uow.session)
             user = repository.get_user_by_username(command.username.strip())
-            if (
-                user is None
-                or user.status != UserStatus.ACTIVE.value
-                or not verify_password(command.password, user.password_hash)
-            ):
-                raise PlatformApiError(
-                    code="invalid_credentials",
-                    status_code=401,
-                    message="Invalid username or password",
+            now = _now()
+            locked_until = user.locked_until if user is not None else None
+            if locked_until is not None and locked_until.tzinfo is None:
+                locked_until = locked_until.replace(tzinfo=timezone.utc)
+            password_valid = bool(
+                user is not None
+                and user.status == UserStatus.ACTIVE.value
+                and (locked_until is None or locked_until <= now)
+                and verify_password(command.password, user.password_hash)
+            )
+            if not password_valid:
+                if user is not None and user.status == UserStatus.ACTIVE.value:
+                    next_attempt = user.failed_login_attempts + 1
+                    repository.record_login_failure(
+                        user.id,
+                        locked_until=now + timedelta(minutes=15) if next_attempt >= 5 else None,
+                    )
+            else:
+                repository.clear_login_failures(user.id)
+                tokens = self._issue_session_tokens(repository=repository, user=user)
+                session = AuthenticatedSession(tokens=tokens, user=self._user_profile(user))
+                authenticated = session, ActorContext(
+                    user_id=str(user.id),
+                    subject=user.external_subject,
+                    email=user.email,
+                    platform_roles=user.platform_roles,
+                    must_change_password=user.must_change_password,
                 )
-            tokens = self._issue_session_tokens(repository=repository, user=user)
-            project_roles = self._project_roles(uow.session, user_id=user.id)
-            session = AuthenticatedSession(
-                tokens=tokens,
-                user=self._user_profile(
-                    user,
-                    project_roles=project_roles,
-                ),
+        if authenticated is None:
+            raise PlatformApiError(
+                code="invalid_credentials",
+                status_code=401,
+                message="Invalid username or password",
             )
-            return session, ActorContext(
-                user_id=str(user.id),
-                subject=user.external_subject,
-                email=user.email,
-                platform_roles=user.platform_roles,
-                project_roles=project_roles,
-            )
+        return authenticated
 
     async def refresh(self, command: RefreshSessionCommand) -> SessionTokens:
         session_factory = self._require_session_factory()
@@ -188,24 +185,31 @@ class IdentityService:
                 message="Refresh token payload is incomplete",
             )
 
+        result: SessionTokens | None = None
+        error_code = "refresh_token_revoked"
+        error_message = "Refresh token has been revoked"
         async with SqlAlchemyUnitOfWork(session_factory) as uow:
             repository = self._build_repository(uow.session)
-            refresh_token = repository.get_refresh_token(token_id)
-            if refresh_token is None or refresh_token.revoked_at is not None:
-                raise PlatformApiError(
-                    code="refresh_token_revoked",
-                    status_code=401,
-                    message="Refresh token has been revoked",
-                )
-            user = repository.get_user_by_id(user_id)
-            if user is None or user.status != UserStatus.ACTIVE.value:
-                raise PlatformApiError(
-                    code="user_not_active",
-                    status_code=401,
-                    message="User is not active",
-                )
-            repository.revoke_refresh_token(token_id)
-            return self._issue_session_tokens(repository=repository, user=user)
+            refresh_token, state = repository.consume_refresh_token(token_id)
+            if refresh_token is not None and state == "replayed":
+                repository.revoke_refresh_token_family(refresh_token.family_id)
+                error_code = "refresh_token_replayed"
+                error_message = "Refresh token replay detected"
+            elif refresh_token is not None and state == "consumed":
+                user = repository.get_user_by_id(user_id)
+                if user is None or user.status != UserStatus.ACTIVE.value:
+                    repository.revoke_refresh_token_family(refresh_token.family_id)
+                    error_code = "user_not_active"
+                    error_message = "User is not active"
+                else:
+                    result = self._issue_session_tokens(
+                        repository=repository,
+                        user=user,
+                        family_id=refresh_token.family_id,
+                    )
+        if result is None:
+            raise PlatformApiError(code=error_code, status_code=401, message=error_message)
+        return result
 
     async def logout(self, command: LogoutCommand) -> None:
         session_factory = self._require_session_factory()
@@ -233,7 +237,7 @@ class IdentityService:
         *,
         actor: ActorContext,
         command: ChangePasswordCommand,
-    ) -> None:
+    ) -> SessionTokens:
         session_factory = self._require_session_factory()
         user_id = _parse_user_id(actor.user_id)
         async with SqlAlchemyUnitOfWork(session_factory) as uow:
@@ -250,8 +254,13 @@ class IdentityService:
             repository.update_user_password_hash(
                 user_id,
                 hash_password(command.new_password),
+                must_change_password=False,
             )
             repository.revoke_all_refresh_tokens_for_user(user_id)
+            updated = repository.get_user_by_id(user_id)
+            if updated is None:
+                raise NotFoundError(message="User not found", code="user_not_found")
+            return self._issue_session_tokens(repository=repository, user=updated)
 
     async def get_current_user(self, actor: ActorContext) -> UserProfile:
         session_factory = self._require_session_factory()
@@ -261,7 +270,7 @@ class IdentityService:
             user = repository.get_user_by_id(user_id)
             if user is None:
                 raise NotFoundError(message="User not found", code="user_not_found")
-            return self._user_profile(user, project_roles=dict(actor.project_roles))
+            return self._user_profile(user)
 
     async def update_current_user(
         self,
@@ -297,7 +306,7 @@ class IdentityService:
             )
             if updated is None:
                 raise NotFoundError(message="User not found", code="user_not_found")
-            return self._user_profile(updated, project_roles=dict(actor.project_roles))
+            return self._user_profile(updated)
 
     async def ensure_bootstrap_admin(self) -> str | None:
         session_factory = self._require_session_factory()

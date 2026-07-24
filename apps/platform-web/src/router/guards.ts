@@ -1,9 +1,5 @@
 import type { Router } from 'vue-router'
-import {
-  hasAnyProjectPermission,
-  hasPermission,
-  isProjectPermission
-} from '@/services/auth/permissions'
+import { hasPermission, isProjectPermission } from '@/services/auth/permissions'
 import { getAccessToken, hasStoredAuthSession } from '@/services/auth/token'
 import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
@@ -30,7 +26,8 @@ function hasRoutePermission(
   mode: 'all' | 'any',
   projectId: string,
   allowWithoutProject: boolean,
-  authStore: ReturnType<typeof useAuthStore>
+  authStore: ReturnType<typeof useAuthStore>,
+  workspaceStore: ReturnType<typeof useWorkspaceStore>
 ): boolean {
   const evaluator = (permission: PermissionCode) => {
     if (!isProjectPermission(permission)) {
@@ -38,10 +35,13 @@ function hasRoutePermission(
     }
 
     if (projectId) {
-      return hasPermission(authStore.user, permission, projectId)
+      return workspaceStore.currentProjectAccess?.project_id === projectId
+        && workspaceStore.currentProjectAccess.permissions.includes(permission)
     }
 
-    return allowWithoutProject ? hasAnyProjectPermission(authStore.user, permission) : false
+    return allowWithoutProject
+      ? Boolean(workspaceStore.currentProjectAccess?.permissions.includes(permission))
+      : false
   }
 
   return mode === 'any'
@@ -93,12 +93,20 @@ export function registerRouterGuards(router: Router) {
           workspaceStore,
           to.meta.permissionProjectSource
         )
+        if (
+          to.meta.permissionProjectSource === 'route'
+          && projectId
+          && workspaceStore.currentProjectAccess?.project_id !== projectId
+        ) {
+          await workspaceStore.setProjectId(projectId)
+        }
         const allowed = hasRoutePermission(
           requiredPermissions,
           permissionMode,
           projectId,
           Boolean(to.meta.allowWithoutProject),
-          authStore
+          authStore,
+          workspaceStore
         )
 
         if (!allowed) {

@@ -70,6 +70,13 @@
 3. 确认 service account 状态是 `active`
 4. 确认 token prefix 能在数据库查到
 5. 确认目标接口权限是否是只读还是写入
+6. 项目接口还要确认目标项目存在活动 grant，且项目状态为 `active`
+
+## 5.1 用户登录或刷新失败
+
+- 管理员创建或重置的密码可直接用于正常登录；用户需要时可在账户安全页主动修改。
+- 连续五次密码错误会锁定十五分钟，外部统一返回凭据错误，不能据此判断账号是否存在。
+- refresh token 重放会撤销整个 family；不要尝试恢复旧 token，要求用户重新登录。
 
 ## 6. artifact 下载失败
 
@@ -127,3 +134,6 @@ bash "./scripts/restore_db.sh" postgres ".backup/platform-api.dump" "postgresql:
 3. 如有 schema / 数据问题，恢复最近备份
 4. 重新拉起 API / worker
 5. 再看 `/_system/probes/ready` 和关键页面 smoke
+
+本次 IAM 增量迁移采用非破坏性回滚：回退应用和前端，但保留新增列与
+`service_account_project_grants` 表。不得删除身份、grant 或令牌历史来“回到旧版”。

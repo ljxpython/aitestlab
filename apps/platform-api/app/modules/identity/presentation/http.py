@@ -17,7 +17,6 @@ from app.modules.identity.application.contracts import (
 )
 from app.modules.identity.application.service import IdentityService
 from app.modules.identity.domain import AuthenticatedSession, SessionTokens, UserProfile
-from app.modules.projects.infra.sqlalchemy.repository import SqlAlchemyProjectsRepository
 
 router = APIRouter(prefix="/api/identity", tags=["identity"])
 
@@ -33,7 +32,6 @@ def get_identity_service(request: Request) -> IdentityService:
     return IdentityService(
         settings=settings,
         session_factory=session_factory,
-        project_roles_reader_factory=SqlAlchemyProjectsRepository,
     )
 
 
@@ -82,11 +80,10 @@ async def update_me(
     return await service.update_current_user(actor=actor, command=payload)
 
 
-@router.post("/password/change", response_model=AckResponse)
+@router.post("/password/change", response_model=SessionTokens)
 async def change_password(
     payload: ChangePasswordCommand,
     actor: ActorContext = Depends(get_actor_context),
     service: IdentityService = Depends(get_identity_service),
-) -> AckResponse:
-    await service.change_password(actor=actor, command=payload)
-    return AckResponse()
+) -> SessionTokens:
+    return await service.change_password(actor=actor, command=payload)

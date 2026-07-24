@@ -40,6 +40,7 @@ class ActorContext:
     principal_type: str = "user"
     authentication_type: str = "bearer"
     credential_id: str | None = None
+    must_change_password: bool = False
     platform_roles: tuple[str, ...] = field(default_factory=tuple)
     project_roles: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
 

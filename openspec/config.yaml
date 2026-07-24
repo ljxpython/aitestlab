@@ -14,6 +14,11 @@ context: |
   Every persisted change with tasks.md must maintain verification.md. B3 must record
   owner review approval or an explicit owner waiver before apply. Accepted delta specs
   must sync to openspec/specs before archive.
+  Write canonical OpenSpec artifact prose in Simplified Chinese so developers and LLM
+  agents use one source of truth. Preserve schema-required English filenames, headings,
+  keywords, checkbox syntax, code identifiers, paths, commands, and API names. Do not
+  create English/Chinese mirrors or summary.zh-CN.md. Do not claim language token-cost
+  differences without equivalent inputs and the deployed model's tokenizer.
 
 rules:
   proposal:

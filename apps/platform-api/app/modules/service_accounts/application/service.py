@@ -12,18 +12,21 @@ from app.core.errors import BadRequestError, ConflictError, NotFoundError, Servi
 from app.core.identifiers import parse_uuid
 from app.core.security import hash_password, verify_password
 from app.modules.iam.application import AuthorizationRequest, IamPolicyEngine, PermissionCode
-from app.modules.iam.domain import PlatformRole
+from app.modules.iam.domain import PlatformRole, ProjectRole
+from app.modules.projects.infra.sqlalchemy.repository import SqlAlchemyProjectsRepository
 from app.modules.service_accounts.application.contracts import (
     CreateServiceAccountCommand,
     CreateServiceAccountTokenCommand,
     ListServiceAccountsQuery,
     UpdateServiceAccountCommand,
+    UpsertServiceAccountProjectGrantCommand,
 )
 from app.modules.service_accounts.domain import (
     CreatedServiceAccountToken,
     ServiceAccountItem,
     ServiceAccountPage,
     ServiceAccountTokenItem,
+    ServiceAccountProjectGrantItem,
 )
 from app.modules.service_accounts.infra.sqlalchemy.repository import (
     SqlAlchemyServiceAccountsRepository,
@@ -102,6 +105,16 @@ class ServiceAccountsService:
             created_at=item.created_at,
             updated_at=item.updated_at,
             tokens=tokens,
+        )
+
+    def _grant_item(self, item) -> ServiceAccountProjectGrantItem:
+        return ServiceAccountProjectGrantItem(
+            id=str(item.id),
+            service_account_id=str(item.service_account_id),
+            project_id=str(item.project_id),
+            role=ProjectRole(item.role),
+            created_at=item.created_at,
+            updated_at=item.updated_at,
         )
 
     async def list_service_accounts(
@@ -245,7 +258,67 @@ class ServiceAccountsService:
                 )
             return self._token_item(revoked)
 
-    def authenticate_api_key(self, api_key: str) -> ActorContext | None:
+    async def list_project_grants(
+        self,
+        *,
+        actor: ActorContext,
+        service_account_id: str,
+    ) -> list[ServiceAccountProjectGrantItem]:
+        self._require_permission(actor=actor, permission=PermissionCode.PLATFORM_SERVICE_ACCOUNT_GRANT_WRITE)
+        account_uuid = parse_uuid(service_account_id, code="invalid_service_account_id")
+        async with SqlAlchemyUnitOfWork(self._require_session_factory()) as uow:
+            repository = SqlAlchemyServiceAccountsRepository(uow.session)
+            if repository.get_service_account_by_id(account_uuid) is None:
+                raise NotFoundError(code="service_account_not_found", message="Service account not found")
+            return [self._grant_item(item) for item in repository.list_project_grants(service_account_id=account_uuid)]
+
+    async def upsert_project_grant(
+        self,
+        *,
+        actor: ActorContext,
+        service_account_id: str,
+        project_id: str,
+        command: UpsertServiceAccountProjectGrantCommand,
+    ) -> ServiceAccountProjectGrantItem:
+        self._require_permission(actor=actor, permission=PermissionCode.PLATFORM_SERVICE_ACCOUNT_GRANT_WRITE)
+        account_uuid = parse_uuid(service_account_id, code="invalid_service_account_id")
+        project_uuid = parse_uuid(project_id, code="invalid_project_id")
+        async with SqlAlchemyUnitOfWork(self._require_session_factory()) as uow:
+            repository = SqlAlchemyServiceAccountsRepository(uow.session)
+            account = repository.get_service_account_by_id(account_uuid)
+            project = SqlAlchemyProjectsRepository(uow.session).get_project_by_id(project_uuid)
+            if account is None or account.status != "active":
+                raise NotFoundError(code="service_account_not_found", message="Service account not found")
+            if project is None or project.status != "active":
+                raise NotFoundError(code="project_not_found", message="Project not found")
+            return self._grant_item(
+                repository.upsert_project_grant(
+                    service_account_id=account_uuid,
+                    project_id=project_uuid,
+                    role=command.role,
+                    actor_id=_actor_identity(actor),
+                )
+            )
+
+    async def delete_project_grant(
+        self,
+        *,
+        actor: ActorContext,
+        service_account_id: str,
+        project_id: str,
+    ) -> None:
+        self._require_permission(actor=actor, permission=PermissionCode.PLATFORM_SERVICE_ACCOUNT_GRANT_WRITE)
+        account_uuid = parse_uuid(service_account_id, code="invalid_service_account_id")
+        project_uuid = parse_uuid(project_id, code="invalid_project_id")
+        async with SqlAlchemyUnitOfWork(self._require_session_factory()) as uow:
+            deleted = SqlAlchemyServiceAccountsRepository(uow.session).delete_project_grant(
+                service_account_id=account_uuid,
+                project_id=project_uuid,
+            )
+            if not deleted:
+                raise NotFoundError(code="service_account_project_grant_not_found", message="Project grant not found")
+
+    def authenticate_api_key(self, api_key: str, *, project_id: str | None = None) -> ActorContext | None:
         session_factory = self._session_factory
         if session_factory is None:
             return None
@@ -266,12 +339,25 @@ class ServiceAccountsService:
                 service_account_id=account.id,
                 used_at=datetime.now(timezone.utc),
             )
+            project_roles: dict[str, tuple[str, ...]] = {}
+            if project_id:
+                try:
+                    project_uuid = UUID(project_id)
+                except ValueError:
+                    return None
+                role = repository.get_project_grant_role(
+                    credential_id=str(token.id),
+                    project_id=project_uuid,
+                )
+                if role is not None:
+                    project_roles[project_id] = (role.value,)
             return ActorContext(
                 subject=account.name,
                 platform_roles=account.platform_roles,
                 principal_type="service_account",
                 authentication_type="api_key",
                 credential_id=str(token.id),
+                project_roles=project_roles,
             )
 
     def summarize(self) -> dict[str, int]:

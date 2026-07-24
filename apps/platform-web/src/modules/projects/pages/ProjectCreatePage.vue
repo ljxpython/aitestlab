@@ -59,7 +59,7 @@ async function handleSubmit() {
       description: description.value.trim() || undefined
     })
 
-    workspaceStore.setProjectId(created.id)
+    await workspaceStore.setProjectId(created.id)
     await workspaceStore.hydrateContext()
     notice.value = `已创建项目：${created.name}`
     void router.replace('/workspace/projects')

@@ -23,7 +23,7 @@ const workspaceChildren: RouteRecordRaw[] = [
     path: 'projects/new',
     name: 'workspace-project-create',
     component: () => import('@/modules/projects/pages/ProjectCreatePage.vue'),
-    meta: { title: '新建项目', eyebrow: 'Projects' }
+    meta: { title: '新建项目', eyebrow: 'Projects', requiredPermissions: ['platform.project.create'] }
   },
   {
     path: 'projects/:projectId',
@@ -32,7 +32,8 @@ const workspaceChildren: RouteRecordRaw[] = [
     meta: {
       title: '项目详情',
       eyebrow: 'Projects',
-      requiredPermissions: ['project.member.read'],
+      requiredPermissions: ['platform.project.read', 'project.member.read'],
+      permissionMode: 'any',
       permissionProjectSource: 'route'
     }
   },
@@ -118,7 +119,7 @@ const workspaceChildren: RouteRecordRaw[] = [
     path: 'users/new',
     name: 'workspace-user-create',
     component: () => import('@/modules/users/pages/UserCreatePage.vue'),
-    meta: { title: '新建用户', eyebrow: 'Users', requiredPermissions: ['platform.user.write'] }
+    meta: { title: '新建用户', eyebrow: 'Users', requiredPermissions: ['platform.user.create'] }
   },
   {
     path: 'users/:userId',

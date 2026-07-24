@@ -11,6 +11,7 @@ from app.modules.identity.infra.sqlalchemy.models import UserRecord
 from app.modules.projects.application.ports import (
     StoredProject,
     StoredProjectMemberView,
+    StoredProjectMemberCandidate,
     StoredTenant,
 )
 from app.modules.projects.infra.sqlalchemy.models import (
@@ -120,10 +121,24 @@ class SqlAlchemyProjectsRepository:
         self.session.flush()
         return _to_project(record)
 
-    def get_project_by_id(self, project_id: UUID) -> StoredProject | None:
+    def get_project_by_id(
+        self,
+        project_id: UUID,
+        *,
+        include_inactive: bool = False,
+    ) -> StoredProject | None:
+        record = self.session.get(ProjectRecord, project_id)
+        if record is None or (not include_inactive and record.status != "active"):
+            return None
+        return _to_project(record)
+
+    def set_project_status(self, project_id: UUID, status: str) -> StoredProject | None:
         record = self.session.get(ProjectRecord, project_id)
         if record is None:
             return None
+        record.status = status
+        record.deleted_at = None
+        self.session.flush()
         return _to_project(record)
 
     def soft_delete_project(self, project_id: UUID) -> None:
@@ -248,6 +263,38 @@ class SqlAlchemyProjectsRepository:
             )
         )
         return int(self.session.scalar(stmt) or 0)
+
+    def list_member_candidates(
+        self,
+        *,
+        project_id: UUID,
+        limit: int,
+        offset: int,
+        query: str | None,
+    ) -> tuple[list[StoredProjectMemberCandidate], int]:
+        member_ids = select(ProjectMemberRecord.user_id).where(
+            ProjectMemberRecord.project_id == project_id
+        )
+        base_stmt = select(UserRecord).where(
+            UserRecord.status == "active",
+            UserRecord.id.not_in(member_ids),
+        )
+        if query and query.strip():
+            normalized = f"%{query.strip().lower()}%"
+            base_stmt = base_stmt.where(
+                func.lower(UserRecord.username).like(normalized)
+                | func.lower(func.coalesce(UserRecord.email, "")).like(normalized)
+            )
+        rows = list(
+            self.session.scalars(
+                base_stmt.order_by(UserRecord.username.asc()).offset(offset).limit(limit)
+            ).all()
+        )
+        total = int(self.session.scalar(select(func.count()).select_from(base_stmt.subquery())) or 0)
+        return [
+            StoredProjectMemberCandidate(user_id=row.id, username=row.username, email=row.email)
+            for row in rows
+        ], total
 
     def user_exists(self, *, user_id: UUID) -> bool:
         stmt = (

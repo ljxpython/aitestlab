@@ -104,6 +104,12 @@ export PLATFORM_API_BOOTSTRAP_ADMIN_PASSWORD=admin123456
 - `assistant_profiles`
 - `audit_logs`
 
+IAM 增量 revision `20260723_0001` 还增加：
+
+- `users.must_change_password / failed_login_attempts / locked_until`
+- `refresh_tokens.family_id / consumed_at`
+- `service_account_project_grants`
+
 这意味着当前核心控制面样板模块都已经有 PostgreSQL 基线落点。
 
 ## 7. 后续开发规则
@@ -120,3 +126,6 @@ export PLATFORM_API_BOOTSTRAP_ADMIN_PASSWORD=admin123456
 - 手工进库改字段
 - 直接删库后 `create_all`
 - 新模块写完却不补 migration
+
+应用回滚时保留上述新增列和 grant 表，不执行破坏性 downgrade，不恢复已经消费或
+撤销的 refresh token。前端和 API 的登录/资料响应契约必须成对回滚。
