@@ -44,7 +44,7 @@ def resolve_requested_tools(
     mcp_specs = get_mcp_server_specs()
 
     if not requested_tool_names:
-        return sorted(builtin_catalog.keys()), sorted(mcp_specs.keys())
+        return [], []
 
     selected_builtin: list[str] = []
     selected_mcp: list[str] = []

@@ -172,6 +172,7 @@ fixtures 存放在 `runtime_service/test_data/`。
 4. `docs/knowledge/04-runtime-contract-v1.md`
 5. `docs/knowledge/05-runtime-contract-open-questions.md`
 6. `docs/knowledge/06-runtime-blueprint-pseudocode.md`
+7. `docs/knowledge/07-langgraph-ecosystem-repository-research.md`
 
 ## 开发约定
 

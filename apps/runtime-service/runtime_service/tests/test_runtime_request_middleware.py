@@ -5,8 +5,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from langchain.agents.middleware import ModelRequest, ModelResponse
-from langchain.messages import AIMessage, SystemMessage
+from langchain.agents import create_agent
+from langchain.agents.middleware import ModelRequest, ModelResponse, ToolCallRequest
+from langchain.messages import AIMessage, SystemMessage, ToolMessage
+from langchain.tools import ToolRuntime
+from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.tools import tool
 from langgraph.runtime import Runtime
 
@@ -37,6 +40,16 @@ def optional_tool_b() -> str:
     return "optional-b"
 
 
+@tool("dynamic_tool", description="Runtime-discovered tool.")
+def dynamic_tool() -> str:
+    return "dynamic-result"
+
+
+@tool("dynamic_tool", description="Statically registered tool with the same name.")
+def static_dynamic_tool() -> str:
+    return "static-result"
+
+
 class DummyModel:
     def __init__(self) -> None:
         self.bound_kwargs: dict[str, Any] = {}
@@ -49,6 +62,43 @@ class DummyModel:
 class NamedTool:
     def __init__(self, name: str) -> None:
         self.name = name
+
+
+class ScriptedToolCallingModel(FakeMessagesListChatModel):
+    def bind_tools(self, tools: Any, **kwargs: Any) -> ScriptedToolCallingModel:
+        del tools, kwargs
+        return self
+
+
+def _build_tool_runtime(
+    context: RuntimeContext | None = None,
+) -> ToolRuntime[RuntimeContext, dict[str, Any]]:
+    return ToolRuntime(
+        state={},
+        context=context or RuntimeContext(),
+        config={},
+        stream_writer=lambda *_args, **_kwargs: None,
+        tool_call_id="call-1",
+        store=None,
+    )
+
+
+def _build_tool_call_request(
+    *,
+    tool: Any = None,
+    context: RuntimeContext | None = None,
+) -> ToolCallRequest:
+    return ToolCallRequest(
+        tool_call={
+            "name": "dynamic_tool",
+            "args": {},
+            "id": "call-1",
+            "type": "tool_call",
+        },
+        tool=tool,
+        state={},
+        runtime=_build_tool_runtime(context),
+    )
 
 
 def test_resolve_runtime_request_prefers_context_values(monkeypatch: Any) -> None:
@@ -201,6 +251,73 @@ def test_runtime_request_middleware_awrap_model_call_updates_request(
     assert response.result[0].text == "ok"
 
 
+def test_runtime_request_middleware_preserves_registered_deepagent_tools(
+    monkeypatch: Any,
+) -> None:
+    dummy_model = DummyModel()
+    read_file = NamedTool("read_file")
+    write_todos = NamedTool("write_todos")
+
+    monkeypatch.setattr(
+        "runtime_service.runtime.runtime_request_resolver.resolve_model_by_id",
+        lambda _model_id: dummy_model,
+    )
+
+    middleware = RuntimeRequestMiddleware(
+        defaults=AgentDefaults(
+            model_id="default-model",
+            system_prompt="default prompt",
+        ),
+        required_tools=[],
+        public_tools=[],
+    )
+    request = ModelRequest(
+        model=object(),
+        messages=[],
+        tools=[read_file, write_todos],
+        runtime=Runtime(context=RuntimeContext(enable_tools=False)),
+    )
+
+    def handler(updated_request: ModelRequest) -> ModelResponse:
+        assert updated_request.tools == [read_file, write_todos]
+        return ModelResponse(result=[AIMessage(content="ok")])
+
+    middleware.wrap_model_call(request, handler)
+
+
+def test_runtime_request_middleware_hides_optional_tools_for_empty_allowlist(
+    monkeypatch: Any,
+) -> None:
+    dummy_model = DummyModel()
+
+    monkeypatch.setattr(
+        "runtime_service.runtime.runtime_request_resolver.resolve_model_by_id",
+        lambda _model_id: dummy_model,
+    )
+
+    middleware = RuntimeRequestMiddleware(
+        defaults=AgentDefaults(
+            model_id="default-model",
+            system_prompt="default prompt",
+            public_tool_names=("optional_tool_a",),
+        ),
+        required_tools=[required_tool],
+        public_tools=[optional_tool_a, optional_tool_b],
+    )
+    request = ModelRequest(
+        model=object(),
+        messages=[],
+        tools=[required_tool, optional_tool_a, optional_tool_b],
+        runtime=Runtime(context=RuntimeContext(enable_tools=True, tools=[])),
+    )
+
+    def handler(updated_request: ModelRequest) -> ModelResponse:
+        assert updated_request.tools == [required_tool]
+        return ModelResponse(result=[AIMessage(content="ok")])
+
+    middleware.wrap_model_call(request, handler)
+
+
 def test_runtime_request_middleware_wrap_model_call_supports_custom_resolvers(
     monkeypatch: Any,
 ) -> None:
@@ -229,6 +346,7 @@ def test_runtime_request_middleware_wrap_model_call_supports_custom_resolvers(
     request = ModelRequest(
         model=object(),
         messages=[],
+        tools=[required_tool, resolved_required, optional_tool_b],
         runtime=Runtime(
             context=RuntimeContext(
                 model_id="demo-model",
@@ -282,6 +400,7 @@ def test_runtime_request_middleware_awrap_model_call_supports_async_resolvers(
     request = ModelRequest(
         model=object(),
         messages=[],
+        tools=[required_tool, resolved_required, optional_tool_a],
         runtime=Runtime(
             context=RuntimeContext(
                 model_id="demo-model",
@@ -300,3 +419,250 @@ def test_runtime_request_middleware_awrap_model_call_supports_async_resolvers(
     response = asyncio.run(middleware.awrap_model_call(request, handler))
 
     assert response.result[0].text == "ok"
+
+
+def test_runtime_request_middleware_exposes_authorized_dynamic_tools(
+    monkeypatch: Any,
+) -> None:
+    dummy_model = DummyModel()
+    registered_tool = NamedTool("registered_tool")
+
+    monkeypatch.setattr(
+        "runtime_service.runtime.runtime_request_resolver.resolve_model_by_id",
+        lambda _model_id: dummy_model,
+    )
+
+    middleware = RuntimeRequestMiddleware(
+        defaults=AgentDefaults(
+            model_id="default-model",
+            system_prompt="default prompt",
+        ),
+        required_tools=[],
+        public_tools=[],
+        required_tool_resolver=lambda _settings: [dynamic_tool],
+    )
+    request = ModelRequest(
+        model=object(),
+        messages=[],
+        tools=[registered_tool],
+        runtime=Runtime(context=RuntimeContext()),
+    )
+
+    def handler(updated_request: ModelRequest) -> ModelResponse:
+        assert updated_request.tools == [registered_tool, dynamic_tool]
+        return ModelResponse(result=[AIMessage(content="ok")])
+
+    middleware.wrap_model_call(request, handler)
+
+
+def test_runtime_request_middleware_keeps_static_tool_on_name_conflict(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setattr(
+        "runtime_service.runtime.runtime_request_resolver.resolve_model_by_id",
+        lambda _model_id: DummyModel(),
+    )
+    middleware = RuntimeRequestMiddleware(
+        defaults=AgentDefaults(model_id="default-model", system_prompt=""),
+        required_tools=[],
+        public_tools=[],
+        required_tool_resolver=lambda _settings: [dynamic_tool],
+    )
+    request = ModelRequest(
+        model=object(),
+        messages=[],
+        tools=[static_dynamic_tool],
+        runtime=Runtime(context=RuntimeContext()),
+    )
+
+    def handler(updated_request: ModelRequest) -> ModelResponse:
+        assert updated_request.tools == [static_dynamic_tool]
+        return ModelResponse(result=[AIMessage(content="ok")])
+
+    middleware.wrap_model_call(request, handler)
+
+
+def test_runtime_request_middleware_dynamic_public_tools_follow_allowlist(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setattr(
+        "runtime_service.runtime.runtime_request_resolver.resolve_model_by_id",
+        lambda _model_id: DummyModel(),
+    )
+    middleware = RuntimeRequestMiddleware(
+        defaults=AgentDefaults(model_id="default-model", system_prompt=""),
+        required_tools=[],
+        public_tools=[],
+        public_tool_resolver=lambda settings: [dynamic_tool]
+        if "dynamic_tool" in settings.requested_public_tool_names
+        else [],
+    )
+
+    def resolve_tools(context: RuntimeContext) -> list[Any]:
+        request = ModelRequest(
+            model=object(),
+            messages=[],
+            tools=[],
+            runtime=Runtime(context=context),
+        )
+        observed: list[Any] = []
+        middleware.wrap_model_call(
+            request,
+            lambda updated: observed.extend(updated.tools)
+            or ModelResponse(result=[AIMessage(content="ok")]),
+        )
+        return observed
+
+    assert resolve_tools(RuntimeContext(enable_tools=True, tools=[])) == []
+    assert resolve_tools(
+        RuntimeContext(enable_tools=True, tools=["dynamic_tool"])
+    ) == [dynamic_tool]
+
+
+def test_runtime_request_middleware_wrap_tool_call_binds_dynamic_tool(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setattr(
+        "runtime_service.runtime.runtime_request_resolver.resolve_model_by_id",
+        lambda _model_id: DummyModel(),
+    )
+    middleware = RuntimeRequestMiddleware(
+        defaults=AgentDefaults(model_id="default-model", system_prompt=""),
+        required_tools=[],
+        public_tools=[],
+        required_tool_resolver=lambda _settings: [dynamic_tool],
+    )
+
+    def handler(request: ToolCallRequest) -> str:
+        assert request.tool is dynamic_tool
+        return "ok"
+
+    assert middleware.wrap_tool_call(_build_tool_call_request(), handler) == "ok"
+
+
+def test_runtime_request_middleware_wrap_tool_call_fails_closed(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setattr(
+        "runtime_service.runtime.runtime_request_resolver.resolve_model_by_id",
+        lambda _model_id: DummyModel(),
+    )
+    middleware = RuntimeRequestMiddleware(
+        defaults=AgentDefaults(model_id="default-model", system_prompt=""),
+        required_tools=[],
+        public_tools=[],
+        required_tool_resolver=lambda _settings: [],
+        public_tool_resolver=lambda settings: [dynamic_tool]
+        if "dynamic_tool" in settings.requested_public_tool_names
+        else [],
+    )
+    observed: list[Any] = []
+
+    middleware.wrap_tool_call(
+        _build_tool_call_request(
+            context=RuntimeContext(enable_tools=True, tools=[]),
+        ),
+        lambda request: observed.append(request.tool) or "unknown",
+    )
+
+    assert observed == [None]
+
+
+def test_runtime_request_middleware_wrap_tool_call_preserves_static_tool() -> None:
+    middleware = RuntimeRequestMiddleware(
+        defaults=AgentDefaults(model_id="default-model", system_prompt=""),
+        required_tools=[],
+        public_tools=[],
+        required_tool_resolver=lambda _settings: (_ for _ in ()).throw(
+            AssertionError("Static tools must not be re-resolved.")
+        ),
+    )
+
+    def handler(request: ToolCallRequest) -> str:
+        assert request.tool is static_dynamic_tool
+        return "static"
+
+    assert (
+        middleware.wrap_tool_call(
+            _build_tool_call_request(tool=static_dynamic_tool),
+            handler,
+        )
+        == "static"
+    )
+
+
+def test_runtime_request_middleware_awrap_tool_call_binds_dynamic_tool(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setattr(
+        "runtime_service.runtime.runtime_request_resolver.resolve_model_by_id",
+        lambda _model_id: DummyModel(),
+    )
+
+    async def resolve_required(_settings: Any) -> list[Any]:
+        return [dynamic_tool]
+
+    middleware = RuntimeRequestMiddleware(
+        defaults=AgentDefaults(model_id="default-model", system_prompt=""),
+        required_tools=[],
+        public_tools=[],
+        arequired_tool_resolver=resolve_required,
+    )
+
+    async def handler(request: ToolCallRequest) -> str:
+        assert request.tool is dynamic_tool
+        return "ok"
+
+    assert (
+        asyncio.run(middleware.awrap_tool_call(_build_tool_call_request(), handler))
+        == "ok"
+    )
+
+
+def test_runtime_request_middleware_executes_dynamic_tool_in_agent_chain(
+    monkeypatch: Any,
+) -> None:
+    model = ScriptedToolCallingModel(
+        responses=[
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "dynamic_tool",
+                        "args": {},
+                        "id": "call-1",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            AIMessage(content="done"),
+        ]
+    )
+    monkeypatch.setattr(
+        "runtime_service.runtime.runtime_request_resolver.resolve_model_by_id",
+        lambda _model_id: model,
+    )
+    agent = create_agent(
+        model=model,
+        tools=[required_tool],
+        middleware=[
+            RuntimeRequestMiddleware(
+                defaults=AgentDefaults(model_id="default-model", system_prompt=""),
+                required_tools=[],
+                public_tools=[],
+                required_tool_resolver=lambda _settings: [dynamic_tool],
+            )
+        ],
+        context_schema=RuntimeContext,
+    )
+
+    result = agent.invoke(
+        {"messages": [{"role": "user", "content": "run the dynamic tool"}]},
+        context=RuntimeContext(),
+    )
+
+    tool_messages = [
+        message for message in result["messages"] if isinstance(message, ToolMessage)
+    ]
+    assert len(tool_messages) == 1
+    assert tool_messages[0].content == "dynamic-result"

@@ -149,6 +149,10 @@ runtime_service/middlewares/
 - 解析模型与运行参数
 - 覆盖 `system prompt`
 - 根据 `enable_tools/tools` 筛选静态工具集合
+- 保留已注册的业务、middleware 和 DeepAgents 内置工具；只筛选 public optional 工具
+- 运行时发现工具必须同时通过 `wrap_model_call` 暴露、通过 `wrap_tool_call` / `awrap_tool_call` 绑定真实实现
+- 工具调用阶段必须使用相同 `RuntimeContext` 和 allowlist 重新解析并按标准化名称精确匹配；失效或未授权时 fail-closed
+- 静态已注册工具优先于同名动态工具；禁止在 middleware 实例、state 或全局变量中缓存跨 run 的动态工具对象
 - 对非法 runtime 参数直接报错
 
 不适合放进这个公共 middleware 的职责：

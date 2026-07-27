@@ -169,7 +169,9 @@ graph = builder.compile()
 - `tools/registry.py` 是工具 catalog 唯一真源
 - `custom_routes/tools.py` 是对外暴露层，不是 graph 内部真源
 - graph 静态声明稳定工具全集
+- public optional 工具必须同时静态注册并由 `AgentDefaults.public_tool_names` 或请求 `tools` 显式允许；两者为空时不公开 optional 工具
 - 运行时通过 `RuntimeContext.enable_tools/tools` 做筛选
+- 运行时不得向模型注入未在 graph 中注册、且没有工具调用执行路径的动态工具
 - 工具内部通过 `ToolRuntime.context` 读取业务上下文
 
 不允许：
