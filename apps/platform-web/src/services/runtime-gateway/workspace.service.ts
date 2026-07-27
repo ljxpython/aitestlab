@@ -252,7 +252,7 @@ export async function listRuntimeThreadsPage(
     offset,
     sort_by: 'updated_at',
     sort_order: 'desc',
-    select: ['thread_id', 'metadata', 'status', 'created_at', 'updated_at', 'error']
+    select: ['thread_id', 'metadata', 'status', 'created_at', 'updated_at']
   }
 
   if (Object.keys(metadata).length > 0) {
