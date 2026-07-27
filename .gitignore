@@ -439,6 +439,7 @@ deploy/.env.stack
 
 # Keep machine-local Codex state ignored, but version shared project skills.
 /.codex/*
+!/.codex/config.toml
 !/.codex/skills/
 /.codex/skills/*
 !/.codex/skills/openspec-*/

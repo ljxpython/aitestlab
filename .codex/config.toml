@@ -1,0 +1,7 @@
+[mcp_servers.langchain-docs]
+type = "http"
+url = "https://docs.langchain.com/mcp"
+
+[mcp_servers.langchain-reference]
+type = "http"
+url = "https://reference.langchain.com/mcp"

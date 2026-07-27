@@ -7,6 +7,12 @@ This file is the repo's thin AI routing and execution gate. Canonical rules live
 For an explicit guided intake, invoke `$route-project-change`. The Skill applies this
 routing surface but does not override root or leaf standards.
 
+## LangChain Ecosystem Docs
+
+For LangGraph, LangChain, and DeepAgents API usage, examples, errors, migrations,
+or best-practice questions, query `langchain-docs` and `langchain-reference` MCP
+before proposing implementation code.
+
 ## 1. Read Order
 
 For non-trivial work:
