@@ -8,15 +8,19 @@ from typing import Any
 
 @dataclass(frozen=True)
 class RuntimeContext:
-    # ==================== Deployment / Tenant Context ====================
-    # These identity fields should come from trusted auth, not client input.
+    """Trusted identity and project scope created by Agent Server Auth."""
+
     user_id: str | None = None
     tenant_id: str | None = None
     role: str | None = None
     permissions: list[str] | None = None
     project_id: str | None = None
 
-    # ==================== Runtime Business Parameters ====================
+
+@dataclass(frozen=True)
+class RuntimeOptions:
+    """Per-run business options from configurable.platform_runtime."""
+
     model_id: str | None = None
     system_prompt: str | None = None
     temperature: float | None = None
@@ -33,6 +37,11 @@ class RuntimeContext:
 
 
 _RUNTIME_CONTEXT_FIELDS = {field.name for field in fields(RuntimeContext)}
+_RUNTIME_OPTION_FIELDS = {field.name for field in fields(RuntimeOptions)}
+_FORBIDDEN_RUNTIME_OPTION_FIELDS = _RUNTIME_CONTEXT_FIELDS | {
+    "identity",
+    "org_id",
+}
 
 
 def _to_mapping(raw: Any) -> Mapping[str, Any]:
@@ -58,3 +67,22 @@ def coerce_runtime_context(raw: RuntimeContext | Mapping[str, Any] | None) -> Ru
         if key in source and source[key] is not None
     }
     return RuntimeContext(**normalized)
+
+
+def coerce_runtime_options(raw: RuntimeOptions | Mapping[str, Any] | None) -> RuntimeOptions:
+    if isinstance(raw, RuntimeOptions):
+        return raw
+
+    source = _to_mapping(raw)
+    forbidden = sorted(_FORBIDDEN_RUNTIME_OPTION_FIELDS.intersection(source))
+    if forbidden:
+        raise ValueError(
+            "platform_runtime must not contain trusted identity fields: "
+            + ", ".join(forbidden)
+        )
+    normalized = {
+        key: source[key]
+        for key in _RUNTIME_OPTION_FIELDS
+        if key in source and source[key] is not None
+    }
+    return RuntimeOptions(**normalized)

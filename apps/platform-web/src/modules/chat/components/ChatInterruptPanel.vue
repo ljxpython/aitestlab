@@ -16,7 +16,8 @@ import {
 const props = defineProps<{
   interrupt: unknown
   submitting: boolean
-  onResume: (resumePayload: unknown) => Promise<boolean>
+  onResume: (resumePayload: unknown, interruptId?: string) => Promise<boolean>
+  onResumeAll: (responsesById: Record<string, unknown>) => Promise<boolean>
 }>()
 
 const uiStore = useUiStore()
@@ -262,9 +263,19 @@ async function submitSingleDecision() {
     return
   }
 
-  const submitted = await props.onResume({
-    decisions: [decision]
-  })
+  if (hitlInterrupts.value.length > 1) {
+    savedDecisions.value = {
+      ...savedDecisions.value,
+      [currentDecisionKey.value]: decision
+    }
+    await submitAllInterrupts()
+    return
+  }
+
+  const submitted = await props.onResume(
+    { decisions: [decision] },
+    activeInterrupt.value?.id
+  )
 
   if (!submitted) {
     uiStore.pushToast({
@@ -293,9 +304,15 @@ async function submitAllDecisions() {
     return
   }
 
-  const submitted = await props.onResume({
-    decisions
-  })
+  if (hitlInterrupts.value.length > 1) {
+    await submitAllInterrupts()
+    return
+  }
+
+  const submitted = await props.onResume(
+    { decisions },
+    activeInterrupt.value?.id
+  )
 
   if (!submitted) {
     uiStore.pushToast({
@@ -315,15 +332,64 @@ async function approveAllDecisions() {
     type: 'approve' as const
   }))
 
-  const submitted = await props.onResume({
-    decisions
-  })
+  if (hitlInterrupts.value.length > 1) {
+    const nextDecisions = { ...savedDecisions.value }
+    decisions.forEach((decision, index) => {
+      nextDecisions[decisionKey(activeInterruptIndex.value, index)] = decision
+    })
+    savedDecisions.value = nextDecisions
+    await submitAllInterrupts()
+    return
+  }
+
+  const submitted = await props.onResume(
+    { decisions },
+    activeInterrupt.value?.id
+  )
 
   if (!submitted) {
     uiStore.pushToast({
       type: 'error',
       title: '批量通过失败',
       message: '运行恢复没有成功，请看页面上的错误提示。'
+    })
+  }
+}
+
+async function submitAllInterrupts() {
+  const responsesById: Record<string, unknown> = {}
+
+  for (const [interruptIndex, interrupt] of hitlInterrupts.value.entries()) {
+    if (!interrupt.id) {
+      uiStore.pushToast({
+        type: 'error',
+        title: '中断缺少协议 ID',
+        message: '无法安全批量恢复，请刷新线程后重试。'
+      })
+      return
+    }
+
+    const decisions = (interrupt.value?.action_requests || []).map((_, actionIndex) =>
+      savedDecisions.value[decisionKey(interruptIndex, actionIndex)]
+    )
+    if (decisions.length === 0 || decisions.some((item) => !item)) {
+      uiStore.pushToast({
+        type: 'warning',
+        title: '还有中断没有处理完',
+        message: '请依次检查上方每个 Interrupt，再统一提交。'
+      })
+      return
+    }
+
+    responsesById[interrupt.id] = { decisions }
+  }
+
+  const submitted = await props.onResumeAll(responsesById)
+  if (!submitted) {
+    uiStore.pushToast({
+      type: 'error',
+      title: '批量决策提交失败',
+      message: '运行恢复没有成功，请保留当前决策后重试。'
     })
   }
 }

@@ -1,6 +1,27 @@
-import { extractThreadFailureMessage } from './helpers'
+import type { Message } from '@langchain/langgraph-sdk'
+import {
+  extractInterruptPayload,
+  extractThreadFailureMessage,
+  getMetadataCheckpointId,
+  hasPendingTaskToolCall
+} from './helpers'
 
 describe('platform chat stream helpers', () => {
+  it('preserves single and multiple protocol interrupts', () => {
+    const single = [{ value: { action_request: { name: 'search' } } }]
+    const multiple = [
+      [{ value: { action_request: { name: 'search' } } }],
+      [{ value: { action_request: { name: 'write' } } }]
+    ]
+
+    expect(extractInterruptPayload({ __interrupt__: single })).toBe(single)
+    expect(
+      extractInterruptPayload({
+        tasks: multiple.map((interrupts) => ({ interrupts }))
+      })
+    ).toEqual(multiple)
+  })
+
   it('会把线程顶层 APIConnectionError 显示成模型代理连接失败', () => {
     expect(
       extractThreadFailureMessage(null, 'error', {
@@ -36,5 +57,30 @@ describe('platform chat stream helpers', () => {
         }
       )
     ).toBe('工具执行失败')
+  })
+
+  it('tracks a task tool call until its matching tool result arrives', () => {
+    const taskCall = {
+      type: 'ai',
+      content: '',
+      tool_calls: [{ id: 'task-1', name: 'task' }]
+    } as Message
+    const taskResult = {
+      type: 'tool',
+      content: '',
+      tool_call_id: 'task-1'
+    } as Message
+
+    expect(hasPendingTaskToolCall([taskCall])).toBe(true)
+    expect(hasPendingTaskToolCall([taskCall, taskResult])).toBe(false)
+  })
+
+  it('reads checkpoint ids only from message first-seen metadata', () => {
+    expect(
+      getMetadataCheckpointId({
+        firstSeenState: { checkpoint: { checkpoint_id: ' checkpoint-1 ' } }
+      })
+    ).toBe('checkpoint-1')
+    expect(getMetadataCheckpointId({ firstSeenState: { checkpoint_id: 'guessed' } })).toBe('')
   })
 })

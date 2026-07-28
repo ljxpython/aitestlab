@@ -93,6 +93,8 @@ class SecurityBoundariesTest(unittest.TestCase):
 
         self.assertEqual(context.tenant.tenant_id, "__default")
         self.assertNotIn("x-tenant-id", forwarded)
+        self.assertNotIn("authorization", forwarded)
+        self.assertNotIn("x-project-id", forwarded)
 
     def test_successful_login_audit_records_authenticated_actor(self) -> None:
         session_factory = self.app.state.db_session_factory

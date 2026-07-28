@@ -159,6 +159,28 @@ class LangGraphRuntimeGatewayUpstream:
     ) -> AsyncIterator[bytes]:
         return await self._runs.stream(thread_id, payload or {})
 
+    async def send_thread_command(
+        self,
+        thread_id: str,
+        payload: dict[str, Any],
+    ) -> Any:
+        return await self._http.request_json(
+            "POST",
+            f"/threads/{thread_id}/commands",
+            payload=payload,
+        )
+
+    async def stream_thread_events(
+        self,
+        thread_id: str,
+        payload: dict[str, Any],
+    ) -> AsyncIterator[bytes]:
+        return await self._http.stream(
+            "POST",
+            f"/threads/{thread_id}/stream/events",
+            payload=payload,
+        )
+
     async def wait_thread_run(
         self,
         thread_id: str,

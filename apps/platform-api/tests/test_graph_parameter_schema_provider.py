@@ -40,7 +40,7 @@ class GraphParameterSchemaProviderTest(unittest.TestCase):
         self.assertTrue(schema["dynamic"])
         self.assertEqual(list(sections.keys()), ["config", "context", "configurable"])
 
-    def test_build_schema_moves_runtime_business_fields_into_context(self) -> None:
+    def test_build_schema_separates_trusted_context_and_runtime_options(self) -> None:
         settings = Settings(
             langgraph_graph_source_root=str(_runtime_service_root()),
         )
@@ -50,6 +50,8 @@ class GraphParameterSchemaProviderTest(unittest.TestCase):
         sections = _section_map(schema)
         config_properties = sections["config"]["properties"]
         context_properties = sections["context"]["properties"]
+        platform_runtime = sections["configurable"]["properties"]["platform_runtime"]
+        runtime_option_properties = platform_runtime["properties"]
 
         self.assertIn("recursion_limit", config_properties)
         self.assertIn("run_name", config_properties)
@@ -60,8 +62,10 @@ class GraphParameterSchemaProviderTest(unittest.TestCase):
         self.assertNotIn("enable_local_mcp", config_properties)
         self.assertNotIn("mcp_servers", config_properties)
 
+        for key in ("user_id", "tenant_id", "role", "permissions", "project_id"):
+            self.assertIn(key, context_properties)
+
         for key in (
-            "project_id",
             "model_id",
             "system_prompt",
             "temperature",
@@ -70,7 +74,8 @@ class GraphParameterSchemaProviderTest(unittest.TestCase):
             "enable_tools",
             "tools",
         ):
-            self.assertIn(key, context_properties)
+            self.assertNotIn(key, context_properties)
+            self.assertIn(key, runtime_option_properties)
 
         self.assertEqual(
             sections["context"]["readonly_keys"],
@@ -92,8 +97,7 @@ class GraphParameterSchemaProviderTest(unittest.TestCase):
             "checkpoint_id",
             "assistant_id",
             "graph_id",
-            "langgraph_auth_user_id",
-            "langgraph_auth_user",
+            "platform_runtime",
             "test_case_multimodal_parser_model_id",
             "test_case_default_model_id",
             "test_case_knowledge_mcp_enabled",
@@ -115,9 +119,11 @@ class GraphParameterSchemaProviderTest(unittest.TestCase):
         self.assertFalse(schema["dynamic"])
         self.assertEqual(list(sections.keys()), ["config", "context", "configurable"])
         self.assertIn("project_id", sections["context"]["properties"])
-        self.assertIn("temperature", sections["context"]["properties"])
-        self.assertIn("max_tokens", sections["context"]["properties"])
-        self.assertIn("top_p", sections["context"]["properties"])
+        self.assertNotIn("temperature", sections["context"]["properties"])
+        runtime_options = sections["configurable"]["properties"]["platform_runtime"]
+        self.assertIn("temperature", runtime_options["properties"])
+        self.assertIn("max_tokens", runtime_options["properties"])
+        self.assertIn("top_p", runtime_options["properties"])
         self.assertEqual(
             sections["context"]["readonly_keys"],
             ["user_id", "tenant_id", "role", "permissions", "project_id"],

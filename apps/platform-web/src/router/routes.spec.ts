@@ -99,3 +99,17 @@ describe('workspace account routes', () => {
     expect(securityRoute?.path).toBe('security')
   })
 })
+
+describe('workspace runtime debug route', () => {
+  it('requires project runtime write permission without entering the formal chat route', () => {
+    const debugRoute = getWorkspaceChildren().find(
+      (route) => route.name === 'workspace-chat-debug'
+    )
+
+    expect(debugRoute?.path).toBe('chat/debug')
+    expect(debugRoute?.meta).toMatchObject({
+      requiredPermissions: ['project.runtime.write'],
+      permissionProjectSource: 'workspace'
+    })
+  })
+})

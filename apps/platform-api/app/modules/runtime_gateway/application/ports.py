@@ -88,6 +88,18 @@ class RuntimeGatewayUpstreamProtocol(Protocol):
         payload: dict[str, Any] | None = None,
     ) -> AsyncIterator[bytes]: ...
 
+    async def send_thread_command(
+        self,
+        thread_id: str,
+        payload: dict[str, Any],
+    ) -> Any: ...
+
+    async def stream_thread_events(
+        self,
+        thread_id: str,
+        payload: dict[str, Any],
+    ) -> AsyncIterator[bytes]: ...
+
     async def wait_thread_run(
         self,
         thread_id: str,

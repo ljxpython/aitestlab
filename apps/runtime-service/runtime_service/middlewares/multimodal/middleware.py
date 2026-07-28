@@ -6,6 +6,8 @@ from typing import Any
 
 from langchain.agents import AgentState
 from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
+from langgraph.config import get_config
+from runtime_service.runtime.runtime_request_resolver import resolve_runtime_options
 
 from . import parsing as _parsing
 from . import prompting as _prompting
@@ -48,10 +50,12 @@ class MultimodalMiddleware(AgentMiddleware[AgentState[Any], Any]):
         self._detail_text_max_chars = max(0, detail_text_max_chars)
 
     def _resolve_parser_model_id(self, runtime: Any | None = None) -> str:
-        if runtime is None:
+        del runtime
+        try:
+            options = resolve_runtime_options(get_config())
+        except RuntimeError:
             return self._parser_model_id
-        context = getattr(runtime, "context", None)
-        override = getattr(context, "multimodal_parser_model_id", None)
+        override = options.multimodal_parser_model_id
         if isinstance(override, str) and override.strip():
             return override.strip()
         return self._parser_model_id

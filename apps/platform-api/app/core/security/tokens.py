@@ -120,6 +120,59 @@ def create_refresh_token(
     )
 
 
+def create_runtime_delegation_token(
+    *,
+    subject: str,
+    tenant_id: str,
+    project_id: str,
+    role: str,
+    permissions: list[str] | tuple[str, ...],
+    settings: Settings,
+) -> str:
+    secret = settings.runtime_delegation_secret
+    if len(secret.encode("utf-8")) < 32:
+        raise ValueError("runtime delegation secret must be at least 32 bytes")
+
+    required_values = {
+        "subject": subject,
+        "tenant_id": tenant_id,
+        "project_id": project_id,
+        "role": role,
+        "kid": settings.runtime_delegation_kid,
+        "issuer": settings.runtime_delegation_issuer,
+        "audience": settings.runtime_delegation_audience,
+    }
+    missing = [name for name, value in required_values.items() if not value.strip()]
+    if missing:
+        raise ValueError(
+            "runtime delegation fields must not be empty: " + ", ".join(missing)
+        )
+
+    now = _now()
+    payload: dict[str, Any] = {
+        "sub": subject,
+        "tenant_id": tenant_id,
+        "project_id": project_id,
+        "role": role,
+        "permissions": sorted({item.strip() for item in permissions if item.strip()}),
+        "type": "runtime_delegation",
+        "jti": uuid.uuid4().hex,
+        "iss": settings.runtime_delegation_issuer,
+        "aud": settings.runtime_delegation_audience,
+        "iat": int(now.timestamp()),
+        "nbf": int(now.timestamp()),
+        "exp": int(
+            (now + timedelta(seconds=settings.runtime_delegation_ttl_seconds)).timestamp()
+        ),
+    }
+    return jwt.encode(
+        payload,
+        secret,
+        algorithm="HS256",
+        headers={"kid": settings.runtime_delegation_kid, "typ": "JWT"},
+    )
+
+
 def decode_access_token(token: str, settings: Settings) -> dict[str, Any]:
     return _decode(
         token,

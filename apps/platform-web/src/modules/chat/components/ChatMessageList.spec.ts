@@ -1,4 +1,5 @@
 import type { Message } from '@langchain/langgraph-sdk'
+import type { AnyStream } from '@langchain/vue'
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import type { ChatDisplayMessage } from '../message-view-model'
@@ -46,11 +47,21 @@ describe('ChatMessageList', () => {
         editingMessageId: '',
         editingMessageValue: '',
         isRunning: true,
+        streamHandle: {} as AnyStream,
+        toolCalls: [],
         getMessageMeta: () => undefined,
         getMessageBranchIndex: () => 0,
         hasBranchSwitcher: () => false,
         canEditMessage: () => false,
         canRetryMessage: () => false
+      },
+      global: {
+        stubs: {
+          ChatMessageRuntimeMetadata: {
+            props: ['stream', 'messageId'],
+            template: '<slot :metadata="undefined" />'
+          }
+        }
       }
     })
 

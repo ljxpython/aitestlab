@@ -68,6 +68,12 @@ const targetPreference = computed(() => {
 const hydratedTargetPreference = ref<ChatTargetPreference | null>(null)
 const activeTargetPreference = computed(() => hydratedTargetPreference.value || targetPreference.value)
 const activeTarget = computed(() => resolveChatTarget(activeTargetPreference.value))
+const chatWorkspaceKey = computed(() => {
+  const target = activeTarget.value
+  return target
+    ? `${activeProjectId.value || ''}:${target.targetType}:${target.resolvedTargetId}`
+    : ''
+})
 
 const sourceNote = computed(() => {
   if (explicitTarget.value) {
@@ -242,6 +248,7 @@ function reloadThreadTarget() {
 
     <BaseChatTemplate
       v-else
+      :key="chatWorkspaceKey"
       :target="activeTarget"
       :initial-thread-id="initialThreadId"
       allow-reset-target

@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     langgraph_upstream_api_key: str | None = None
     langgraph_upstream_timeout_seconds: float = Field(default=30.0, gt=0, le=600)
     langgraph_graph_source_root: str | None = None
+    runtime_delegation_secret: str = ""
+    runtime_delegation_kid: str = "runtime-delegation-v1"
+    runtime_delegation_issuer: str = "platform-api"
+    runtime_delegation_audience: str = "runtime-service"
+    runtime_delegation_ttl_seconds: int = Field(default=60, ge=10, le=300)
     interaction_data_service_url: str | None = "http://127.0.0.1:8081"
     interaction_data_service_token: str | None = None
     interaction_data_service_timeout_seconds: float = Field(default=30.0, gt=0, le=600)
@@ -115,6 +120,10 @@ class Settings(BaseSettings):
             raise ValueError("oidc_issuer_url and oidc_client_id are required when oidc_enabled=true")
         if self.jwt_algorithm not in {"HS256", "HS384", "HS512"}:
             raise ValueError("jwt_algorithm must be one of HS256/HS384/HS512")
+        if self.runtime_delegation_secret and len(
+            self.runtime_delegation_secret.encode("utf-8")
+        ) < 32:
+            raise ValueError("runtime_delegation_secret must be at least 32 bytes")
         if is_production:
             if self.api_docs_enabled:
                 raise ValueError("API docs must be disabled in production")
@@ -124,6 +133,8 @@ class Settings(BaseSettings):
                 raise ValueError("JWT access secret must be overridden in production")
             if self.jwt_refresh_secret == "change-me-refresh-secret-at-least-32-bytes":
                 raise ValueError("JWT refresh secret must be overridden in production")
+            if not self.runtime_delegation_secret:
+                raise ValueError("Runtime delegation secret must be configured in production")
         return self
 
 

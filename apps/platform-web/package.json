@@ -22,9 +22,9 @@
     "check": "pnpm lint && pnpm typecheck && pnpm build"
   },
   "dependencies": {
-    "@langchain/core": "^1.1.27",
-    "@langchain/langgraph-sdk": "1.8.8",
-    "@langchain/vue": "0.4.5",
+    "@langchain/core": "^1.2.3",
+    "@langchain/langgraph-sdk": "1.9.28",
+    "@langchain/vue": "1.0.29",
     "@tanstack/vue-virtual": "^3.13.12",
     "@vueuse/core": "^10.11.1",
     "axios": "^1.8.4",
@@ -35,7 +35,7 @@
     "minisearch": "7.2.0",
     "pinia": "^2.3.1",
     "sigma": "3.0.2",
-    "vue": "^3.5.13",
+    "vue": "^3.5.40",
     "vue-i18n": "^9.14.4",
     "vue-router": "^4.5.0",
     "zod": "^3.24.4"

@@ -12,7 +12,6 @@ if str(_PROJECT_ROOT) not in sys.path:
 from runtime_service.devtools.multimodal_frontend_compat import build_human_message_from_paths
 from runtime_service.middlewares.multimodal import MULTIMODAL_ATTACHMENTS_KEY
 from runtime_service.middlewares.multimodal import protocol as multimodal_protocol
-from runtime_service.runtime.context import RuntimeContext
 from runtime_service.services.test_case_service.document_persistence import (
     INVALID_PROJECT_ID_ERROR,
     MISSING_PROJECT_ID_ERROR,
@@ -71,6 +70,18 @@ class _FakeInteractionDataClient:
         }
 
 
+def _server_info(project_id: str) -> SimpleNamespace:
+    return SimpleNamespace(
+        user={
+            "identity": "user-1",
+            "tenant_id": "tenant-1",
+            "role": "project_editor",
+            "permissions": ["runtime:write"],
+            "project_id": project_id,
+        }
+    )
+
+
 def test_persist_runtime_documents_uploads_pdf_asset_from_request_messages(tmp_path: Path) -> None:
     pdf_path = tmp_path / "sample.pdf"
     pdf_bytes = b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF"
@@ -95,7 +106,7 @@ def test_persist_runtime_documents_uploads_pdf_asset_from_request_messages(tmp_p
                 "batch_id": "test-case-service:batch-test-1",
             }
         },
-        context=RuntimeContext(project_id="5f419550-a3c7-49c6-9450-09154fd1bf7d"),
+        server_info=_server_info("5f419550-a3c7-49c6-9450-09154fd1bf7d"),
     )
     client = _FakeInteractionDataClient()
 
@@ -153,7 +164,7 @@ def test_persist_runtime_documents_uploads_image_asset_from_request_messages(tmp
                 "batch_id": "test-case-service:batch-test-image-1",
             }
         },
-        context=RuntimeContext(project_id="5f419550-a3c7-49c6-9450-09154fd1bf7d"),
+        server_info=_server_info("5f419550-a3c7-49c6-9450-09154fd1bf7d"),
     )
     client = _FakeInteractionDataClient()
 
@@ -197,7 +208,7 @@ def test_persist_runtime_documents_prefers_runtime_context_project_id(tmp_path: 
     runtime = SimpleNamespace(
         state=state,
         config={"configurable": {"thread_id": "thread-test-2", "batch_id": "test-case-service:batch-test-2"}},
-        context=RuntimeContext(project_id="5f419550-a3c7-49c6-9450-09154fd1bf7d"),
+        server_info=_server_info("5f419550-a3c7-49c6-9450-09154fd1bf7d"),
     )
     client = _FakeInteractionDataClient()
 
@@ -228,7 +239,7 @@ def test_persist_runtime_documents_requires_project_id(tmp_path: Path) -> None:
     runtime = SimpleNamespace(
         state=state,
         config={"configurable": {"thread_id": "thread-test-3", "batch_id": "test-case-service:batch-test-3"}},
-        context=RuntimeContext(),
+        server_info=SimpleNamespace(user=None),
     )
     client = _FakeInteractionDataClient()
 
@@ -269,7 +280,7 @@ def test_persist_runtime_documents_rejects_configurable_project_id_as_public_con
                 "batch_id": "test-case-service:batch-test-configurable-project",
             }
         },
-        context=RuntimeContext(),
+        server_info=SimpleNamespace(user=None),
     )
     client = _FakeInteractionDataClient()
 
@@ -309,7 +320,7 @@ def test_persist_runtime_documents_rejects_non_uuid_project_id(tmp_path: Path) -
                 "batch_id": "test-case-service:batch-test-invalid-project",
             }
         },
-        context=RuntimeContext(project_id="project-not-uuid"),
+        server_info=_server_info("project-not-uuid"),
     )
     client = _FakeInteractionDataClient()
 
@@ -344,7 +355,7 @@ def test_persist_runtime_documents_does_not_allow_implicit_default_project_fallb
     runtime = SimpleNamespace(
         state=state,
         config={"configurable": {"thread_id": "thread-test-4", "batch_id": "test-case-service:batch-test-4"}},
-        context=RuntimeContext(),
+        server_info=SimpleNamespace(user=None),
     )
     client = _FakeInteractionDataClient()
 

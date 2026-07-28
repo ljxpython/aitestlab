@@ -1,18 +1,16 @@
 <script setup lang="ts">
 import type { Message } from '@langchain/langgraph-sdk'
+import type { AssembledToolCall, AnyStream, MessageMetadata } from '@langchain/vue'
 import { computed } from 'vue'
 import MarkdownContent from '@/components/platform/MarkdownContent.vue'
 import BaseIcon from '@/components/base/BaseIcon.vue'
 import { getMessageAttachments, getMessageText } from '@/utils/threads'
+import type { ChatMessageMetadata } from '../branching'
 import type { ChatDisplayMessage } from '../message-view-model'
 import { buildChatMessageMetaView } from '../message-meta-view-model'
 import ChatAttachmentPreview from './ChatAttachmentPreview.vue'
 import ChatMessageMeta from './ChatMessageMeta.vue'
-
-type BranchMeta = {
-  branch?: string
-  branchOptions?: string[]
-}
+import ChatMessageRuntimeMetadata from './ChatMessageRuntimeMetadata.vue'
 
 const props = defineProps<{
   displayMessages: ChatDisplayMessage[]
@@ -20,20 +18,22 @@ const props = defineProps<{
   editingMessageId: string
   editingMessageValue: string
   isRunning: boolean
-  getMessageMeta: (messageId: string) => BranchMeta | undefined
+  streamHandle: AnyStream
+  toolCalls: AssembledToolCall[]
+  getMessageMeta: (messageId: string) => ChatMessageMetadata | undefined
   getMessageBranchIndex: (messageId: string) => number
   hasBranchSwitcher: (messageId: string) => boolean
-  canEditMessage: (message: Message, messageId: string) => boolean
-  canRetryMessage: (message: Message, messageId: string) => boolean
+  canEditMessage: (message: Message, messageId: string, parentCheckpointId?: string) => boolean
+  canRetryMessage: (message: Message, messageId: string, parentCheckpointId?: string) => boolean
 }>()
 
 const emit = defineEmits<{
   'update:editingMessageValue': [value: string]
   'copy-message': [message: Message]
   'cancel-edit': []
-  'submit-edit': [message: Message, messageId: string]
+  'submit-edit': [message: Message, messageId: string, parentCheckpointId?: string]
   'start-edit': [message: Message, messageId: string]
-  'retry-message': [messageId: string]
+  'retry-message': [messageId: string, parentCheckpointId?: string]
   'select-previous-branch': [messageId: string]
   'select-next-branch': [messageId: string]
   'message-meta-expanded-change': [messageId: string, expanded: boolean]
@@ -44,8 +44,16 @@ function handleEditingInput(event: Event) {
 }
 
 function hasMetaSummary(message: Message) {
-  const metaView = buildChatMessageMetaView(message, props.allMessages)
+  const metaView = buildChatMessageMetaView(message, props.allMessages, props.toolCalls)
   return metaView.toolCalls.length > 0 || metaView.subAgentCards.length > 0
+}
+
+function getParentCheckpointId(messageId: string, runtimeMetadata?: MessageMetadata) {
+  return (
+    runtimeMetadata?.parentCheckpointId?.trim() ||
+    props.getMessageMeta(messageId)?.parentCheckpoint?.checkpoint_id?.trim() ||
+    undefined
+  )
 }
 
 const emptyPlaceholderSuppressedIds = computed(() => {
@@ -59,12 +67,17 @@ const emptyPlaceholderSuppressedIds = computed(() => {
 
 <template>
   <div class="space-y-5">
-    <div
+    <ChatMessageRuntimeMetadata
       v-for="displayEntry in displayMessages"
       :key="displayEntry.id"
-      class="flex flex-col gap-2"
-      :class="displayEntry.wrapClass"
+      :stream="streamHandle"
+      :message-id="displayEntry.id"
+      v-slot="{ metadata }"
     >
+      <div
+        class="flex flex-col gap-2"
+        :class="displayEntry.wrapClass"
+      >
       <div class="text-xs font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-dark-400">
         {{ displayEntry.roleLabel }}
       </div>
@@ -118,6 +131,7 @@ const emptyPlaceholderSuppressedIds = computed(() => {
           <ChatMessageMeta
             :message="displayEntry.message"
             :all-messages="allMessages"
+            :tool-calls="toolCalls"
             @expanded-change="emit('message-meta-expanded-change', displayEntry.id, $event)"
           />
         </div>
@@ -143,7 +157,7 @@ const emptyPlaceholderSuppressedIds = computed(() => {
             type="button"
             class="pw-btn-primary inline-flex h-8 items-center justify-center rounded-lg px-3 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-50"
             :disabled="isRunning"
-            @click="emit('submit-edit', displayEntry.message, displayEntry.id)"
+            @click="emit('submit-edit', displayEntry.message, displayEntry.id, getParentCheckpointId(displayEntry.id, metadata))"
           >
             提交重发
           </button>
@@ -158,7 +172,7 @@ const emptyPlaceholderSuppressedIds = computed(() => {
             复制
           </button>
           <button
-            v-if="canEditMessage(displayEntry.message, displayEntry.id)"
+            v-if="canEditMessage(displayEntry.message, displayEntry.id, getParentCheckpointId(displayEntry.id, metadata))"
             type="button"
             class="pw-table-tool-button h-8 rounded-lg px-3 text-xs"
             @click="emit('start-edit', displayEntry.message, displayEntry.id)"
@@ -166,10 +180,10 @@ const emptyPlaceholderSuppressedIds = computed(() => {
             编辑
           </button>
           <button
-            v-if="canRetryMessage(displayEntry.message, displayEntry.id)"
+            v-if="canRetryMessage(displayEntry.message, displayEntry.id, getParentCheckpointId(displayEntry.id, metadata))"
             type="button"
             class="pw-table-tool-button h-8 rounded-lg px-3 text-xs"
-            @click="emit('retry-message', displayEntry.id)"
+            @click="emit('retry-message', displayEntry.id, getParentCheckpointId(displayEntry.id, metadata))"
           >
             重试
           </button>
@@ -222,7 +236,8 @@ const emptyPlaceholderSuppressedIds = computed(() => {
       >
         {{ displayEntry.timeText }}
       </div>
-    </div>
+      </div>
+    </ChatMessageRuntimeMetadata>
 
     <div
       v-if="isRunning"

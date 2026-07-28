@@ -1,4 +1,4 @@
-import type { Checkpoint, Message, ThreadState } from '@langchain/langgraph-sdk'
+import type { Message } from '@langchain/langgraph-sdk'
 import type { Ref } from 'vue'
 import type { ChatMessageMetadata } from './branching'
 import { getMessageAttachments, getMessageText } from '@/utils/threads'
@@ -10,15 +10,8 @@ type MessageActionContext = {
   editingMessageId: Ref<string>
   editingMessageValue: Ref<string>
   selectBranch: (branch: string) => void
-  retryMessage: (messageId: string) => Promise<boolean>
-  editHumanMessage: (messageId: string, content: Message['content']) => Promise<boolean>
-}
-
-export type ChatMessageBranchMeta = {
-  parentCheckpoint?: Checkpoint | null
-  branch?: string
-  branchOptions?: string[]
-  firstSeenState?: ThreadState<Record<string, unknown>>
+  retryMessage: (messageId: string, forkFrom?: string) => Promise<boolean>
+  editHumanMessage: (messageId: string, content: Message['content'], forkFrom?: string) => Promise<boolean>
 }
 
 export function buildEditedMessageContent(message: Message, nextText: string): Message['content'] {
@@ -35,7 +28,7 @@ export function buildEditedMessageContent(message: Message, nextText: string): M
 }
 
 export function createChatMessageActions(context: MessageActionContext) {
-  function getMessageMeta(messageId: string): ChatMessageBranchMeta | undefined {
+  function getMessageMeta(messageId: string): ChatMessageMetadata | undefined {
     return context.messageMetadataById.value[messageId]
   }
 
@@ -71,23 +64,23 @@ export function createChatMessageActions(context: MessageActionContext) {
     context.selectBranch(meta.branchOptions[branchIndex + 1] || '')
   }
 
-  function canEditMessage(message: Message, messageId: string) {
+  function canEditMessage(message: Message, messageId: string, parentCheckpointId?: string) {
     const meta = getMessageMeta(messageId)
     return (
       message.type === 'human' &&
       !context.sending.value &&
       !context.hasBlockingInterrupt.value &&
-      Boolean(meta?.parentCheckpoint?.checkpoint_id?.trim())
+      Boolean(parentCheckpointId?.trim() || meta?.parentCheckpoint?.checkpoint_id?.trim())
     )
   }
 
-  function canRetryMessage(message: Message, messageId: string) {
+  function canRetryMessage(message: Message, messageId: string, parentCheckpointId?: string) {
     const meta = getMessageMeta(messageId)
     return (
       message.type === 'ai' &&
       !context.sending.value &&
       !context.hasBlockingInterrupt.value &&
-      Boolean(meta?.parentCheckpoint?.checkpoint_id?.trim())
+      Boolean(parentCheckpointId?.trim() || meta?.parentCheckpoint?.checkpoint_id?.trim())
     )
   }
 
@@ -105,7 +98,7 @@ export function createChatMessageActions(context: MessageActionContext) {
     context.editingMessageValue.value = ''
   }
 
-  async function submitEditMessage(message: Message, messageId: string) {
+  async function submitEditMessage(message: Message, messageId: string, parentCheckpointId?: string) {
     if (context.editingMessageId.value !== messageId) {
       return {
         ok: false as const,
@@ -124,7 +117,9 @@ export function createChatMessageActions(context: MessageActionContext) {
       }
     }
 
-    const updated = await context.editHumanMessage(messageId, nextContent)
+    const updated = parentCheckpointId
+      ? await context.editHumanMessage(messageId, nextContent, parentCheckpointId)
+      : await context.editHumanMessage(messageId, nextContent)
     if (updated) {
       cancelEditMessage()
       return {
@@ -138,8 +133,10 @@ export function createChatMessageActions(context: MessageActionContext) {
     }
   }
 
-  async function handleRetryMessage(messageId: string) {
-    return await context.retryMessage(messageId)
+  async function handleRetryMessage(messageId: string, parentCheckpointId?: string) {
+    return parentCheckpointId
+      ? await context.retryMessage(messageId, parentCheckpointId)
+      : await context.retryMessage(messageId)
   }
 
   return {

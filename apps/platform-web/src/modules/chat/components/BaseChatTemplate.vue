@@ -13,7 +13,7 @@ import { useWorkspaceProjectContext } from '@/composables/useWorkspaceProjectCon
 import { useUiStore } from '@/stores/ui'
 import { copyText } from '@/utils/clipboard'
 import { shortId } from '@/utils/format'
-import { getMessageText, toPrettyJson } from '@/utils/threads'
+import { getMessageText } from '@/utils/threads'
 import ChatArtifactPanel from './ChatArtifactPanel.vue'
 import ChatComposer from './ChatComposer.vue'
 import ChatContextDrawer from './ChatContextDrawer.vue'
@@ -92,11 +92,11 @@ const followPauseState = reactive<Record<FollowPauseReason, boolean>>({
 })
 const draftRunOptions = reactive({
   modelId: '',
+  systemPrompt: '',
   enableTools: false,
   toolNames: [] as string[],
   temperature: '',
-  maxTokens: '',
-  debugMode: false
+  maxTokens: ''
 })
 
 const workspace = useChatWorkspace({
@@ -125,11 +125,8 @@ const hasArtifactEntries = computed(() => {
 const hasComposerContent = computed(
   () => Boolean(composerInput.value.trim()) || composerAttachments.value.length > 0
 )
-const showContinueAction = computed(
-  () => !workspace.sending.value && workspace.canContinueDebug.value
-)
 const hasBlockingInterrupt = computed(
-  () => workspace.interruptPayload.value !== undefined && !workspace.canContinueDebug.value
+  () => workspace.interruptPayload.value !== undefined
 )
 
 function isGenericInternalRuntimeError(message: string) {
@@ -148,25 +145,10 @@ const activeRunFailureDescription = computed(() => {
 const canSendFreshMessage = computed(
   () =>
     workspace.canSend.value &&
-    !showContinueAction.value &&
     !hasBlockingInterrupt.value &&
     hasComposerContent.value
 )
 const isInspectingMessageMeta = computed(() => expandedMessageMetaIds.value.length > 0)
-const sendButtonLabel = computed(() => (workspace.runOptions.debugMode ? 'Step' : '发送消息'))
-const debugStatusDescription = computed(() => {
-  if (!workspace.canContinueDebug.value) {
-    return ''
-  }
-
-  const payload = workspace.interruptPayload.value
-  if (!payload) {
-    return '当前运行已在断点暂停，可以继续后续执行。'
-  }
-
-  return `当前运行已在断点暂停：${toPrettyJson(payload)}`
-})
-
 const selectedToolsLabel = computed(() => {
   if (!draftRunOptions.enableTools) {
     return '已关闭'
@@ -493,6 +475,21 @@ function syncThreadIdToRoute(threadId: string) {
 
   if (normalizedThreadId) {
     nextQuery.threadId = normalizedThreadId
+
+    if (route.path === '/workspace/chat' && props.target) {
+      nextQuery.targetType = props.target.targetType
+      if (props.target.targetType === 'graph') {
+        nextQuery.graphId = props.target.resolvedTargetId
+        nextQuery.graphName = props.target.displayName
+        delete nextQuery.assistantId
+        delete nextQuery.assistantName
+      } else {
+        nextQuery.assistantId = props.target.resolvedTargetId
+        nextQuery.assistantName = props.target.displayName
+        delete nextQuery.graphId
+        delete nextQuery.graphName
+      }
+    }
   } else {
     delete nextQuery.threadId
   }
@@ -733,8 +730,8 @@ async function handleCopyMessage(message: Message) {
   })
 }
 
-async function submitEditMessage(message: Message, messageId: string) {
-  const result = await messageActions.submitEditMessage(message, messageId)
+async function submitEditMessage(message: Message, messageId: string, parentCheckpointId?: string) {
+  const result = await messageActions.submitEditMessage(message, messageId, parentCheckpointId)
   if (!result.ok && result.reason === 'empty-content') {
     uiStore.pushToast({
       type: 'warning',
@@ -752,8 +749,8 @@ async function submitEditMessage(message: Message, messageId: string) {
   }
 }
 
-async function handleRetryMessage(messageId: string) {
-  const retried = await messageActions.handleRetryMessage(messageId)
+async function handleRetryMessage(messageId: string, parentCheckpointId?: string) {
+  const retried = await messageActions.handleRetryMessage(messageId, parentCheckpointId)
   if (retried) {
     uiStore.pushToast({
       type: 'success',
@@ -841,11 +838,11 @@ function handleResetTarget() {
 
 function syncDraftRunOptions() {
   draftRunOptions.modelId = workspace.runOptions.modelId
+  draftRunOptions.systemPrompt = workspace.runOptions.systemPrompt
   draftRunOptions.enableTools = workspace.runOptions.enableTools
   draftRunOptions.toolNames = [...workspace.runOptions.toolNames]
   draftRunOptions.temperature = workspace.runOptions.temperature
   draftRunOptions.maxTokens = workspace.runOptions.maxTokens
-  draftRunOptions.debugMode = workspace.runOptions.debugMode
 }
 
 function openRuntimeOptionsDialog() {
@@ -876,11 +873,11 @@ function restoreDraftRunOptions() {
 
 function applyDraftRunOptions() {
   workspace.runOptions.modelId = draftRunOptions.modelId || workspace.defaultModelId.value
+  workspace.runOptions.systemPrompt = draftRunOptions.systemPrompt
   workspace.runOptions.enableTools = draftRunOptions.enableTools
   workspace.runOptions.toolNames = [...draftRunOptions.toolNames]
   workspace.runOptions.temperature = draftRunOptions.temperature
   workspace.runOptions.maxTokens = draftRunOptions.maxTokens
-  workspace.runOptions.debugMode = draftRunOptions.debugMode
   runtimeOptionsDialogOpen.value = false
 }
 
@@ -910,10 +907,6 @@ function handleMessageMetaExpandedChange(messageId: string, expanded: boolean) {
   setFollowPauseReason('messageMeta', expandedMessageMetaIds.value.length > 0, {
     resumeBehavior: 'smooth'
   })
-}
-
-async function handleContinue() {
-  await workspace.continueDebugRun()
 }
 
 async function handleCancelRun() {
@@ -1015,14 +1008,6 @@ async function handleCancelRun() {
       title="会话状态部分未同步"
       :description="workspace.detailWarning.value"
       variant="warning"
-      :compact="isSurfaceCompact"
-    />
-
-    <StateBanner
-      v-if="!isFocusMode && debugStatusDescription"
-      title="Debug 已暂停"
-      :description="debugStatusDescription"
-      variant="info"
       :compact="isSurfaceCompact"
     />
 
@@ -1229,6 +1214,8 @@ async function handleCancelRun() {
                 :editing-message-id="editingMessageId"
                 :editing-message-value="editingMessageValue"
                 :is-running="workspace.sending.value"
+                :stream-handle="workspace.streamHandle"
+                :tool-calls="workspace.toolCalls.value"
                 :get-message-meta="messageActions.getMessageMeta"
                 :get-message-branch-index="messageActions.getMessageBranchIndex"
                 :has-branch-switcher="messageActions.hasBranchSwitcher"
@@ -1306,17 +1293,17 @@ async function handleCancelRun() {
         :has-blocking-interrupt="hasBlockingInterrupt"
         :interrupt-payload="workspace.interruptPayload.value"
         :can-start-thread="workspace.canStartThread.value"
-        :show-continue-action="showContinueAction"
+        :show-continue-action="false"
         :can-send-fresh-message="canSendFreshMessage"
         :cancelling="workspace.cancelling.value"
-        :send-button-label="sendButtonLabel"
+        send-button-label="发送消息"
         :last-event-at="workspace.lastEventAt.value"
         :on-resume-interrupted-run="workspace.resumeInterruptedRun"
+        :on-resume-all-interrupted-runs="workspace.resumeAllInterruptedRuns"
         :compact="isSurfaceCompact"
         :focus-mode="isFocusMode"
         @send="handleSend"
         @cancel="handleCancelRun"
-        @continue-run="handleContinue"
         @new-thread="workspace.startNewThread"
         @file-input-change="attachmentState.handleInputChange"
         @composer-paste="attachmentState.handlePaste"
@@ -1383,9 +1370,9 @@ async function handleCancelRun() {
       :loading-runtime="workspace.loadingRuntime.value"
       @close="runtimeOptionsDialogOpen = false"
       @update:model-id="draftRunOptions.modelId = $event"
+      @update:system-prompt="draftRunOptions.systemPrompt = $event"
       @update:enable-tools="draftRunOptions.enableTools = $event"
       @toggle-tool="toggleDraftTool"
-      @update:debug-mode="draftRunOptions.debugMode = $event"
       @update:temperature="draftRunOptions.temperature = $event"
       @update:max-tokens="draftRunOptions.maxTokens = $event"
       @restore="restoreDraftRunOptions"

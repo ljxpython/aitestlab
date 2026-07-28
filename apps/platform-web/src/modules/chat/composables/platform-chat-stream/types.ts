@@ -1,5 +1,6 @@
 import type { AIMessage, BaseMessage, ToolMessage } from '@langchain/core/messages'
 import type { Checkpoint, Message } from '@langchain/langgraph-sdk'
+import type { StreamRespondAllOptions, StreamRespondOptions, StreamStopOptions, StreamSubmitOptions } from '@langchain/langgraph-sdk/stream'
 import type { ComputedRef, Ref } from 'vue'
 import type { ChatAttachmentBlock } from '@/utils/chat-content'
 import type { ChatMessageMetadata } from '../../branching'
@@ -25,26 +26,25 @@ export type UsePlatformChatStreamOptions = {
 }
 
 export type PlatformChatStreamLike = {
-  branch: Ref<string>
-  messages: Ref<BaseMessage[]>
-  setBranch: (branch: string) => void
-  stop: () => void
+  messages: Readonly<Ref<BaseMessage[]>>
+  stop: (options?: StreamStopOptions) => Promise<void>
   submit: (
     payload?: Record<string, unknown> | null,
-    options?: Record<string, unknown>
-  ) => Promise<unknown>
-  switchThread: (threadId: string | null) => void
+    options?: StreamSubmitOptions<ChatState>
+  ) => Promise<void>
+  respond: (response: unknown, options?: StreamRespondOptions) => Promise<void>
+  respondAll: (responsesById: Record<string, unknown>, options?: StreamRespondAllOptions) => Promise<void>
 }
 
 export type PlatformChatStreamActionDeps = {
   stream: PlatformChatStreamLike
   options: UsePlatformChatStreamOptions
-  sending: Ref<boolean>
+  commandPending: Ref<boolean>
+  isBusy: ComputedRef<boolean>
   cancelling: Ref<boolean>
   detailError: Ref<string>
   detailInfo: Ref<string>
   lastRunId: Ref<string>
-  currentRunId: Ref<string>
   lastEventAt: Ref<string>
   messages: ComputedRef<Message[]>
   messageMetadataById: ComputedRef<Record<string, ChatMessageMetadata>>

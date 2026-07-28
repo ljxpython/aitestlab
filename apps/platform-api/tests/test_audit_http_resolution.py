@@ -57,6 +57,43 @@ class AuditHttpResolutionTest(unittest.TestCase):
         self.assertEqual(resolved.project_id, "project-2")
         self.assertEqual(resolved.metadata["response_size"], 64)
 
+    def test_protocol_v2_routes_use_runtime_audit_actions(self) -> None:
+        common = {
+            "query_params": {},
+            "query_string": None,
+            "state_project_id": "project-2",
+            "client_ip": None,
+            "user_agent": None,
+            "response_content_length": None,
+        }
+        command = resolve_http_audit(
+            request=AuditHttpRequest(
+                method="POST",
+                path="/api/langgraph/threads/thread-9/commands",
+                **common,
+            ),
+            response_payload=None,
+            actor_user_id="user-1",
+            status_code=200,
+            result=AuditResult.SUCCESS,
+        )
+        events = resolve_http_audit(
+            request=AuditHttpRequest(
+                method="POST",
+                path="/api/langgraph/threads/thread-9/stream/events",
+                **common,
+            ),
+            response_payload=None,
+            actor_user_id="user-1",
+            status_code=200,
+            result=AuditResult.SUCCESS,
+        )
+
+        self.assertEqual(command.action, "runtime.command.submitted")
+        self.assertEqual(events.action, "runtime.event_stream.opened")
+        self.assertEqual(command.target_id, "thread-9")
+        self.assertEqual(events.project_id, "project-2")
+
     def test_project_lifecycle_and_service_account_grant_use_semantic_actions(self) -> None:
         archive = resolve_http_audit(
             request=AuditHttpRequest(

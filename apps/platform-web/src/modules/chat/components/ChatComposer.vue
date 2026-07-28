@@ -18,7 +18,8 @@ const props = defineProps<{
   cancelling: boolean
   sendButtonLabel: string
   lastEventAt: string
-  onResumeInterruptedRun: (resumePayload: unknown) => Promise<boolean>
+  onResumeInterruptedRun: (resumePayload: unknown, interruptId?: string) => Promise<boolean>
+  onResumeAllInterruptedRuns: (responsesById: Record<string, unknown>) => Promise<boolean>
   compact?: boolean
   focusMode?: boolean
 }>()
@@ -159,6 +160,7 @@ onMounted(async () => {
         :interrupt="interruptPayload"
         :submitting="isRunning"
         :on-resume="onResumeInterruptedRun"
+        :on-resume-all="onResumeAllInterruptedRuns"
       />
 
       <div

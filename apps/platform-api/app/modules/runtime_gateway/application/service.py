@@ -17,12 +17,17 @@ from app.core.identifiers import parse_uuid
 from app.core.normalization import clean_str, ensure_dict
 from app.core.runtime_contract import (
     PROJECT_SCOPE_ALIAS_KEYS,
+    normalize_protocol_v2_command,
+    normalize_protocol_v2_event_request,
     normalize_runtime_payload,
     strip_keys,
 )
 from app.modules.assistants.infra.sqlalchemy.repository import SqlAlchemyAssistantsRepository
 from app.modules.iam.application import AuthorizationRequest, IamPolicyEngine, PermissionCode
 from app.modules.projects.infra.sqlalchemy.repository import SqlAlchemyProjectsRepository
+from app.modules.runtime_catalog.infra.sqlalchemy.repository import (
+    SqlAlchemyRuntimeCatalogRepository,
+)
 from app.modules.runtime_gateway.application.ports import RuntimeGatewayUpstreamProtocol
 from app.modules.runtime_policies.infra import SqlAlchemyRuntimePolicyRepository
 
@@ -194,6 +199,63 @@ class RuntimeGatewayService:
                 project_id=project_uuid,
                 runtime_id=self._runtime_id,
             )
+
+    async def _assert_runtime_options_allowed(
+        self,
+        *,
+        project_id: str,
+        options: dict[str, Any],
+    ) -> None:
+        session_factory = self._require_session_factory()
+        project_uuid = parse_uuid(project_id, code="invalid_project_id")
+        async with SqlAlchemyUnitOfWork(session_factory) as uow:
+            catalog_repository = SqlAlchemyRuntimeCatalogRepository(uow.session)
+            policy_repository = SqlAlchemyRuntimePolicyRepository(uow.session)
+
+            model_policies = {
+                str(item.model_catalog_id): item
+                for item in policy_repository.list_model_policies(
+                    project_id=project_uuid
+                )
+            }
+            allowed_models = {
+                item.model_key
+                for item in catalog_repository.list_models(runtime_id=self._runtime_id)
+                if str(item.id) not in model_policies
+                or model_policies[str(item.id)].is_enabled
+            }
+            requested_model = clean_str(options.get("model_id"))
+            if requested_model and requested_model not in allowed_models:
+                raise ForbiddenError(
+                    code="runtime_model_denied",
+                    message="Requested runtime model is not enabled for this project",
+                )
+
+            tool_policies = {
+                str(item.tool_catalog_id): item
+                for item in policy_repository.list_tool_policies(project_id=project_uuid)
+            }
+            allowed_tools = {
+                item.tool_key
+                for item in catalog_repository.list_tools(runtime_id=self._runtime_id)
+                if str(item.id) not in tool_policies
+                or tool_policies[str(item.id)].is_enabled
+            }
+            requested_tools = {
+                name
+                for name in (
+                    clean_str(item)
+                    for item in options.get("tools", [])
+                    if isinstance(item, str)
+                )
+                if name
+            }
+            denied_tools = sorted(requested_tools - allowed_tools)
+            if denied_tools:
+                raise ForbiddenError(
+                    code="runtime_tools_denied",
+                    message="Requested runtime tools are not enabled for this project",
+                )
 
     def _assert_thread_project_scope(
         self,
@@ -696,6 +758,71 @@ class RuntimeGatewayService:
             thread=thread,
         )
         return await self._upstream.stream_thread_run(thread_id, next_payload)
+
+    async def send_thread_command(
+        self,
+        *,
+        actor: ActorContext,
+        project_id: str,
+        thread_id: str,
+        payload: dict[str, Any],
+    ) -> Any:
+        thread = await self._load_thread(
+            actor=actor,
+            project_id=project_id,
+            thread_id=thread_id,
+            write=True,
+        )
+        default_model_id = await self._project_default_model_id(project_id=project_id)
+        try:
+            command = normalize_protocol_v2_command(
+                payload=payload,
+                default_model_id=default_model_id,
+            )
+        except ValueError as exc:
+            raise BadRequestError(
+                code="invalid_protocol_command",
+                message=str(exc),
+            ) from exc
+
+        if command["method"] == "run.start":
+            config = ensure_dict(command["params"].get("config"))
+            configurable = ensure_dict(config.get("configurable"))
+            options = ensure_dict(configurable.get("platform_runtime"))
+            await self._assert_runtime_options_allowed(
+                project_id=project_id,
+                options=options,
+            )
+            assistant_id = clean_str(command["params"].get("assistant_id"))
+            await self._assert_runtime_target_allowed(
+                project_id=project_id,
+                assistant_id=assistant_id or "",
+                thread=thread,
+            )
+        return await self._upstream.send_thread_command(thread_id, command)
+
+    async def stream_thread_events(
+        self,
+        *,
+        actor: ActorContext,
+        project_id: str,
+        thread_id: str,
+        payload: dict[str, Any],
+    ) -> Any:
+        await self._load_thread(
+            actor=actor,
+            project_id=project_id,
+            thread_id=thread_id,
+            write=False,
+        )
+        try:
+            subscription = normalize_protocol_v2_event_request(payload)
+        except ValueError as exc:
+            raise BadRequestError(
+                code="invalid_protocol_event_subscription",
+                message=str(exc),
+            ) from exc
+        return await self._upstream.stream_thread_events(thread_id, subscription)
 
     async def wait_thread_run(
         self,

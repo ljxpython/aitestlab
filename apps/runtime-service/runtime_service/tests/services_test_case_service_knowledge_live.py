@@ -94,13 +94,18 @@ async def _main_async(args: argparse.Namespace) -> int:
             "test_case_knowledge_mcp_url": args.knowledge_mcp_url,
             "test_case_knowledge_timeout_seconds": args.knowledge_timeout,
             "test_case_knowledge_sse_read_timeout_seconds": args.knowledge_sse_read_timeout,
+            "platform_local_debug": True,
+            "platform_runtime": {"model_id": args.model_id},
         }
     }
     runtime_context = RuntimeContext(
-        model_id=args.model_id,
+        user_id="local-debug",
+        tenant_id="local-debug",
+        role="debug",
+        permissions=[],
         project_id=args.project_id,
     )
-    model_preview = _resolve_runtime_model_preview(runtime_context)
+    model_preview = _resolve_runtime_model_preview(args.model_id)
     message = HumanMessage(content=args.question)
 
     _print_section(

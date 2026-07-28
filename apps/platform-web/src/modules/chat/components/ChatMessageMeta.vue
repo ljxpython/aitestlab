@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Message } from '@langchain/langgraph-sdk'
+import type { AssembledToolCall } from '@langchain/vue'
 import { computed, ref } from 'vue'
 import BaseIcon from '@/components/base/BaseIcon.vue'
 import { buildChatMessageMetaView } from '../message-meta-view-model'
@@ -8,18 +9,25 @@ import ChatToolResultRenderer from './ChatToolResultRenderer.vue'
 const props = defineProps<{
   message: Message
   allMessages: Message[]
+  toolCalls: AssembledToolCall[]
 }>()
 
 const emit = defineEmits<{
   'expanded-change': [expanded: boolean]
 }>()
 
-const metaView = computed(() => buildChatMessageMetaView(props.message, props.allMessages))
+const metaView = computed(() =>
+  buildChatMessageMetaView(props.message, props.allMessages, props.toolCalls)
+)
 const toolCount = computed(() => metaView.value.toolCalls.length)
 const subAgentCount = computed(() => metaView.value.subAgentCards.length)
 const hasPendingTool = computed(() => metaView.value.toolCalls.some((item) => item.status === 'pending'))
+const hasFailedTool = computed(() => metaView.value.toolCalls.some((item) => item.status === 'error'))
 const hasPendingSubAgent = computed(() =>
   metaView.value.subAgentCards.some((item) => item.status === 'pending')
+)
+const hasFailedSubAgent = computed(() =>
+  metaView.value.subAgentCards.some((item) => item.status === 'error')
 )
 const hasMetaSummary = computed(() => toolCount.value > 0 || subAgentCount.value > 0)
 const isExpanded = ref(false)
@@ -65,14 +73,16 @@ function toggleExpanded() {
           v-if="toolCount > 0"
           class="pw-pill-soft"
           :class="
-            hasPendingTool
+            hasFailedTool
+              ? 'pw-pill-soft-danger'
+              : hasPendingTool
               ? 'pw-pill-soft-info'
               : 'pw-pill-soft-success'
           "
         >
           <span
             class="inline-flex h-2 w-2 rounded-full"
-            :class="hasPendingTool ? 'animate-pulse bg-sky-500' : 'bg-emerald-500'"
+            :class="hasFailedTool ? 'bg-rose-500' : hasPendingTool ? 'animate-pulse bg-sky-500' : 'bg-emerald-500'"
           />
           工具调用 {{ toolCount }}
           <span
@@ -87,14 +97,16 @@ function toggleExpanded() {
           v-if="subAgentCount > 0"
           class="pw-pill-soft"
           :class="
-            hasPendingSubAgent
+            hasFailedSubAgent
+              ? 'pw-pill-soft-danger'
+              : hasPendingSubAgent
               ? 'pw-pill-soft-warning'
               : 'pw-pill-soft-success'
           "
         >
           <span
             class="inline-flex h-2 w-2 rounded-full"
-            :class="hasPendingSubAgent ? 'animate-pulse bg-amber-500' : 'bg-emerald-500'"
+            :class="hasFailedSubAgent ? 'bg-rose-500' : hasPendingSubAgent ? 'animate-pulse bg-amber-500' : 'bg-emerald-500'"
           />
           子任务 {{ subAgentCount }}
           <span
@@ -155,16 +167,18 @@ function toggleExpanded() {
             <span
               class="pw-pill-soft"
               :class="
-                tool.status === 'pending'
+                tool.status === 'error'
+                  ? 'pw-pill-soft-danger'
+                  : tool.status === 'pending'
                   ? 'pw-pill-soft-info'
                   : 'pw-pill-soft-success'
               "
             >
               <span
                 class="inline-flex h-2 w-2 rounded-full"
-                :class="tool.status === 'pending' ? 'animate-pulse bg-sky-500' : 'bg-emerald-500'"
+                :class="tool.status === 'error' ? 'bg-rose-500' : tool.status === 'pending' ? 'animate-pulse bg-sky-500' : 'bg-emerald-500'"
               />
-              {{ tool.status === 'pending' ? '运行中' : '已完成' }}
+              {{ tool.status === 'error' ? '失败' : tool.status === 'pending' ? '运行中' : '已完成' }}
             </span>
           </div>
 
@@ -190,13 +204,19 @@ function toggleExpanded() {
           </div>
 
           <div
-            v-if="tool.resultText || tool.resultImageUrl"
+            v-if="tool.resultText || tool.resultImageUrl || tool.errorText"
             class="mt-3 space-y-2"
           >
             <div class="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-400 dark:text-dark-400">
               Result
             </div>
             <ChatToolResultRenderer :tool="tool" />
+            <div
+              v-if="tool.errorText"
+              class="pw-panel-danger mt-2 px-3 py-3 text-xs leading-6"
+            >
+              {{ tool.errorText }}
+            </div>
           </div>
         </div>
       </div>
@@ -226,16 +246,18 @@ function toggleExpanded() {
             <span
               class="pw-pill-soft"
               :class="
-                item.status === 'pending'
+                item.status === 'error'
+                  ? 'pw-pill-soft-danger'
+                  : item.status === 'pending'
                   ? 'pw-pill-soft-warning'
                   : 'pw-pill-soft-success'
               "
             >
               <span
                 class="inline-flex h-2 w-2 rounded-full"
-                :class="item.status === 'pending' ? 'animate-pulse bg-amber-500' : 'bg-emerald-500'"
+                :class="item.status === 'error' ? 'bg-rose-500' : item.status === 'pending' ? 'animate-pulse bg-amber-500' : 'bg-emerald-500'"
               />
-              {{ item.status === 'pending' ? '运行中' : '已完成' }}
+              {{ item.status === 'error' ? '失败' : item.status === 'pending' ? '运行中' : '已完成' }}
             </span>
           </div>
 

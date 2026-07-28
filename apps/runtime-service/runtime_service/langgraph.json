@@ -4,6 +4,9 @@
   "dependencies": [
     "./"
   ],
+  "auth": {
+    "path": "./runtime_service/auth/platform.py:platform_auth"
+  },
   "graphs": {
     "assistant": {
       "path": "./runtime_service/agents/assistant_agent/graph.py:graph",

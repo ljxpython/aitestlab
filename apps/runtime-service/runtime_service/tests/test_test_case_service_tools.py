@@ -17,7 +17,6 @@ from runtime_service.services.test_case_service.schemas import (
     PersistTestCaseItem,
     TestCaseServiceConfig as ServiceConfig,
 )
-from runtime_service.runtime.context import RuntimeContext
 from runtime_service.services.test_case_service import tools as test_case_tools
 from runtime_service.services.test_case_service.tools import (
     _build_test_case_idempotency_keys,
@@ -84,10 +83,19 @@ def _build_runtime(
     thread_id: str = "thread-1",
     state: dict[str, Any] | None = None,
 ) -> Any:
+    user = None
+    if project_id is not None:
+        user = {
+            "identity": "user-1",
+            "tenant_id": "tenant-1",
+            "role": "project_editor",
+            "permissions": ["runtime:write"],
+            "project_id": project_id,
+        }
     return SimpleNamespace(
         config={"configurable": {"thread_id": thread_id}},
         state=state or {},
-        context=RuntimeContext(project_id=project_id),
+        server_info=SimpleNamespace(user=user),
     )
 
 

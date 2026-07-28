@@ -53,6 +53,24 @@ def _fake_success_parser(
     return cast(AttachmentArtifact, next_artifact)
 
 
+def test_parser_model_override_uses_platform_runtime_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "runtime_service.middlewares.multimodal.middleware.get_config",
+        lambda: {
+            "configurable": {
+                "platform_runtime": {
+                    "multimodal_parser_model_id": "runtime-parser-model",
+                }
+            }
+        },
+    )
+    middleware = MultimodalMiddleware(parser_model_id="default-parser-model")
+
+    assert middleware._resolve_parser_model_id() == "runtime-parser-model"
+
+
 def test_build_attachment_artifact_for_frontend_image_block() -> None:
     artifact = build_attachment_artifact(
         {

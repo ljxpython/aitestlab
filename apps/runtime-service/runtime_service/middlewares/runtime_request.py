@@ -10,6 +10,7 @@ from langchain.agents.middleware import (
     ToolCallRequest,
 )
 from langchain.messages import SystemMessage, ToolMessage
+from langgraph.config import get_config
 from langgraph.types import Command
 from runtime_service.runtime.runtime_request_resolver import (
     AgentDefaults,
@@ -42,6 +43,7 @@ class RuntimeRequestMiddleware(AgentMiddleware):
             Callable[[ResolvedRuntimeSettings], Awaitable[Sequence[Any]]] | None
         ) = None,
         system_prompt_resolver: Callable[[ResolvedRuntimeSettings], str] | None = None,
+        allow_internal_context: bool = False,
     ) -> None:
         self.defaults = defaults
         self.required_tools = list(required_tools)
@@ -51,14 +53,17 @@ class RuntimeRequestMiddleware(AgentMiddleware):
         self.public_tool_resolver = public_tool_resolver
         self.apublic_tool_resolver = apublic_tool_resolver
         self.system_prompt_resolver = system_prompt_resolver
+        self.allow_internal_context = allow_internal_context
 
     def _resolve_settings(
         self,
         request: ModelRequest | ToolCallRequest,
     ) -> ResolvedRuntimeSettings:
         return resolve_runtime_settings(
-            context=request.runtime.context if request.runtime is not None else None,
+            runtime=request.runtime,
+            config=get_config(),
             defaults=self.defaults,
+            allow_internal_context=self.allow_internal_context,
         )
 
     def _resolve_required_tools_sync(

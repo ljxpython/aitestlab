@@ -7,7 +7,6 @@ from typing import Any
 
 from langchain.agents.middleware import ModelRequest, ModelResponse
 from langchain.messages import HumanMessage
-from langgraph.runtime import Runtime
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
@@ -21,7 +20,6 @@ from runtime_service.middlewares.multimodal.types import (  # noqa: E402
 from runtime_service.services.test_case_service.schemas import (  # noqa: E402
     build_test_case_service_config,
 )
-from runtime_service.runtime.context import RuntimeContext  # noqa: E402
 
 
 def test_get_default_multimodal_model_id_reads_env(monkeypatch) -> None:
@@ -76,39 +74,40 @@ def test_build_test_case_service_config_private_override_beats_env(monkeypatch) 
     assert config.multimodal_parser_model_id == "service_private_override"
 
 
-def test_multimodal_middleware_runtime_context_override_beats_env(monkeypatch) -> None:
+def test_multimodal_middleware_platform_runtime_override_beats_env(monkeypatch) -> None:
     monkeypatch.setenv(MULTIMODAL_PARSER_MODEL_ID_ENV, "shared_env_parser")
-
-    middleware = MultimodalMiddleware()
-
-    request = ModelRequest(
-        model=object(),
-        messages=[HumanMessage(content="hello")],
-        runtime=Runtime(
-            context=RuntimeContext(multimodal_parser_model_id="runtime_override"),
-        ),
+    monkeypatch.setattr(
+        "runtime_service.middlewares.multimodal.middleware.get_config",
+        lambda: {
+            "configurable": {
+                "platform_runtime": {
+                    "multimodal_parser_model_id": "runtime_override",
+                }
+            }
+        },
     )
 
-    def handler(updated_request: ModelRequest) -> ModelResponse:
-        del updated_request
-        return ModelResponse(result=[])
-
-    middleware.wrap_model_call(request, handler)
-
-    assert middleware._resolve_parser_model_id(request.runtime) == "runtime_override"
+    middleware = MultimodalMiddleware()
+    assert middleware._resolve_parser_model_id() == "runtime_override"
 
 
-def test_test_case_graph_multimodal_middleware_preserves_runtime_context_override(
+def test_test_case_graph_multimodal_middleware_preserves_platform_runtime_override(
     monkeypatch,
 ) -> None:
     monkeypatch.setenv(MULTIMODAL_PARSER_MODEL_ID_ENV, "shared_env_parser")
+    monkeypatch.setattr(
+        "runtime_service.middlewares.multimodal.middleware.get_config",
+        lambda: {
+            "configurable": {
+                "platform_runtime": {
+                    "multimodal_parser_model_id": "graph_runtime_override",
+                }
+            }
+        },
+    )
 
     graph_module = importlib.import_module("runtime_service.services.test_case_service.graph")
     graph_module = importlib.reload(graph_module)
     middleware = graph_module.TEST_CASE_MIDDLEWARE[0]
 
-    runtime = Runtime(
-        context=RuntimeContext(multimodal_parser_model_id="graph_runtime_override"),
-    )
-
-    assert middleware._resolve_parser_model_id(runtime) == "graph_runtime_override"
+    assert middleware._resolve_parser_model_id() == "graph_runtime_override"

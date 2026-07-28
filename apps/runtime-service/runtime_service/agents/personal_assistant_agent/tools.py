@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import replace
 from typing import Any
 
 from runtime_service.agents.personal_assistant_agent.prompts import (
@@ -13,8 +12,11 @@ from runtime_service.middlewares.multimodal import (
     MultimodalAgentState,
     MultimodalMiddleware,
 )
-from runtime_service.runtime.context import RuntimeContext, coerce_runtime_context
-from runtime_service.runtime.runtime_request_resolver import AgentDefaults
+from runtime_service.runtime.context import RuntimeContext
+from runtime_service.runtime.runtime_request_resolver import (
+    AgentDefaults,
+    resolve_trusted_runtime_context,
+)
 from runtime_service.conf.settings import get_default_model_id
 from langchain.agents import create_agent
 from langchain.tools import ToolRuntime
@@ -89,14 +91,8 @@ def _message_to_text(message: Any) -> str:
     return str(message)
 
 
-def _build_specialist_runtime_context(raw_context: Any) -> RuntimeContext:
-    context = coerce_runtime_context(raw_context)
-    return replace(
-        context,
-        system_prompt=None,
-        enable_tools=None,
-        tools=None,
-    )
+def _build_specialist_runtime_context(runtime: Any) -> RuntimeContext:
+    return resolve_trusted_runtime_context(runtime)
 
 
 def build_personal_assistant_supervisor_tools(model: Any) -> list[Any]:
@@ -116,6 +112,7 @@ def build_personal_assistant_supervisor_tools(model: Any) -> list[Any]:
                 ),
                 required_tools=calendar_tools,
                 public_tools=[],
+                allow_internal_context=True,
             )
         ],
         context_schema=RuntimeContext,
@@ -135,6 +132,7 @@ def build_personal_assistant_supervisor_tools(model: Any) -> list[Any]:
                 ),
                 required_tools=email_tools,
                 public_tools=[],
+                allow_internal_context=True,
             )
         ],
         context_schema=RuntimeContext,
@@ -151,7 +149,8 @@ def build_personal_assistant_supervisor_tools(model: Any) -> list[Any]:
     ) -> str:
         result = calendar_agent.invoke(
             {"messages": [{"role": "user", "content": request}]},
-            context=_build_specialist_runtime_context(runtime.context),
+            context=_build_specialist_runtime_context(runtime),
+            config=runtime.config,
         )
         return _message_to_text(result["messages"][-1])
 
@@ -165,7 +164,8 @@ def build_personal_assistant_supervisor_tools(model: Any) -> list[Any]:
     ) -> str:
         result = email_agent.invoke(
             {"messages": [{"role": "user", "content": request}]},
-            context=_build_specialist_runtime_context(runtime.context),
+            context=_build_specialist_runtime_context(runtime),
+            config=runtime.config,
         )
         return _message_to_text(result["messages"][-1])
 

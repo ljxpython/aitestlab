@@ -10,6 +10,7 @@ from app.core.runtime_contract import (
     RUNTIME_CONTEXT_READONLY_KEYS,
     build_execution_config_schema_properties,
     build_runtime_context_schema_properties,
+    build_runtime_options_schema_properties,
 )
 
 _CONFIGURABLE_PLATFORM_PROPERTIES: dict[str, dict[str, Any]] = {
@@ -17,8 +18,11 @@ _CONFIGURABLE_PLATFORM_PROPERTIES: dict[str, dict[str, Any]] = {
     "checkpoint_id": {"type": "string", "required": False},
     "assistant_id": {"type": "string", "required": False},
     "graph_id": {"type": "string", "required": False},
-    "langgraph_auth_user_id": {"type": "string", "required": False},
-    "langgraph_auth_user": {"type": "object", "required": False},
+    "platform_runtime": {
+        "type": "object",
+        "required": False,
+        "properties": build_runtime_options_schema_properties(),
+    },
 }
 
 _CONFIGURABLE_NOISE_KEYS = {

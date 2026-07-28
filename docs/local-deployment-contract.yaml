@@ -154,6 +154,8 @@ services:
       - MODEL_ID in apps/runtime-service/runtime_service/.env is either blank or a valid model key from settings.yaml
       - default.default_model_id exists in apps/runtime-service/runtime_service/conf/settings.yaml
       - default.models.<model_id> exists in apps/runtime-service/runtime_service/conf/settings.yaml
+      - PLATFORM_RUNTIME_DELEGATION_SECRET is at least 32 bytes and matches platform-api
+      - PLATFORM_RUNTIME_MANAGEMENT_API_KEY is at least 32 bytes and matches platform-api upstream API key
     model_contract:
       real_deployment_prerequisites:
         - User decides whether apps/runtime-service/runtime_service/.env should leave MODEL_ID blank or explicitly override the default model
@@ -189,9 +191,9 @@ services:
       workdir: apps/runtime-service
       command: uv run langgraph dev --config runtime_service/langgraph.json --port 8123 --no-browser
     health_checks:
-      - curl http://127.0.0.1:8123/info
-      - curl http://127.0.0.1:8123/internal/capabilities/models
-      - curl http://127.0.0.1:8123/internal/capabilities/tools
+      - curl -H "x-api-key: $PLATFORM_RUNTIME_MANAGEMENT_API_KEY" http://127.0.0.1:8123/info
+      - curl -H "x-api-key: $PLATFORM_RUNTIME_MANAGEMENT_API_KEY" http://127.0.0.1:8123/internal/capabilities/models
+      - curl -H "x-api-key: $PLATFORM_RUNTIME_MANAGEMENT_API_KEY" http://127.0.0.1:8123/internal/capabilities/tools
 
   platform-api:
     role: Official platform control-plane backend
@@ -206,6 +208,10 @@ services:
         - apps/platform-api/.env
     minimum_required_env:
       - PLATFORM_API_LANGGRAPH_UPSTREAM_URL=http://127.0.0.1:8123
+      - PLATFORM_API_LANGGRAPH_UPSTREAM_API_KEY matches PLATFORM_RUNTIME_MANAGEMENT_API_KEY
+      - PLATFORM_API_RUNTIME_DELEGATION_SECRET matches PLATFORM_RUNTIME_DELEGATION_SECRET
+      - PLATFORM_API_RUNTIME_DELEGATION_ISSUER=platform-api
+      - PLATFORM_API_RUNTIME_DELEGATION_AUDIENCE=runtime-service
       - PLATFORM_API_INTERACTION_DATA_SERVICE_URL=http://127.0.0.1:8081
       - PLATFORM_API_PLATFORM_DB_ENABLED=true
       - PLATFORM_API_PLATFORM_DB_AUTO_CREATE=true

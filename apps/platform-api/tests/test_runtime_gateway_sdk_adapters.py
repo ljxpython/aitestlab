@@ -13,6 +13,7 @@ from app.core.context.models import ActorContext, PlatformRequestContext, Projec
 from app.core.errors import PlatformApiError
 from app.adapters.langgraph.runs_sdk_adapter import LangGraphRunsSdkAdapter
 from app.adapters.langgraph.runtime_client import LangGraphRuntimeClient
+from app.adapters.langgraph.runtime_gateway_upstream import LangGraphRuntimeGatewayUpstream
 from app.adapters.langgraph.threads_sdk_adapter import LangGraphThreadsSdkAdapter
 from app.entrypoints.http.dependencies import get_actor_context
 from app.modules.runtime_gateway.presentation.http import get_runtime_gateway_service, router
@@ -122,6 +123,35 @@ class RuntimeGatewaySdkAdaptersTest(unittest.IsolatedAsyncioTestCase):
             payload = await adapter.count_crons({"assistant_id": "assistant-1"})
 
         self.assertEqual(payload, {"count": 5})
+
+    async def test_protocol_v2_upstream_uses_exact_standard_paths(self) -> None:
+        upstream = LangGraphRuntimeGatewayUpstream(
+            base_url="http://example.com",
+            timeout_seconds=1.0,
+        )
+        stream = object()
+        upstream._http = SimpleNamespace(  # type: ignore[assignment]
+            request_json=AsyncMock(return_value={"type": "success", "id": 1}),
+            stream=AsyncMock(return_value=stream),
+        )
+        command = {"id": 1, "method": "input.respond", "params": {}}
+        subscription = {"channels": ["messages"], "since": 3}
+
+        response = await upstream.send_thread_command("thread-1", command)
+        event_stream = await upstream.stream_thread_events("thread-1", subscription)
+
+        self.assertEqual(response, {"type": "success", "id": 1})
+        self.assertIs(event_stream, stream)
+        upstream._http.request_json.assert_awaited_once_with(  # type: ignore[attr-defined]
+            "POST",
+            "/threads/thread-1/commands",
+            payload=command,
+        )
+        upstream._http.stream.assert_awaited_once_with(  # type: ignore[attr-defined]
+            "POST",
+            "/threads/thread-1/stream/events",
+            payload=subscription,
+        )
 
 
 class RuntimeGatewayRouterSmokeTest(unittest.TestCase):

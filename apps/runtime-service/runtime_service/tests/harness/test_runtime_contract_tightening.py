@@ -52,7 +52,29 @@ def test_runtime_modeling_only_exposes_resolve_model_by_id_path() -> None:
     assert "def apply_model_runtime_params(" not in source
 
 
-def test_test_case_document_persistence_reads_project_id_only_from_runtime_context() -> None:
+def test_runtime_options_are_read_only_from_platform_runtime_config() -> None:
+    source = _read_source("runtime/runtime_request_resolver.py")
+    assert 'configurable.get("platform_runtime")' in source
+    assert 'configurable.get("project_id")' not in source
+    assert 'configurable.get("user_id")' not in source
+    assert "resolve_trusted_runtime_context(" in source
+    assert "runtime," in source
+
+
+def test_formal_runtime_consumers_do_not_read_legacy_runtime_context() -> None:
+    for relative_path in (
+        "middlewares/runtime_request.py",
+        "services/test_case_service/document_persistence.py",
+        "services/test_case_service_v2/document_persistence.py",
+        "services/test_case_service/knowledge_query_guard_middleware.py",
+        "services/test_case_service_v2/knowledge_query_guard_middleware.py",
+    ):
+        source = _read_source(relative_path)
+        assert "request.runtime.context" not in source
+        assert "coerce_runtime_context(" not in source
+
+
+def test_test_case_document_persistence_does_not_infer_project_id_from_config() -> None:
     source = _read_source("services/test_case_service/document_persistence.py")
     assert 'configurable.get("project_id")' not in source
     assert 'configurable.get("x-project-id")' not in source

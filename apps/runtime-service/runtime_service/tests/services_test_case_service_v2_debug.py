@@ -68,8 +68,8 @@ def _print_section(title: str, payload: Any) -> None:
     print(_json_dump(payload))
 
 
-def _resolve_runtime_model_preview(runtime_context: RuntimeContext) -> dict[str, str]:
-    requested_model_id = runtime_context.model_id or TEST_CASE_DEFAULTS.model_id
+def _resolve_runtime_model_preview(model_id: str | None) -> dict[str, str]:
+    requested_model_id = model_id or TEST_CASE_DEFAULTS.model_id
     resolved_model_id, spec = require_model_spec(requested_model_id)
     return {
         "runtime_model_id": resolved_model_id,
@@ -437,12 +437,20 @@ async def _main_async(args: argparse.Namespace) -> int:
             args.knowledge_sse_read_timeout
         )
 
+    config["configurable"]["platform_local_debug"] = True
+    config["configurable"]["platform_runtime"] = {
+        "model_id": args.model_id,
+        "multimodal_parser_model_id": args.parser_model_id,
+    }
     runtime_context = RuntimeContext(
-        model_id=args.model_id,
+        user_id="local-debug",
+        tenant_id="local-debug",
+        role="debug",
+        permissions=[],
         project_id=args.project_id,
     )
     service_config = build_test_case_service_config(config)
-    model_preview = _resolve_runtime_model_preview(runtime_context)
+    model_preview = _resolve_runtime_model_preview(args.model_id)
 
     _print_section(
         "Input",

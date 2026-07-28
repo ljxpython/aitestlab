@@ -7,7 +7,7 @@ from app.adapters.langgraph.sdk_client import (
     raise_assistants_upstream_error,
 )
 
-FORWARDED_HEADER_KEYS = ("authorization", "x-project-id", "x-request-id")
+FORWARDED_HEADER_KEYS = ("x-request-id",)
 
 
 def build_forward_headers(

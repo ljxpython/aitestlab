@@ -7,7 +7,7 @@ from typing import Any
 from deepagents.middleware._utils import append_to_system_message
 from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
 from langchain.messages import AIMessage
-from runtime_service.runtime.context import coerce_runtime_context
+from runtime_service.runtime.runtime_request_resolver import resolve_trusted_runtime_context
 
 MULTIMODAL_ATTACHMENTS_KEY = "multimodal_attachments"
 REQUIREMENT_ANALYSIS_SKILL_PATH = "/skills/requirement-analysis/SKILL.md"
@@ -142,8 +142,10 @@ def _collect_tool_names(messages: Sequence[Any]) -> list[str]:
 
 def _resolve_project_id(request: ModelRequest) -> str | None:
     runtime = getattr(request, "runtime", None)
-    context = getattr(runtime, "context", None) if runtime is not None else None
-    return coerce_runtime_context(context).project_id
+    try:
+        return resolve_trusted_runtime_context(runtime).project_id
+    except ValueError:
+        return None
 
 
 def _build_synthesized_tool_response(name: str, args: dict[str, Any]) -> ModelResponse:

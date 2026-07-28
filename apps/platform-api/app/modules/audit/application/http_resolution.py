@@ -320,6 +320,10 @@ def _resolve_action(
             return "runtime.cron.item.deleted", "cron", clean_str(segments[4])
         if len(segments) == 5 and segments[2] == "threads" and segments[4] == "runs" and method == "POST":
             return "runtime.run.item.created", "thread", clean_str(segments[3])
+        if len(segments) == 5 and segments[2] == "threads" and segments[4] == "commands" and method == "POST":
+            return "runtime.command.submitted", "thread", clean_str(segments[3])
+        if len(segments) == 6 and segments[2] == "threads" and segments[4:6] == ["stream", "events"] and method == "POST":
+            return "runtime.event_stream.opened", "thread", clean_str(segments[3])
         if len(segments) == 6 and segments[2] == "threads" and segments[4] == "runs" and segments[5] == "stream" and method == "POST":
             return "runtime.run.stream.opened", "thread", clean_str(segments[3])
         if len(segments) == 6 and segments[2] == "threads" and segments[4] == "runs" and segments[5] == "wait" and method == "POST":

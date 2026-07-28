@@ -27,13 +27,13 @@ type UseChatThreadWorkspaceOptions = {
   displayState: ComputedRef<Record<string, unknown> | null>
   clearStreamDetailFeedback: (options?: { preserveInfo?: boolean }) => void
   resetStreamView: (options?: { preserveInfo?: boolean }) => void
-  switchThread: (threadId: string | null) => void
   streamDetailError: Ref<string>
   streamDetailInfo: Ref<string>
 }
 
 type SyncActiveThreadResult = {
   degraded: boolean
+  excluded: boolean
 }
 
 function normalizeHistoryEntry(entry: Record<string, unknown>) {
@@ -50,6 +50,10 @@ function resolveLegacyBrokenThreadNotice(snapshot: RuntimeThreadSnapshot): strin
   }
 
   return '该历史线程的状态快照已经损坏，系统已将它隔离为旧线程。建议新开对话继续，避免再次被旧坏线程干扰。'
+}
+
+function isLegacyDebugThread(thread: ManagementThread) {
+  return thread.metadata?.session_kind === 'legacy_debug'
 }
 
 export function useChatThreadWorkspace(options: UseChatThreadWorkspaceOptions) {
@@ -107,14 +111,18 @@ export function useChatThreadWorkspace(options: UseChatThreadWorkspaceOptions) {
     options.clearStreamDetailFeedback(controlOptions)
   }
 
-  function clearActiveThreadState(controlOptions: { preserveInfo?: boolean } = {}) {
-    invalidatePendingThreadLoads()
+  function resetActiveThreadState(controlOptions: { preserveInfo?: boolean } = {}) {
     options.activeThreadId.value = ''
     options.activeThread.value = null
     options.historyItems.value = []
     options.selectedBranch.value = ''
     options.resetStreamView(controlOptions)
     clearDetailFeedback(controlOptions)
+  }
+
+  function clearActiveThreadState(controlOptions: { preserveInfo?: boolean } = {}) {
+    invalidatePendingThreadLoads()
+    resetActiveThreadState(controlOptions)
   }
 
   function resetForContextChange(initialThreadId = '') {
@@ -129,7 +137,6 @@ export function useChatThreadWorkspace(options: UseChatThreadWorkspaceOptions) {
     threadErrorMeta.value = null
     detailErrorMeta.value = null
     options.resetStreamView()
-    options.switchThread(options.activeThreadId.value || null)
   }
 
   function syncActiveThreadFromHistory(threadId: string) {
@@ -163,7 +170,7 @@ export function useChatThreadWorkspace(options: UseChatThreadWorkspaceOptions) {
     const normalizedThreadId = threadId.trim()
 
     if (!projectId || !normalizedThreadId) {
-      return { degraded: false }
+      return { degraded: false, excluded: false }
     }
 
     const currentToken = ++detailToken
@@ -178,7 +185,17 @@ export function useChatThreadWorkspace(options: UseChatThreadWorkspaceOptions) {
       })
 
       if (currentToken !== detailToken) {
-        return { degraded: false }
+        return { degraded: false, excluded: false }
+      }
+
+      if (isLegacyDebugThread(snapshot.detail)) {
+        threadItems.value = threadItems.value.filter(
+          (item) => item.thread_id !== normalizedThreadId
+        )
+        if (options.activeThreadId.value === normalizedThreadId) {
+          resetActiveThreadState()
+        }
+        return { degraded: false, excluded: true }
       }
 
       const degradedNotice = resolveLegacyBrokenThreadNotice(snapshot)
@@ -210,18 +227,17 @@ export function useChatThreadWorkspace(options: UseChatThreadWorkspaceOptions) {
         options.selectedBranch.value = ''
       }
 
-      options.switchThread(normalizedThreadId)
-      return { degraded: Boolean(degradedNotice) }
+      return { degraded: Boolean(degradedNotice), excluded: false }
     } catch (loadError) {
       if (currentToken !== detailToken) {
-        return { degraded: false }
+        return { degraded: false, excluded: false }
       }
 
       const normalizedError = normalizeRuntimeGatewayError(loadError, '线程详情加载失败')
       clearActiveThreadState({ preserveInfo: true })
       options.streamDetailError.value = normalizedError.message
       detailErrorMeta.value = normalizedError
-      return { degraded: false }
+      return { degraded: false, excluded: false }
     } finally {
       preserveBranchOnThreadSync = false
       if (currentToken === detailToken) {
@@ -260,9 +276,16 @@ export function useChatThreadWorkspace(options: UseChatThreadWorkspaceOptions) {
         return
       }
 
-      threadItems.value = Array.isArray(payload.items) ? payload.items : []
+      threadItems.value = Array.isArray(payload.items)
+        ? payload.items.filter((item) => !isLegacyDebugThread(item))
+        : []
 
-      const explicitPreferredThreadId = preferredThreadId.trim() || options.activeThreadId.value.trim()
+      const requestedThreadId = preferredThreadId.trim() || options.activeThreadId.value.trim()
+      const explicitPreferredThreadId = threadItems.value.some(
+        (item) => item.thread_id === requestedThreadId
+      )
+        ? requestedThreadId
+        : ''
       const candidateThreadIds = Array.from(
         new Set(
           [explicitPreferredThreadId, ...threadItems.value.map((item) => item.thread_id)]
@@ -277,15 +300,24 @@ export function useChatThreadWorkspace(options: UseChatThreadWorkspaceOptions) {
       }
 
       if (explicitPreferredThreadId) {
-        await syncActiveThreadFromList(explicitPreferredThreadId)
-        return
+        const result = await syncActiveThreadFromList(explicitPreferredThreadId)
+        if (!result.excluded) {
+          return
+        }
       }
 
       const skippedBrokenThreadIds: string[] = []
       for (const candidateThreadId of candidateThreadIds) {
+        if (candidateThreadId === explicitPreferredThreadId) {
+          continue
+        }
+
         const result = await syncActiveThreadFromList(candidateThreadId, {
           preserveInfo: skippedBrokenThreadIds.length > 0
         })
+        if (result.excluded) {
+          continue
+        }
         if (!result.degraded) {
           if (skippedBrokenThreadIds.length > 0) {
             options.streamDetailInfo.value = `检测到 ${skippedBrokenThreadIds.length} 个旧坏线程，已自动切到最近可用会话。`

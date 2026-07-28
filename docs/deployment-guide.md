@@ -145,6 +145,8 @@ pnpm -v
 
 - `.env` 中有 `APP_ENV`
 - `MODEL_ID` 要么留空，要么是 `settings.yaml` 中真实存在的模型 key
+- `PLATFORM_RUNTIME_DELEGATION_SECRET` 与 platform-api 的签发 secret 相同且至少 32 bytes
+- `PLATFORM_RUNTIME_MANAGEMENT_API_KEY` 与 platform-api 的 upstream API key 相同且至少 32 bytes
 - `settings.yaml` 中存在 `default.default_model_id`
 - `settings.yaml` 中存在对应的 `default.models.<model_id>` 配置块
 
@@ -174,6 +176,10 @@ pnpm -v
 关键变量包括：
 
 - `PLATFORM_API_LANGGRAPH_UPSTREAM_URL=http://127.0.0.1:8123`
+- `PLATFORM_API_LANGGRAPH_UPSTREAM_API_KEY`
+- `PLATFORM_API_RUNTIME_DELEGATION_SECRET`
+- `PLATFORM_API_RUNTIME_DELEGATION_ISSUER=platform-api`
+- `PLATFORM_API_RUNTIME_DELEGATION_AUDIENCE=runtime-service`
 - `PLATFORM_API_INTERACTION_DATA_SERVICE_URL=http://127.0.0.1:8081`
 - `PLATFORM_API_DATABASE_URL=sqlite+pysqlite:///./.data/platform-api.db`
 - `PLATFORM_API_PLATFORM_DB_ENABLED=true`

@@ -1,4 +1,5 @@
 import type { Message } from '@langchain/langgraph-sdk'
+import type { AssembledToolCall } from '@langchain/vue'
 import { getMessageText } from '@/utils/chat-content'
 import { toPrettyJson } from '@/utils/threads'
 import { extractToolCallsFromMessage } from './tool-call-utils'
@@ -15,19 +16,35 @@ export type ChatToolCallCard = {
   key: string
   name: string
   idLabel: string
-  status: 'pending' | 'completed'
+  status: 'pending' | 'completed' | 'error'
   argsEntries: ChatToolCallArgEntry[]
   resultText?: string
   resultRenderMode: ChatToolResultRenderMode
   resultImageUrl?: string
+  errorText?: string
 }
 
 export type ChatSubAgentCard = {
   id: string
   name: string
-  status: 'pending' | 'completed'
+  status: 'pending' | 'completed' | 'error'
   input: string
   output?: string
+}
+
+function getAssembledToolResult(toolCall: AssembledToolCall | undefined): Message | undefined {
+  if (!toolCall || toolCall.status !== 'finished' || toolCall.output == null) {
+    return undefined
+  }
+
+  return {
+    type: 'tool',
+    tool_call_id: toolCall.callId,
+    content:
+      typeof toolCall.output === 'string'
+        ? toolCall.output
+        : toPrettyJson(toolCall.output)
+  } as Message
 }
 
 function normalizeToolArgs(args: unknown): Record<string, unknown> {
@@ -103,8 +120,13 @@ export function buildToolResultsByCallId(messages: Message[]): ToolCallResultMap
   }, {})
 }
 
-export function buildChatMessageMetaView(message: Message, allMessages: Message[]) {
-  const toolResultsByCallId = buildToolResultsByCallId(allMessages)
+export function buildChatMessageMetaView(
+  message: Message,
+  allMessages: Message[],
+  assembledToolCalls: AssembledToolCall[] = []
+) {
+  const assembledByCallId = new Map(assembledToolCalls.map((item) => [item.callId, item]))
+  let legacyToolResultsByCallId: ToolCallResultMap | undefined
 
   if (message.type !== 'ai') {
     return {
@@ -119,15 +141,29 @@ export function buildChatMessageMetaView(message: Message, allMessages: Message[
   extractToolCallsFromMessage(message).forEach((toolCall, index) => {
     const toolCallId = toolCall.id
     const toolName = toolCall.name
-    const toolResult = toolCallId ? toolResultsByCallId[toolCallId] : undefined
+    const assembledToolCall = toolCallId ? assembledByCallId.get(toolCallId) : undefined
+    if (!assembledToolCall && legacyToolResultsByCallId === undefined) {
+      legacyToolResultsByCallId = buildToolResultsByCallId(allMessages)
+    }
+    const toolResult = getAssembledToolResult(assembledToolCall) ||
+      (toolCallId ? legacyToolResultsByCallId?.[toolCallId] : undefined)
     const resultView = buildChatToolResultView(toolName, toolResult)
+    const status = assembledToolCall
+      ? assembledToolCall.status === 'running'
+        ? 'pending'
+        : assembledToolCall.status === 'error'
+          ? 'error'
+          : 'completed'
+      : toolResult
+        ? 'completed'
+        : 'pending'
 
     if (toolName === 'task') {
-      const output = toolResult ? getMessageText(toolResult.content) : ''
+      const output = toolResult ? getMessageText(toolResult.content) : assembledToolCall?.error || ''
       subAgentCards.push({
         id: toolCallId || `task-${message.id || 'message'}-${index + 1}`,
         name: getSubAgentName(toolCall.args),
-        status: toolResult ? 'completed' : 'pending',
+        status,
         input: normalizeToolCallInput(toolCall.args),
         output: output || undefined
       })
@@ -138,11 +174,12 @@ export function buildChatMessageMetaView(message: Message, allMessages: Message[
       key: toolCallId || `${toolName || 'tool'}-${index + 1}`,
       name: toolName || 'Unknown Tool',
       idLabel: toolCallId || `tool-${index + 1}`,
-      status: toolResult ? 'completed' : 'pending',
+      status,
       argsEntries: toArgEntries(toolCall.args),
       resultText: resultView.text,
       resultRenderMode: resultView.mode,
-      resultImageUrl: resultView.imageUrl
+      resultImageUrl: resultView.imageUrl,
+      errorText: assembledToolCall?.error
     })
   })
 

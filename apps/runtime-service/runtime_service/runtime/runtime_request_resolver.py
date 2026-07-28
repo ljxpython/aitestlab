@@ -4,7 +4,13 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from runtime_service.runtime.context import RuntimeContext, coerce_runtime_context
+from runtime_service.runtime.config_utils import read_configurable
+from runtime_service.runtime.context import (
+    RuntimeContext,
+    RuntimeOptions,
+    coerce_runtime_context,
+    coerce_runtime_options,
+)
 from runtime_service.runtime.modeling import resolve_model_by_id
 
 
@@ -25,6 +31,7 @@ class ResolvedRuntimeRequest:
     model: Any
     system_prompt: str
     tools: list[Any]
+    options: RuntimeOptions = RuntimeOptions()
 
 
 @dataclass(frozen=True)
@@ -34,10 +41,84 @@ class ResolvedRuntimeSettings:
     system_prompt: str
     enable_tools: bool
     requested_public_tool_names: list[str]
+    options: RuntimeOptions = RuntimeOptions()
 
 
 def normalize_tool_name(raw_name: Any) -> str:
     return str(raw_name or "").strip().lower()
+
+
+def _user_value(user: Any, key: str) -> Any:
+    if isinstance(user, Mapping):
+        return user.get(key)
+    try:
+        return user[key]
+    except (KeyError, TypeError):
+        return getattr(user, key, None)
+
+
+def _require_trusted_context_fields(context: RuntimeContext) -> RuntimeContext:
+    missing = [
+        name
+        for name, value in (
+            ("identity", context.user_id),
+            ("tenant_id", context.tenant_id),
+            ("role", context.role),
+            ("project_id", context.project_id),
+        )
+        if not str(value or "").strip()
+    ]
+    if missing:
+        raise ValueError(
+            "Authenticated runtime user is missing required fields: "
+            + ", ".join(missing)
+        )
+    return context
+
+
+def resolve_trusted_runtime_context(
+    runtime: Any,
+    *,
+    allow_internal_context: bool = False,
+) -> RuntimeContext:
+    server_info = getattr(runtime, "server_info", None)
+    user = getattr(server_info, "user", None)
+    if user is None or not bool(getattr(user, "is_authenticated", True)):
+        if allow_internal_context:
+            return _require_trusted_context_fields(
+                coerce_runtime_context(getattr(runtime, "context", None))
+            )
+        raise ValueError("Authenticated Agent Server runtime user is required.")
+
+    user_id = str(_user_value(user, "identity") or "").strip()
+    tenant_id = str(_user_value(user, "tenant_id") or "").strip()
+    role = str(_user_value(user, "role") or "").strip()
+    project_id = str(_user_value(user, "project_id") or "").strip()
+    raw_permissions = _user_value(user, "permissions")
+    permissions = (
+        [str(item).strip() for item in raw_permissions if str(item).strip()]
+        if isinstance(raw_permissions, Sequence)
+        and not isinstance(raw_permissions, (str, bytes))
+        else []
+    )
+
+    return _require_trusted_context_fields(
+        RuntimeContext(
+            user_id=user_id,
+            tenant_id=tenant_id,
+            role=role,
+            permissions=permissions,
+            project_id=project_id,
+        )
+    )
+
+
+def resolve_runtime_options(config: Mapping[str, Any] | None) -> RuntimeOptions:
+    configurable = read_configurable(config)
+    raw_options = configurable.get("platform_runtime")
+    if raw_options is not None and not isinstance(raw_options, Mapping):
+        raise ValueError("configurable.platform_runtime must be an object.")
+    return coerce_runtime_options(raw_options)
 
 
 def build_tool_catalog(tools: Sequence[Any]) -> dict[str, Any]:
@@ -132,33 +213,43 @@ def resolve_optional_tools(
 
 def resolve_runtime_settings(
     *,
-    context: RuntimeContext | Mapping[str, Any] | None,
+    runtime: Any,
+    config: Mapping[str, Any] | None,
     defaults: AgentDefaults,
+    allow_internal_context: bool = False,
 ) -> ResolvedRuntimeSettings:
-    runtime_context = coerce_runtime_context(context)
+    configurable = read_configurable(config)
+    runtime_context = resolve_trusted_runtime_context(
+        runtime,
+        allow_internal_context=(
+            allow_internal_context
+            or configurable.get("platform_local_debug") is True
+        ),
+    )
+    options = resolve_runtime_options(config)
 
-    model_id = runtime_context.model_id or defaults.model_id
-    system_prompt = runtime_context.system_prompt or defaults.system_prompt
+    model_id = options.model_id or defaults.model_id
+    system_prompt = options.system_prompt or defaults.system_prompt
     temperature = (
-        runtime_context.temperature
-        if runtime_context.temperature is not None
+        options.temperature
+        if options.temperature is not None
         else defaults.temperature
     )
     max_tokens = (
-        runtime_context.max_tokens
-        if runtime_context.max_tokens is not None
+        options.max_tokens
+        if options.max_tokens is not None
         else defaults.max_tokens
     )
-    top_p = runtime_context.top_p if runtime_context.top_p is not None else defaults.top_p
+    top_p = options.top_p if options.top_p is not None else defaults.top_p
     enable_tools = (
-        runtime_context.enable_tools
-        if runtime_context.enable_tools is not None
+        options.enable_tools
+        if options.enable_tools is not None
         else defaults.enable_tools
     )
 
     requested_public_tool_names = _normalize_requested_tool_names(
-        runtime_context.tools
-        if runtime_context.tools is not None
+        options.tools
+        if options.tools is not None
         else defaults.public_tool_names
     )
 
@@ -171,6 +262,7 @@ def resolve_runtime_settings(
 
     return ResolvedRuntimeSettings(
         context=runtime_context,
+        options=options,
         model=model,
         system_prompt=system_prompt,
         enable_tools=enable_tools,
@@ -180,12 +272,17 @@ def resolve_runtime_settings(
 
 def resolve_runtime_request(
     *,
-    context: RuntimeContext | Mapping[str, Any] | None,
+    runtime: Any,
+    config: Mapping[str, Any] | None,
     defaults: AgentDefaults,
     required_tools: Sequence[Any],
     public_tools: Sequence[Any],
 ) -> ResolvedRuntimeRequest:
-    settings = resolve_runtime_settings(context=context, defaults=defaults)
+    settings = resolve_runtime_settings(
+        runtime=runtime,
+        config=config,
+        defaults=defaults,
+    )
     public_tool_catalog = build_tool_catalog(public_tools)
     optional_tools = (
         resolve_optional_tools(
@@ -199,6 +296,7 @@ def resolve_runtime_request(
 
     return ResolvedRuntimeRequest(
         context=settings.context,
+        options=settings.options,
         model=settings.model,
         system_prompt=settings.system_prompt,
         tools=tools,

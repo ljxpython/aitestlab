@@ -205,6 +205,12 @@ runtime 持久化到 `interaction-data-service` 的 env：
 - `INTERACTION_DATA_SERVICE_TOKEN`
 - `INTERACTION_DATA_SERVICE_TIMEOUT_SECONDS`
 
+runtime 认证 env：
+
+- `PLATFORM_RUNTIME_DELEGATION_SECRET`：校验 platform-api 签发的短期运行 JWT
+- `PLATFORM_RUNTIME_MANAGEMENT_API_KEY`：仅用于 catalog、assistant 等平台管理调用
+- 两者都必须使用独立的至少 32 bytes 随机 secret，不能复用用户 access/refresh JWT secret
+
 这些 env 只属于 service-private config，不进入公共 MCP registry。
 
 ### 3.2 `platform-api`
@@ -219,6 +225,12 @@ runtime 持久化到 `interaction-data-service` 的 env：
 - `PLATFORM_API_KNOWLEDGE_UPSTREAM_URL`
 - `PLATFORM_API_KNOWLEDGE_UPSTREAM_API_KEY`
 - `PLATFORM_API_KNOWLEDGE_UPSTREAM_TIMEOUT_SECONDS`
+
+runtime 上游认证配置：
+
+- `PLATFORM_API_RUNTIME_DELEGATION_SECRET` 必须与 runtime-service 的 delegation secret 相同
+- `PLATFORM_API_LANGGRAPH_UPSTREAM_API_KEY` 必须与 runtime-service 的 management API key 相同
+- 正式 run/thread 请求使用短期 delegation JWT；平台管理调用使用 service API key
 
 注意：
 

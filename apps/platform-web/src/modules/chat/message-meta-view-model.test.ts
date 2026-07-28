@@ -1,4 +1,5 @@
 import type { Message } from '@langchain/langgraph-sdk'
+import type { AssembledToolCall } from '@langchain/vue'
 import { buildChatMessageMetaView, buildToolResultsByCallId } from './message-meta-view-model'
 
 describe('chat message meta view model', () => {
@@ -75,5 +76,30 @@ describe('chat message meta view model', () => {
     ])
 
     expect(result['call-1']).toBe(toolMessage)
+  })
+
+  it('优先使用 SDK tool lifecycle 并保留错误信息', () => {
+    const message = {
+      id: 'ai-1',
+      type: 'ai',
+      content: '',
+      tool_calls: [{ id: 'call-1', name: 'utc_now', args: {} }]
+    } as Message
+    const toolCall = {
+      id: 'call-1',
+      callId: 'call-1',
+      name: 'utc_now',
+      namespace: [],
+      input: {},
+      args: {},
+      output: null,
+      status: 'error',
+      error: 'tool failed'
+    } as AssembledToolCall
+
+    expect(buildChatMessageMetaView(message, [message], [toolCall]).toolCalls[0]).toMatchObject({
+      status: 'error',
+      errorText: 'tool failed'
+    })
   })
 })

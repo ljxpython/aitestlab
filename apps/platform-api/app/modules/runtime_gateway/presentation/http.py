@@ -7,10 +7,15 @@ from fastapi.responses import StreamingResponse
 
 from app.adapters.langgraph import (
     LangGraphRuntimeGatewayUpstream,
-    build_forward_headers,
 )
 from app.core.context.models import ActorContext
-from app.core.errors import BadRequestError
+from app.core.errors import (
+    BadRequestError,
+    ForbiddenError,
+    NotAuthenticatedError,
+    ServiceUnavailableError,
+)
+from app.core.security import create_runtime_delegation_token
 from app.entrypoints.http.dependencies import get_actor_context
 from app.modules.runtime_gateway.application.service import RuntimeGatewayService
 
@@ -37,17 +42,47 @@ def _require_project_id(request: Request) -> str:
     return normalized
 
 
-def get_runtime_gateway_service(request: Request) -> RuntimeGatewayService:
+def get_runtime_gateway_service(
+    request: Request,
+    actor: ActorContext = Depends(get_actor_context),
+) -> RuntimeGatewayService:
     settings = request.app.state.settings
     session_factory = getattr(request.app.state, "db_session_factory", None)
+    project_id = _require_project_id(request)
+    context = request.state.platform_context
+    subject = actor.user_id or actor.subject
+    if not subject:
+        raise NotAuthenticatedError()
+    project_roles = actor.project_role_set(project_id)
+    if not project_roles:
+        raise ForbiddenError(
+            code="project_role_missing",
+            message="Project role missing",
+        )
+    try:
+        delegation = create_runtime_delegation_token(
+            subject=subject,
+            tenant_id=context.tenant.tenant_id or "__default",
+            project_id=project_id,
+            role=project_roles[0],
+            permissions=["project.runtime.read", "project.runtime.write"],
+            settings=settings,
+        )
+    except ValueError as exc:
+        raise ServiceUnavailableError(
+            code="runtime_delegation_not_configured",
+            message="Runtime delegation is not configured",
+        ) from exc
+
+    forwarded_headers = {"authorization": f"Bearer {delegation}"}
+    request_id = getattr(request.state, "request_id", None)
+    if request_id:
+        forwarded_headers["x-request-id"] = request_id
     upstream = LangGraphRuntimeGatewayUpstream(
         base_url=settings.langgraph_upstream_url,
         api_key=settings.langgraph_upstream_api_key,
         timeout_seconds=settings.langgraph_upstream_timeout_seconds,
-        forwarded_headers=build_forward_headers(
-            request.headers,
-            request_id=getattr(request.state, "request_id", None),
-        ),
+        forwarded_headers=forwarded_headers,
     )
     return RuntimeGatewayService(
         session_factory=session_factory,
@@ -515,6 +550,41 @@ async def stream_thread_run(
 ) -> StreamingResponse:
     project_id = _require_project_id(request)
     stream = await service.stream_thread_run(
+        actor=actor,
+        project_id=project_id,
+        thread_id=thread_id,
+        payload=payload,
+    )
+    return StreamingResponse(stream, media_type="text/event-stream")
+
+
+@router.post("/threads/{thread_id}/commands")
+async def send_thread_command(
+    request: Request,
+    thread_id: str,
+    payload: dict[str, Any] = Body(...),
+    actor: ActorContext = Depends(get_actor_context),
+    service: RuntimeGatewayService = Depends(get_runtime_gateway_service),
+) -> Any:
+    project_id = _require_project_id(request)
+    return await service.send_thread_command(
+        actor=actor,
+        project_id=project_id,
+        thread_id=thread_id,
+        payload=payload,
+    )
+
+
+@router.post("/threads/{thread_id}/stream/events")
+async def stream_thread_events(
+    request: Request,
+    thread_id: str,
+    payload: dict[str, Any] = Body(...),
+    actor: ActorContext = Depends(get_actor_context),
+    service: RuntimeGatewayService = Depends(get_runtime_gateway_service),
+) -> StreamingResponse:
+    project_id = _require_project_id(request)
+    stream = await service.stream_thread_events(
         actor=actor,
         project_id=project_id,
         thread_id=thread_id,

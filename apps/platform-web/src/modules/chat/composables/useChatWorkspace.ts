@@ -1,4 +1,4 @@
-import { computed, reactive, ref, watch, type ComputedRef, type Ref, type WritableComputedRef } from 'vue'
+import { computed, reactive, ref, watch, type ComputedRef, type Ref } from 'vue'
 import { listRuntimeModelPolicies } from '@/services/runtime-policies/runtime-policies.service'
 import { listRuntimeModels, listRuntimeTools } from '@/services/runtime/runtime.service'
 import {
@@ -30,11 +30,11 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions) {
   const defaultModelId = ref('')
   const runOptions = reactive<ChatRunOptions>({
     modelId: '',
+    systemPrompt: '',
     enableTools: false,
     toolNames: [],
     temperature: '',
-    maxTokens: '',
-    debugMode: false
+    maxTokens: ''
   })
   const runtimeModels = ref(awaitableEmptyModels())
   const runtimeTools = ref(awaitableEmptyTools())
@@ -63,7 +63,6 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions) {
     displayState: streamState.displayState,
     clearStreamDetailFeedback: streamState.clearDetailFeedback,
     resetStreamView: streamState.resetStreamView,
-    switchThread: streamState.switchThread,
     streamDetailError: streamState.detailError,
     streamDetailInfo: streamState.detailInfo
   })
@@ -192,7 +191,6 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions) {
     canStartThread,
     creatingThread: computed(() => false),
     cancelActiveRun: streamState.cancelActiveRun,
-    canContinueDebug: streamState.canContinueDebug,
     accessDeniedMessage,
     detailError: streamState.detailError,
     detailInfo: streamState.detailInfo,
@@ -209,7 +207,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions) {
     loadingRuntime,
     loadingThreadDetail: threadWorkspace.loadingThreadDetail,
     loadingThreads: threadWorkspace.loadingThreads,
-    messageMetadataById: streamState.messageMetadataById as WritableComputedRef<Record<string, ChatMessageMetadata>>,
+    messageMetadataById: streamState.messageMetadataById as ComputedRef<Record<string, ChatMessageMetadata>>,
     messages: streamState.messages,
     refreshActiveThread: threadWorkspace.refreshActiveThread,
     retryMessage: streamState.retryMessage,
@@ -218,7 +216,6 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions) {
     runtimeModels,
     runtimeTools,
     cancelling: streamState.cancelling,
-    continueDebugRun: streamState.continueDebugRun,
     selectedBranch,
     selectBranch,
     selectThread: threadWorkspace.selectThread,
@@ -231,6 +228,9 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions) {
     threadSummary: threadWorkspace.threadSummary,
     toggleTool,
     resumeInterruptedRun: streamState.resumeInterruptedRun,
+    resumeAllInterruptedRuns: streamState.resumeAllInterruptedRuns,
+    streamHandle: streamState.streamHandle,
+    toolCalls: streamState.toolCalls,
     updateThreadStatePatch,
     targetText: computed(() => options.target.value?.label || '--'),
     targetTypeText: computed(() => (options.target.value?.targetType === 'graph' ? 'Graph' : 'Assistant')),

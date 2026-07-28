@@ -15,7 +15,19 @@ from runtime_service.services.test_case_service_v2.knowledge_query_guard_middlew
     TestCaseKnowledgeQueryGuardMiddleware,
     _resolve_project_id,
 )
-from runtime_service.runtime.context import RuntimeContext  # noqa: E402
+
+
+def _runtime(project_id: str | None) -> SimpleNamespace:
+    user = None
+    if project_id is not None:
+        user = {
+            "identity": "user-1",
+            "tenant_id": "tenant-1",
+            "role": "project_editor",
+            "permissions": ["runtime:write"],
+            "project_id": project_id,
+        }
+    return SimpleNamespace(server_info=SimpleNamespace(user=user))
 
 
 def test_requires_guard_for_plain_business_generation_without_attachments() -> None:
@@ -63,14 +75,14 @@ def test_requires_guard_skips_when_multimodal_state_already_has_attachments() ->
     assert latest_user_text == ""
 
 
-def test_resolve_project_id_only_reads_runtime_context() -> None:
+def test_resolve_project_id_only_reads_authenticated_runtime_user() -> None:
     request = ModelRequest(
         model=None,
         system_prompt="你正在处理项目：`state-project`",
         messages=[HumanMessage(content="请生成支付模块测试用例")],
         tools=[],
         state={"project_id": "state-project"},
-        runtime=SimpleNamespace(context=RuntimeContext(project_id="context-project")),
+        runtime=_runtime("context-project"),
     )
 
     assert _resolve_project_id(request) == "context-project"
@@ -83,7 +95,7 @@ def test_resolve_project_id_does_not_fallback_to_state_or_system_prompt() -> Non
         messages=[HumanMessage(content="请生成支付模块测试用例")],
         tools=[],
         state={"project_id": "state-project"},
-        runtime=SimpleNamespace(context=RuntimeContext()),
+        runtime=_runtime(None),
     )
 
     assert _resolve_project_id(request) is None

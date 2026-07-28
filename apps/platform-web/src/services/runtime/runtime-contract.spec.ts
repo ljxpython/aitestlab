@@ -98,9 +98,10 @@ describe('runtime contract helper', () => {
     })
   })
 
-  it('builds chat submit options with context instead of configurable runtime fields', () => {
+  it('builds chat submit options with typed platform runtime config', () => {
     const options = buildChatRunSubmitOptions({
       modelId: 'gpt-4.1',
+      systemPrompt: 'Keep answers concise.',
       enableTools: false,
       toolNames: ['utc_now'],
       temperature: '0.3',
@@ -108,11 +109,16 @@ describe('runtime contract helper', () => {
     })
 
     expect(options).toEqual({
-      context: {
-        model_id: 'gpt-4.1',
-        enable_tools: false,
-        temperature: 0.3,
-        max_tokens: 2048
+      config: {
+        configurable: {
+          platform_runtime: {
+            model_id: 'gpt-4.1',
+            system_prompt: 'Keep answers concise.',
+            enable_tools: false,
+            temperature: 0.3,
+            max_tokens: 2048
+          }
+        }
       }
     })
   })

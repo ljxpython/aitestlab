@@ -181,12 +181,20 @@ async def _main_async(args: argparse.Namespace) -> int:
         base_configurable["interaction_data_service_url"] = args.interaction_url
     if args.parser_model_id:
         base_configurable["test_case_multimodal_parser_model_id"] = args.parser_model_id
+    base_configurable["platform_local_debug"] = True
+    base_configurable["platform_runtime"] = {
+        "model_id": args.model_id,
+        "multimodal_parser_model_id": args.parser_model_id,
+    }
 
     runtime_context = RuntimeContext(
-        model_id=args.model_id,
+        user_id="local-debug",
+        tenant_id="local-debug",
+        role="debug",
+        permissions=[],
         project_id=project_id,
     )
-    model_preview = _resolve_runtime_model_preview(runtime_context)
+    model_preview = _resolve_runtime_model_preview(args.model_id)
     _print_section(
         "Document Persistence Input",
         {

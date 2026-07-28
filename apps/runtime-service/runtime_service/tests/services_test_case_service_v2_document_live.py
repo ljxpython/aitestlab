@@ -126,15 +126,23 @@ async def _main_async(args: argparse.Namespace) -> int:
         "test_case_v2_persistence_enabled": True,
         "test_case_v2_knowledge_mcp_enabled": False,
         "test_case_v2_multimodal_parser_model_id": args.parser_model_id,
+        "platform_local_debug": True,
+        "platform_runtime": {
+            "model_id": args.model_id,
+            "multimodal_parser_model_id": args.parser_model_id,
+        },
     }
     if args.interaction_url:
         base_configurable["interaction_data_service_url"] = args.interaction_url
 
     runtime_context = RuntimeContext(
-        model_id=args.model_id,
+        user_id="local-debug",
+        tenant_id="local-debug",
+        role="debug",
+        permissions=[],
         project_id=project_id,
     )
-    model_preview = _resolve_runtime_model_preview(runtime_context)
+    model_preview = _resolve_runtime_model_preview(args.model_id)
     _print_section(
         "Document Live Input",
         {

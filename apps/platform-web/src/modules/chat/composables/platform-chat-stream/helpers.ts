@@ -1,7 +1,8 @@
 import type { Message } from '@langchain/langgraph-sdk'
 import type { ChatAttachmentBlock } from '@/utils/chat-content'
+import { extractToolCallsFromMessage } from '../../tool-call-utils'
 import type { ChatResolvedTarget } from '../../types'
-import type { AIMessage, BaseMessage, ToolMessage } from './types'
+import type { BaseMessage } from './types'
 
 function unwrapInterruptPayload(interrupt: unknown): unknown {
   if (Array.isArray(interrupt)) {
@@ -197,34 +198,26 @@ export function extractThreadFailureMessage(
   return threadStatus === 'error' ? '最近一次运行失败，请查看线程状态后继续。' : ''
 }
 
-export function hasPendingTaskToolCall(messages: BaseMessage[]): boolean {
+export function hasPendingTaskToolCall(messages: Message[]): boolean {
   const resolvedToolCallIds = new Set<string>()
 
   for (const message of messages) {
-    if (message.getType() === 'tool') {
-      const toolMessage = message as ToolMessage
-      if (typeof toolMessage.tool_call_id === 'string' && toolMessage.tool_call_id.trim()) {
-        resolvedToolCallIds.add(toolMessage.tool_call_id)
+    if (message.type === 'tool') {
+      const toolCallId = message.tool_call_id
+      if (typeof toolCallId === 'string' && toolCallId.trim()) {
+        resolvedToolCallIds.add(toolCallId)
       }
     }
   }
 
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]
-    if (message?.getType() !== 'ai') {
+    if (message?.type !== 'ai') {
       continue
     }
 
-    const toolCalls = ((message as AIMessage).tool_calls || []) as Array<{
-      id?: string
-      name?: string
-    }>
-
-    for (const toolCall of toolCalls) {
-      if (!toolCall) {
-        continue
-      }
-      const unresolved = !toolCall.id || !resolvedToolCallIds.has(toolCall.id)
+    for (const toolCall of extractToolCallsFromMessage(message)) {
+      const unresolved = !resolvedToolCallIds.has(toolCall.id)
       if (unresolved && toolCall.name === 'task') {
         return true
       }

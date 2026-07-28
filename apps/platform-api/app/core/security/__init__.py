@@ -3,6 +3,7 @@ from app.core.security.tokens import (
     InvalidTokenError,
     create_access_token,
     create_refresh_token,
+    create_runtime_delegation_token,
     decode_access_token,
     decode_refresh_token,
 )
@@ -11,6 +12,7 @@ __all__ = [
     "InvalidTokenError",
     "create_access_token",
     "create_refresh_token",
+    "create_runtime_delegation_token",
     "decode_access_token",
     "decode_refresh_token",
     "hash_password",

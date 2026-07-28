@@ -17,7 +17,7 @@ from runtime_service.integrations import (
 from runtime_service.middlewares.multimodal import MULTIMODAL_ATTACHMENTS_KEY
 from runtime_service.middlewares.multimodal import protocol as _multimodal_protocol
 from runtime_service.runtime.config_utils import read_configurable
-from runtime_service.runtime.context import RuntimeContext, coerce_runtime_context
+from runtime_service.runtime.runtime_request_resolver import resolve_trusted_runtime_context
 from runtime_service.services.test_case_service_v2.schemas import TestCaseServiceConfig
 
 TEST_CASE_DOCUMENTS_PATH = "/api/test-case-service/documents"
@@ -92,10 +92,11 @@ def _get_runtime_config(runtime: Any) -> Mapping[str, Any]:
 
 
 def _resolve_project_id(runtime: Any) -> str | None:
-    runtime_context = coerce_runtime_context(
-        getattr(runtime, "context", None) if runtime is not None else None
-    )
-    return _coerce_optional_text(runtime_context.project_id)
+    try:
+        context = resolve_trusted_runtime_context(runtime)
+    except ValueError:
+        return None
+    return _coerce_optional_text(context.project_id)
 
 
 def _require_project_id(runtime: Any) -> str:
@@ -397,13 +398,17 @@ def persist_runtime_documents(
 
     resolved_config = _get_runtime_config(runtime)
     resolved_context = getattr(runtime, "context", None) if runtime is not None else None
+    resolved_server_info = (
+        getattr(runtime, "server_info", None) if runtime is not None else None
+    )
     runtime_like = type(
         "_RuntimeProxy",
         (),
         {
             "state": current_state,
             "config": resolved_config,
-            "context": resolved_context if resolved_context is not None else RuntimeContext(),
+            "context": resolved_context,
+            "server_info": resolved_server_info,
         },
     )()
     project_id = _require_uuid_project_id(runtime_like)

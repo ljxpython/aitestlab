@@ -290,6 +290,18 @@ const workspaceChildren: RouteRecordRaw[] = [
     }
   },
   {
+    path: 'chat/debug',
+    name: 'workspace-chat-debug',
+    component: () => import('@/modules/chat/pages/ChatDebugPage.vue'),
+    meta: {
+      title: 'Runtime Debug',
+      eyebrow: 'Legacy Debug',
+      requiredPermissions: ['project.runtime.write'],
+      permissionProjectSource: 'workspace',
+      allowWithoutProject: true
+    }
+  },
+  {
     path: 'resources',
     component: { render: () => h(RouterView) },
     children: [

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import BaseButton from '@/components/base/BaseButton.vue'
 import BaseDialog from '@/components/base/BaseDialog.vue'
-import BaseIcon from '@/components/base/BaseIcon.vue'
 import BaseSelect from '@/components/base/BaseSelect.vue'
 import type { ChatRunOptions } from '../types'
 import type { RuntimeModelItem, RuntimeToolItem } from '@/types/management'
@@ -18,9 +17,9 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: []
   'update:model-id': [value: string]
+  'update:system-prompt': [value: string]
   'update:enable-tools': [value: boolean]
   'toggle-tool': [toolKey: string]
-  'update:debug-mode': [value: boolean]
   'update:temperature': [value: string]
   'update:max-tokens': [value: string]
   restore: []
@@ -48,7 +47,7 @@ function getCheckedValue(event: Event) {
         这里的设置只影响后续发送、继续执行或新建出来的下一次运行，不会回改已经开始的这轮会话。
       </div>
 
-      <div class="grid gap-4 md:grid-cols-3">
+      <div class="grid gap-4 md:grid-cols-2">
         <div class="pw-panel-muted p-4">
           <div class="text-xs text-gray-400 dark:text-dark-400">
             当前模型
@@ -63,14 +62,6 @@ function getCheckedValue(event: Event) {
           </div>
           <div class="mt-2 text-sm font-semibold text-gray-900 dark:text-white">
             {{ selectedToolsLabel }}
-          </div>
-        </div>
-        <div class="pw-panel-muted p-4">
-          <div class="text-xs text-gray-400 dark:text-dark-400">
-            执行模式
-          </div>
-          <div class="mt-2 text-sm font-semibold text-gray-900 dark:text-white">
-            {{ props.draftRunOptions.debugMode ? 'Debug / Step' : '普通运行' }}
           </div>
         </div>
       </div>
@@ -92,6 +83,16 @@ function getCheckedValue(event: Event) {
             {{ model.display_name || model.model_id }}
           </option>
         </BaseSelect>
+      </label>
+
+      <label class="block">
+        <span class="pw-input-label">System Prompt</span>
+        <textarea
+          :value="props.draftRunOptions.systemPrompt"
+          rows="5"
+          class="pw-input min-h-[132px] resize-y text-sm leading-7"
+          @input="emit('update:system-prompt', getInputValue($event))"
+        />
       </label>
 
       <div class="pw-panel p-4">
@@ -151,30 +152,6 @@ function getCheckedValue(event: Event) {
             当前没有可选工具目录。
           </div>
         </div>
-      </div>
-
-      <div class="pw-panel p-4">
-        <label class="flex items-center justify-between gap-3">
-          <div>
-            <div class="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
-              <BaseIcon
-                name="runtime"
-                size="sm"
-                class="text-primary-500"
-              />
-              Debug Mode
-            </div>
-            <div class="mt-1 text-xs leading-6 text-gray-500 dark:text-dark-300">
-              打开后，发送消息会先在工具执行前暂停，你可以逐步继续执行。
-            </div>
-          </div>
-          <input
-            :checked="props.draftRunOptions.debugMode"
-            type="checkbox"
-            class="pw-table-checkbox"
-            @change="emit('update:debug-mode', getCheckedValue($event))"
-          >
-        </label>
       </div>
 
       <div class="grid gap-4 md:grid-cols-2">

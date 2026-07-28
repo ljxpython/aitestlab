@@ -1,11 +1,12 @@
-import { cancelRuntimeRun, normalizeRuntimeGatewayError } from '@/services/runtime-gateway/workspace.service'
+import {
+  createRuntimeThread,
+  normalizeRuntimeGatewayError
+} from '@/services/runtime-gateway/workspace.service'
 import { buildChatRunSubmitOptions } from '@/services/runtime/runtime-contract'
 import type { PlatformChatStreamActionDeps } from './types'
 import {
   buildOptimisticMessage,
-  createThreadMetadata,
   getMetadataCheckpointId,
-  hasPendingTaskToolCall,
   toOptimisticBaseMessage
 } from './helpers'
 
@@ -18,19 +19,13 @@ export function createPlatformChatStreamActions(deps: PlatformChatStreamActionDe
     }
   }
 
-  function switchThread(threadId: string | null) {
-    deps.stream.switchThread(threadId)
-  }
-
   function resetStreamView(controlOptions: { preserveInfo?: boolean } = {}) {
     deps.options.historyItems.value = []
     deps.options.selectedBranch.value = ''
-    deps.stream.switchThread(null)
     clearDetailFeedback(controlOptions)
-    deps.sending.value = false
+    deps.commandPending.value = false
     deps.cancelling.value = false
     deps.lastRunId.value = ''
-    deps.currentRunId.value = ''
     deps.lastEventAt.value = ''
   }
 
@@ -40,82 +35,54 @@ export function createPlatformChatStreamActions(deps: PlatformChatStreamActionDe
     const normalizedContent = content.trim()
     const normalizedAttachments = attachments.filter((item) => item && typeof item === 'object')
 
-    if (!projectId || !target || deps.sending.value || (!normalizedContent && normalizedAttachments.length === 0)) {
+    if (!projectId || !target || deps.isBusy.value || (!normalizedContent && normalizedAttachments.length === 0)) {
       return false
     }
 
-    deps.sending.value = true
+    deps.commandPending.value = true
     deps.cancelling.value = false
     clearDetailFeedback()
     deps.lastRunId.value = ''
 
     const humanMessage = buildOptimisticMessage(content, normalizedAttachments)
     const checkpointId =
-      deps.options.selectedBranch.value && deps.stream.branch.value
+      deps.options.selectedBranch.value
         ? getMetadataCheckpointId(deps.messageMetadataById.value[deps.messages.value[deps.messages.value.length - 1]?.id || ''])
         : ''
     const runtimeSubmitOptions = buildChatRunSubmitOptions(deps.options.runOptions)
 
     try {
-      await deps.stream.submit(
+      let threadId = deps.options.activeThreadId.value.trim()
+      let createdThread = false
+      if (!threadId) {
+        const created = await createRuntimeThread(projectId, target)
+        threadId = created.thread_id
+        createdThread = true
+      }
+
+      const submission = deps.stream.submit(
         {
           messages: [humanMessage]
         },
         {
-          metadata: !deps.options.activeThreadId.value.trim() ? createThreadMetadata(target) : undefined,
-          checkpoint:
-            checkpointId && deps.options.historyItems.value.length > 0
-              ? { checkpoint_id: checkpointId }
-              : undefined,
-          optimisticValues: (prev: Record<string, unknown>) => ({
-            ...prev,
-            messages: [...((prev.messages as unknown[] | undefined) || []), humanMessage]
-          }),
+          threadId,
+          forkFrom: checkpointId || undefined,
           ...runtimeSubmitOptions,
-          ...(deps.options.runOptions.debugMode ? { interruptBefore: ['tools'] } : {}),
-          streamSubgraphs: true,
-          multitaskStrategy: 'interrupt',
           onError: (submitError: unknown) => {
             deps.detailError.value = normalizeRuntimeGatewayError(submitError, '对话发送失败').message
           }
         }
       )
+      if (createdThread) {
+        deps.options.activeThreadId.value = threadId
+      }
+      await submission
+      deps.commandPending.value = false
       return true
     } catch (runError) {
       deps.detailError.value = normalizeRuntimeGatewayError(runError, '对话发送失败').message
-      deps.sending.value = false
+      deps.commandPending.value = false
       deps.cancelling.value = false
-      deps.currentRunId.value = ''
-      return false
-    }
-  }
-
-  async function continueDebugRun() {
-    const threadId = deps.options.activeThreadId.value.trim()
-    if (!threadId || deps.sending.value) {
-      return false
-    }
-
-    deps.sending.value = true
-    deps.cancelling.value = false
-    clearDetailFeedback()
-
-    const pendingTaskToolCall = hasPendingTaskToolCall(deps.stream.messages.value)
-    const runtimeSubmitOptions = buildChatRunSubmitOptions(deps.options.runOptions)
-
-    try {
-      await deps.stream.submit(undefined, {
-        ...runtimeSubmitOptions,
-        ...(pendingTaskToolCall ? { interruptAfter: ['tools'] } : { interruptBefore: ['tools'] }),
-        streamSubgraphs: true,
-        multitaskStrategy: 'interrupt'
-      })
-      return true
-    } catch (runError) {
-      deps.detailError.value = normalizeRuntimeGatewayError(runError, '运行继续失败').message
-      deps.sending.value = false
-      deps.cancelling.value = false
-      deps.currentRunId.value = ''
       return false
     }
   }
@@ -124,51 +91,69 @@ export function createPlatformChatStreamActions(deps: PlatformChatStreamActionDe
     const projectId = deps.options.projectId.value.trim()
     const threadId = deps.options.activeThreadId.value.trim()
 
-    if (!deps.sending.value || !projectId || !threadId) {
+    if (!deps.isBusy.value || !projectId || !threadId) {
       return false
     }
 
     deps.cancelling.value = true
 
     try {
-      if (deps.currentRunId.value.trim()) {
-        await cancelRuntimeRun(projectId, threadId, deps.currentRunId.value)
-      }
-    } catch {
-      // 服务端取消失败时，仍然中止当前前端流，避免页面继续假死。
+      await deps.stream.stop()
+    } catch (stopError) {
+      await deps.stream.stop({ cancel: false }).catch(() => undefined)
+      deps.detailError.value = normalizeRuntimeGatewayError(stopError, '停止运行失败').message
     } finally {
-      deps.stream.stop()
+      deps.commandPending.value = false
+      deps.cancelling.value = false
     }
 
     return true
   }
 
-  async function resumeInterruptedRun(resumePayload: unknown) {
+  async function resumeInterruptedRun(resumePayload: unknown, interruptId?: string) {
     const threadId = deps.options.activeThreadId.value.trim()
-    if (!threadId || deps.interruptPayload.value === undefined || deps.sending.value) {
+    if (!threadId || deps.interruptPayload.value === undefined || deps.isBusy.value) {
       return false
     }
 
-    deps.sending.value = true
+    deps.commandPending.value = true
     deps.cancelling.value = false
     clearDetailFeedback()
     const runtimeSubmitOptions = buildChatRunSubmitOptions(deps.options.runOptions)
 
     try {
-      await deps.stream.submit(null, {
-        command: {
-          resume: resumePayload
-        },
+      await deps.stream.respond(resumePayload, {
         ...runtimeSubmitOptions,
-        streamSubgraphs: true,
-        multitaskStrategy: 'interrupt'
+        interruptId: interruptId?.trim() || undefined
       })
+      deps.commandPending.value = false
       return true
     } catch (runError) {
       deps.detailError.value = normalizeRuntimeGatewayError(runError, '恢复中断失败').message
-      deps.sending.value = false
+      deps.commandPending.value = false
       deps.cancelling.value = false
-      deps.currentRunId.value = ''
+      return false
+    }
+  }
+
+  async function resumeAllInterruptedRuns(responsesById: Record<string, unknown>) {
+    const threadId = deps.options.activeThreadId.value.trim()
+    if (!threadId || Object.keys(responsesById).length === 0 || deps.isBusy.value) {
+      return false
+    }
+
+    deps.commandPending.value = true
+    deps.cancelling.value = false
+    clearDetailFeedback()
+
+    try {
+      await deps.stream.respondAll(responsesById, buildChatRunSubmitOptions(deps.options.runOptions))
+      deps.commandPending.value = false
+      return true
+    } catch (runError) {
+      deps.detailError.value = normalizeRuntimeGatewayError(runError, '批量恢复中断失败').message
+      deps.commandPending.value = false
+      deps.cancelling.value = false
       return false
     }
   }
@@ -176,18 +161,20 @@ export function createPlatformChatStreamActions(deps: PlatformChatStreamActionDe
   function selectBranch(branch: string) {
     deps.options.selectedBranch.value = branch.trim()
     deps.detailError.value = ''
-    deps.stream.setBranch(deps.options.selectedBranch.value)
   }
 
-  async function retryMessage(messageId: string) {
+  async function retryMessage(messageId: string, forkFrom?: string) {
     const threadId = deps.options.activeThreadId.value.trim()
-    const checkpointId = deps.messageMetadataById.value[messageId]?.checkpointId?.trim() || ''
+    const checkpointId =
+      forkFrom?.trim() ||
+      deps.messageMetadataById.value[messageId]?.parentCheckpoint?.checkpoint_id?.trim() ||
+      ''
 
-    if (!threadId || !checkpointId || deps.sending.value) {
+    if (!threadId || !checkpointId || deps.isBusy.value) {
       return false
     }
 
-    deps.sending.value = true
+    deps.commandPending.value = true
     deps.cancelling.value = false
     clearDetailFeedback()
     deps.lastRunId.value = ''
@@ -195,36 +182,35 @@ export function createPlatformChatStreamActions(deps: PlatformChatStreamActionDe
 
     try {
       await deps.stream.submit(undefined, {
-        checkpoint: {
-          checkpoint_id: checkpointId
-        },
+        forkFrom: checkpointId,
         ...runtimeSubmitOptions,
-        ...(deps.options.runOptions.debugMode ? { interruptBefore: ['tools'] } : {}),
-        streamSubgraphs: true,
-        multitaskStrategy: 'interrupt'
       })
+      deps.commandPending.value = false
       return true
     } catch (runError) {
       deps.detailError.value = normalizeRuntimeGatewayError(runError, '重新执行失败').message
-      deps.sending.value = false
+      deps.commandPending.value = false
       deps.cancelling.value = false
-      deps.currentRunId.value = ''
       return false
     }
   }
 
-  async function editHumanMessage(messageId: string, content: Parameters<typeof toOptimisticBaseMessage>[0]) {
+  async function editHumanMessage(
+    messageId: string,
+    content: Parameters<typeof toOptimisticBaseMessage>[0],
+    forkFrom?: string
+  ) {
     const threadId = deps.options.activeThreadId.value.trim()
     const metadata = deps.messageMetadataById.value[messageId]
-    const checkpointId = metadata?.parentCheckpoint?.checkpoint_id?.trim() || ''
+    const checkpointId = forkFrom?.trim() || metadata?.parentCheckpoint?.checkpoint_id?.trim() || ''
 
-    if (!threadId || !checkpointId || deps.sending.value) {
+    if (!threadId || !checkpointId || deps.isBusy.value) {
       return false
     }
 
     const optimisticMessage = toOptimisticBaseMessage(content)
 
-    deps.sending.value = true
+    deps.commandPending.value = true
     deps.cancelling.value = false
     clearDetailFeedback()
     deps.lastRunId.value = ''
@@ -236,25 +222,16 @@ export function createPlatformChatStreamActions(deps: PlatformChatStreamActionDe
           messages: [optimisticMessage]
         },
         {
-          checkpoint: {
-            checkpoint_id: checkpointId
-          },
-          optimisticValues: (prev: Record<string, unknown>) => ({
-            ...prev,
-            messages: [...((prev.messages as unknown[] | undefined) || []), optimisticMessage]
-          }),
+          forkFrom: checkpointId,
           ...runtimeSubmitOptions,
-          ...(deps.options.runOptions.debugMode ? { interruptBefore: ['tools'] } : {}),
-          streamSubgraphs: true,
-          multitaskStrategy: 'interrupt'
         }
       )
+      deps.commandPending.value = false
       return true
     } catch (runError) {
       deps.detailError.value = normalizeRuntimeGatewayError(runError, '编辑重发失败').message
-      deps.sending.value = false
+      deps.commandPending.value = false
       deps.cancelling.value = false
-      deps.currentRunId.value = ''
       return false
     }
   }
@@ -262,13 +239,12 @@ export function createPlatformChatStreamActions(deps: PlatformChatStreamActionDe
   return {
     cancelActiveRun,
     clearDetailFeedback,
-    continueDebugRun,
     editHumanMessage,
     resetStreamView,
+    resumeAllInterruptedRuns,
     resumeInterruptedRun,
     retryMessage,
     selectBranch,
-    sendMessage,
-    switchThread
+    sendMessage
   }
 }

@@ -34,12 +34,54 @@ RUNTIME_CONTEXT_BUSINESS_KEYS = (
     "tools",
 )
 
+RUNTIME_OPTION_KEYS = (
+    *RUNTIME_CONTEXT_BUSINESS_KEYS,
+    "multimodal_parser_model_id",
+)
+
+
+def _validate_runtime_option_values(options: dict[str, Any]) -> None:
+    string_keys = ("model_id", "system_prompt", "multimodal_parser_model_id")
+    for key in string_keys:
+        value = options.get(key)
+        if value is not None and (not isinstance(value, str) or not value.strip()):
+            raise ValueError(f"platform_runtime.{key} must be a non-empty string")
+
+    for key in ("temperature", "top_p"):
+        value = options.get(key)
+        if value is not None and (
+            isinstance(value, bool) or not isinstance(value, (int, float))
+        ):
+            raise ValueError(f"platform_runtime.{key} must be a number")
+
+    max_tokens = options.get("max_tokens")
+    if max_tokens is not None and (
+        isinstance(max_tokens, bool)
+        or not isinstance(max_tokens, int)
+        or max_tokens <= 0
+    ):
+        raise ValueError("platform_runtime.max_tokens must be a positive integer")
+
+    enable_tools = options.get("enable_tools")
+    if enable_tools is not None and not isinstance(enable_tools, bool):
+        raise ValueError("platform_runtime.enable_tools must be a boolean")
+
+    tools = options.get("tools")
+    if tools is not None and (
+        not isinstance(tools, list)
+        or any(not isinstance(tool, str) or not tool.strip() for tool in tools)
+    ):
+        raise ValueError("platform_runtime.tools must be an array of non-empty strings")
+
 RUNTIME_CONTEXT_PROPERTY_TYPES: dict[str, str] = {
     "user_id": "string",
     "tenant_id": "string",
     "role": "string",
     "permissions": "array[string]",
     "project_id": "string",
+}
+
+RUNTIME_OPTION_PROPERTY_TYPES: dict[str, str] = {
     "model_id": "string",
     "system_prompt": "string",
     "temperature": "number",
@@ -47,6 +89,7 @@ RUNTIME_CONTEXT_PROPERTY_TYPES: dict[str, str] = {
     "top_p": "number",
     "enable_tools": "boolean",
     "tools": "array[string]",
+    "multimodal_parser_model_id": "string",
 }
 
 EXECUTION_CONFIG_PROPERTIES: dict[str, dict[str, Any]] = {
@@ -159,6 +202,125 @@ def normalize_runtime_payload(
     return next_payload
 
 
+def normalize_protocol_v2_command(
+    *,
+    payload: dict[str, Any],
+    default_model_id: str | None = None,
+) -> dict[str, Any]:
+    command_id = payload.get("id")
+    method = payload.get("method")
+    params = payload.get("params")
+    if isinstance(command_id, bool) or not isinstance(command_id, int):
+        raise ValueError("Protocol command id must be an integer")
+    if not isinstance(method, str) or not method.strip():
+        raise ValueError("Protocol command method must be a non-empty string")
+    if params is not None and not isinstance(params, dict):
+        raise ValueError("Protocol command params must be an object")
+    unknown_envelope_keys = sorted(set(payload) - {"id", "method", "params"})
+    if unknown_envelope_keys:
+        raise ValueError(
+            "Unsupported Protocol v2 command fields: "
+            + ", ".join(unknown_envelope_keys)
+        )
+
+    normalized = {"id": command_id, "method": method, "params": dict(params or {})}
+    if method != "run.start":
+        return normalized
+
+    run_params = normalized["params"]
+    unknown_run_fields = sorted(
+        set(run_params) - {"assistant_id", "input", "config", "metadata"}
+    )
+    if unknown_run_fields:
+        raise ValueError(
+            "Unsupported run.start fields: " + ", ".join(unknown_run_fields)
+        )
+
+    config = ensure_dict(run_params.get("config"))
+    configurable = ensure_dict(config.get("configurable"))
+    raw_runtime_options = configurable.get("platform_runtime")
+    if raw_runtime_options is not None and not isinstance(raw_runtime_options, dict):
+        raise ValueError("config.configurable.platform_runtime must be an object")
+    runtime_options = dict(raw_runtime_options or {})
+
+    forbidden_locations = (
+        ("metadata", ensure_dict(run_params.get("metadata"))),
+        ("config", config),
+        ("config.configurable", configurable),
+        ("config.configurable.platform_runtime", runtime_options),
+    )
+    for location, value in forbidden_locations:
+        forbidden = sorted(set(value).intersection(TRUSTED_RUNTIME_CONTEXT_KEYS))
+        if forbidden:
+            raise ValueError(
+                f"{location} must not contain trusted identity fields: "
+                + ", ".join(forbidden)
+            )
+
+    unknown_option_keys = sorted(set(runtime_options) - set(RUNTIME_OPTION_KEYS))
+    if unknown_option_keys:
+        raise ValueError(
+            "Unsupported platform_runtime fields: " + ", ".join(unknown_option_keys)
+        )
+
+    next_config = dict(config)
+    next_configurable = dict(configurable)
+    next_configurable.pop("platform_runtime", None)
+    for source in (next_config, next_configurable):
+        for key in RUNTIME_OPTION_KEYS:
+            if key in source and key not in runtime_options:
+                runtime_options[key] = source[key]
+            source.pop(key, None)
+    if default_model_id and not runtime_options.get("model_id"):
+        runtime_options["model_id"] = default_model_id
+    _validate_runtime_option_values(runtime_options)
+
+    if runtime_options:
+        next_configurable["platform_runtime"] = runtime_options
+    if next_configurable:
+        next_config["configurable"] = next_configurable
+    else:
+        next_config.pop("configurable", None)
+    if next_config:
+        run_params["config"] = next_config
+    else:
+        run_params.pop("config", None)
+    return normalized
+
+
+def normalize_protocol_v2_event_request(payload: dict[str, Any]) -> dict[str, Any]:
+    unknown_keys = sorted(set(payload) - {"channels", "namespaces", "depth", "since"})
+    if unknown_keys:
+        raise ValueError(
+            "Unsupported Protocol v2 event fields: " + ", ".join(unknown_keys)
+        )
+
+    channels = payload.get("channels")
+    if not isinstance(channels, list) or not channels:
+        raise ValueError("Protocol v2 event channels must be a non-empty array")
+    if any(not isinstance(channel, str) or not channel.strip() for channel in channels):
+        raise ValueError("Protocol v2 event channels must contain non-empty strings")
+
+    namespaces = payload.get("namespaces")
+    if namespaces is not None and (
+        not isinstance(namespaces, list)
+        or any(
+            not isinstance(namespace, list)
+            or any(not isinstance(segment, str) for segment in namespace)
+            for namespace in namespaces
+        )
+    ):
+        raise ValueError("Protocol v2 event namespaces must be an array of string arrays")
+
+    for key in ("depth", "since"):
+        value = payload.get(key)
+        if value is not None and (
+            isinstance(value, bool) or not isinstance(value, int) or value < 0
+        ):
+            raise ValueError(f"Protocol v2 event {key} must be a non-negative integer")
+    return dict(payload)
+
+
 def build_execution_config_schema_properties() -> dict[str, dict[str, Any]]:
     return {
         key: dict(value)
@@ -178,4 +340,11 @@ def build_runtime_context_schema_properties(
         }
         for key in selected_keys
         if key in RUNTIME_CONTEXT_PROPERTY_TYPES
+    }
+
+
+def build_runtime_options_schema_properties() -> dict[str, dict[str, Any]]:
+    return {
+        key: {"type": value_type, "required": False}
+        for key, value_type in RUNTIME_OPTION_PROPERTY_TYPES.items()
     }

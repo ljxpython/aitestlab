@@ -43,6 +43,7 @@ from runtime_service.conf.settings import require_model_spec  # noqa: E402
 from deepagents.backends import FilesystemBackend  # noqa: E402
 from deepagents.middleware.skills import SkillsMiddleware, _alist_skills  # noqa: E402
 from langgraph.checkpoint.memory import MemorySaver  # noqa: E402
+from langgraph.runtime import Runtime  # noqa: E402
 from runtime_service.middlewares.multimodal import MultimodalMiddleware  # noqa: E402
 from runtime_service.runtime.context import RuntimeContext  # noqa: E402
 from runtime_service.runtime.runtime_request_resolver import (  # noqa: E402
@@ -71,10 +72,22 @@ _SCRIPT_DEFAULTS = AgentDefaults(
 
 
 def _resolve_script_runtime(model_id: str) -> tuple[Any, list[Any], dict[str, str]]:
-    runtime_context = RuntimeContext(model_id=model_id)
+    runtime_context = RuntimeContext(
+        user_id="local-debug",
+        tenant_id="local-debug",
+        role="debug",
+        permissions=[],
+        project_id="local-debug",
+    )
     settings = resolve_runtime_settings(
-        context=runtime_context,
+        runtime=Runtime(context=runtime_context),
+        config={
+            "configurable": {
+                "platform_runtime": {"model_id": model_id},
+            }
+        },
         defaults=_SCRIPT_DEFAULTS,
+        allow_internal_context=True,
     )
     resolved_model_id, spec = require_model_spec(model_id or _SCRIPT_DEFAULTS.model_id)
     return (

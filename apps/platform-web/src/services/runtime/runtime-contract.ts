@@ -8,6 +8,7 @@ type RuntimeToolsOverride = {
 
 type RuntimeRunOptionsInput = {
   modelId: string
+  systemPrompt: string
   enableTools: boolean
   toolNames: string[]
   temperature: string
@@ -264,32 +265,54 @@ export function buildAssistantDraftPayload(input: AssistantDraftPayloadInput): A
 }
 
 export function buildChatRunSubmitOptions(runOptions: RuntimeRunOptionsInput): {
-  context?: RuntimeObject
   config?: RuntimeObject
 } {
-  const context: RuntimeObject = {
+  const platformRuntime: RuntimeObject = {
     enable_tools: runOptions.enableTools
   }
 
   const normalizedModelId = runOptions.modelId.trim()
   if (normalizedModelId) {
-    context.model_id = normalizedModelId
+    platformRuntime.model_id = normalizedModelId
+  }
+
+  const systemPrompt = runOptions.systemPrompt.trim()
+  if (systemPrompt) {
+    platformRuntime.system_prompt = systemPrompt
   }
 
   const cleanedTools = runOptions.toolNames.map((item) => item.trim()).filter(Boolean)
   if (runOptions.enableTools && cleanedTools.length > 0) {
-    context.tools = cleanedTools
+    platformRuntime.tools = cleanedTools
   }
 
   const temperature = parseNumericInput(runOptions.temperature, 'float')
   if (temperature !== undefined) {
-    context.temperature = temperature
+    platformRuntime.temperature = temperature
   }
 
   const maxTokens = parseNumericInput(runOptions.maxTokens, 'int')
   if (maxTokens !== undefined) {
-    context.max_tokens = maxTokens
+    platformRuntime.max_tokens = maxTokens
   }
 
-  return Object.keys(context).length > 0 ? { context } : {}
+  return {
+    config: {
+      configurable: {
+        platform_runtime: platformRuntime
+      }
+    }
+  }
+}
+
+export function buildLegacyDebugRunContext(runOptions: RuntimeRunOptionsInput): RuntimeObject {
+  const configurable = buildChatRunSubmitOptions(runOptions).config?.configurable
+  if (!configurable || typeof configurable !== 'object' || Array.isArray(configurable)) {
+    return {}
+  }
+
+  const platformRuntime = (configurable as RuntimeObject).platform_runtime
+  return platformRuntime && typeof platformRuntime === 'object' && !Array.isArray(platformRuntime)
+    ? { ...(platformRuntime as RuntimeObject) }
+    : {}
 }
