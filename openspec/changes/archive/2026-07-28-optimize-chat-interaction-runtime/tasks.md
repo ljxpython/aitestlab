@@ -41,4 +41,4 @@
 - [x] 6.2 运行 platform-web chat 与 debug 工作台定向测试、LangGraph client/service specs、typecheck 和 build
 - [x] 6.3 完成正式聊天 `platform-web -> platform-api -> runtime-service` 最短链集成验证，覆盖认证拒绝、credential tampering、项目隔离、runtime config、SSE replay、动态 HITL、tool call 与 cancel
 - [x] 6.4 在桌面和移动视口人工验收正式聊天与独立 debug 工作台，覆盖发送、取消、interrupt、thread 切换、历史分支、编辑/重试、草稿恢复、自动跟随和会话隔离
-- [ ] 6.5 记录 runtime delegation、两条入口的发布/回退步骤、未覆盖边界与 docs/runbook 结论；获得更新后 B3 owner acceptance 再 sync/archive
+- [x] 6.5 记录 runtime delegation、两条入口的发布/回退步骤、未覆盖边界与 docs/runbook 结论；获得更新后 B3 owner acceptance 再 sync/archive

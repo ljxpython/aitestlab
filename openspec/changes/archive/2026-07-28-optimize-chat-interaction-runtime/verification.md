@@ -1,10 +1,11 @@
 # Verification
 
-- Status: Pending
-- Disposition: Pending acceptance
+- Status: Complete
+- Disposition: Accepted
 - Pre-apply review: Approved
 - Owner/reviewer: User
 - Review basis: 2026-07-27 用户已审阅包含 runtime-service Agent Server Auth、标准 `platform_runtime` config、正式聊天 Protocol v2 与独立 debug 工作台的完整更新 artifacts，并明确批准实施。
+- Final owner acceptance: 2026-07-28 用户明确接受最终验证结果、发布/回退方案与未覆盖边界，并批准完成任务 6.5；已验收实现提交为远端分支上的 `a5ab7bd`。
 
 ## Scope And Route
 
@@ -201,4 +202,4 @@
 - Debug 发布/回退：debug 工作台由独立路由和权限控制，可单独撤下前端路由/入口；legacy gateway 能力继续服务已有显式 debug 调用方，不影响正式 v2 聊天。
 - Runtime delegation 回退：撤回新流量后回退 platform-api/runtime-service 配置与版本；轮换或移除本次 delegation secret 前先确认没有活动 v2 run。浏览器永远不持有 delegation credential。
 - 文档结论：`apps/runtime-service/runtime_service/docs/standards/06-runtime-service-p2-contract-tightening.md`、部署示例、环境矩阵和 deployment guide 已随实现更新；无需新增第二份 runbook，避免与本 B3 验证记录形成影子标准。
-- Acceptance gate: 任务 6.5 只有在 owner 接受上述真实 `3000` delegation 修复证据、发布/回退步骤与未覆盖边界后才能勾选；之后才允许 sync/archive。
+- Acceptance result: Owner 已接受上述真实 `3000` delegation 修复证据、发布/回退步骤与未覆盖边界；任务 6.5 可以完成，change 可以进入 sync/archive。
