@@ -81,7 +81,7 @@ class RuntimeDelegationTokenTest(unittest.TestCase):
                 project_id="project-1",
                 role="project_editor",
                 permissions=[],
-                settings=Settings(),
+                settings=Settings(runtime_delegation_secret=""),
             )
 
     def test_gateway_replaces_client_identity_headers_with_delegation(self) -> None:
