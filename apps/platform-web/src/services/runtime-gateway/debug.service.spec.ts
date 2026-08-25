@@ -79,6 +79,7 @@ describe('runtime debug gateway service', () => {
       },
       interruptBefore: ['tools'],
       streamMode: ['values', 'updates', 'tasks'],
+      version: 'v2',
       streamSubgraphs: false,
       streamResumable: true,
       onDisconnect: 'cancel'
@@ -127,6 +128,7 @@ describe('runtime debug gateway service', () => {
       'assistant-1',
       expect.objectContaining({
         input: null,
+        version: 'v2',
         streamSubgraphs: true,
         signal: controller.signal,
         onRunCreated: expect.any(Function)

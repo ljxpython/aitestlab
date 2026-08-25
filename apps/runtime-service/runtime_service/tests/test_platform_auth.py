@@ -85,6 +85,17 @@ def test_authenticate_management_api_key_for_non_thread_resources() -> None:
     assert result == {}
 
 
+def test_authenticate_management_api_key_missing_returns_unauthorized(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("PLATFORM_RUNTIME_MANAGEMENT_API_KEY", raising=False)
+
+    with pytest.raises(Auth.exceptions.HTTPException) as exc_info:
+        asyncio.run(authenticate_runtime_delegation(None, {}))
+
+    assert exc_info.value.status_code == 401
+
+
 def test_management_api_key_cannot_access_threads() -> None:
     ctx = SimpleNamespace(
         resource="threads",

@@ -87,6 +87,7 @@ class LangGraphRunsSdkAdapter:
     )
 
     _STREAM_FIELDS = _CREATE_FIELDS + (
+        "version",
         "feedback_keys",
         "on_disconnect",
     )

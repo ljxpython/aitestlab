@@ -34,6 +34,7 @@ export function buildRuntimeDebugRunPayload(input: RuntimeDebugRunInput) {
     streamMode: ['values', 'updates', 'tasks'] as Array<
       'values' | 'updates' | 'tasks'
     >,
+    version: 'v2' as const,
     streamSubgraphs: input.streamSubgraphs,
     streamResumable: true,
     onDisconnect: 'cancel' as const

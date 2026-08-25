@@ -11,6 +11,8 @@
 5. `05-runtime-contract-open-questions.md`
 6. `06-runtime-blueprint-pseudocode.md`
 7. `07-langgraph-ecosystem-repository-research.md`
+8. `08-streaming-protocols-and-future-events.md`
+9. `09-langgraph-runtime-upgrade-and-event-migration.md`
 
 阅读目标：
 
@@ -21,6 +23,8 @@
 - 搞清楚还有哪些未决问题不能直接拍脑袋改代码
 - 搞清楚如果不考虑兼容，标准重构蓝图应该长什么样
 - 了解优秀 LangGraph 产品如何处理生产运行、显式工作流、动态工具和评测
+- 搞清楚本地流格式、远程 SSE 协议，以及子图和 HITL 的演进路径
+- 搞清楚官方 runtime 升级、普通流和 Protocol v2 事件流的分阶段迁移工作
 
 阅读完成后，再回头看这些活代码会更顺：
 

@@ -102,7 +102,9 @@ async def authenticate_runtime_delegation(
         expected = os.environ.get("PLATFORM_RUNTIME_MANAGEMENT_API_KEY", "").strip()
         provided = _header_value(headers, b"x-api-key")
         if len(expected.encode("utf-8")) < 32:
-            raise _http_error(503, "Runtime management authentication is not configured")
+            # LangGraph custom auth maps 401/403 exceptions to HTTP responses;
+            # other statuses escape the auth middleware and become HTTP 500.
+            raise _http_error(401, "Runtime management authentication is not configured")
         if not provided or not hmac.compare_digest(provided, expected):
             raise _http_error(401, "Invalid runtime management credential")
         return cast(

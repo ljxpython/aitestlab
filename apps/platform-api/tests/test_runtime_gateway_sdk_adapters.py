@@ -63,10 +63,17 @@ class RuntimeGatewaySdkAdaptersTest(unittest.IsolatedAsyncioTestCase):
             return_value=fake_client,
         ):
             adapter = LangGraphRunsSdkAdapter(base_url="http://example.com")
-            stream = await adapter.stream_global({"assistant_id": "assistant-1"})
+            stream = await adapter.stream_global(
+                {"assistant_id": "assistant-1", "version": "v2"}
+            )
             chunks = await _collect_chunks(stream)
 
         body = b"".join(chunks).decode("utf-8")
+        fake_client.runs.stream.assert_called_once_with(
+            None,
+            "assistant-1",
+            version="v2",
+        )
         self.assertIn("event: values", body)
         self.assertIn('data: {"ok":true}', body)
         self.assertIn("id: evt-1", body)

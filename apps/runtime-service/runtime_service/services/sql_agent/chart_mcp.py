@@ -20,4 +20,11 @@ async def aget_mcp_server_chart_tools() -> list[Any]:
 
 
 def get_mcp_server_chart_tools() -> list[Any]:
-    return asyncio.run(aget_mcp_server_chart_tools())
+    # Graph modules can be imported inside the running Agent Server loop. Do
+    # not create a coroutine that asyncio.run() cannot own; async resolution
+    # happens later through _aget_chart_tools in the middleware path.
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(aget_mcp_server_chart_tools())
+    return []
