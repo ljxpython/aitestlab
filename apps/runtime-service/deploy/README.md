@@ -27,7 +27,7 @@
 - 使用仓库内受管 Dockerfile
 - 路径：`apps/runtime-service/deploy/Dockerfile`
 - Python 基线：`3.13`
-- 当前官方基座镜像 pin：`langchain/langgraph-api:0.5.4-py3.13`
+- 当前官方基座镜像 tag：`langchain/langgraph-api:3.13`；共享/生产部署必须进一步固定为可追溯 digest。
 - 用户应可直接使用 `docker compose build` / `docker compose up -d`
 - 不要求用户先安装 LangGraph CLI
 - 当前验证结论：

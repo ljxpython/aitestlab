@@ -61,7 +61,7 @@ uv run langgraph dev --config runtime_service/langgraph.json --port 8123 --no-br
 
 说明：
 
-- `research_demo`、`deepagent_demo`、`test_case_agent` 这类依赖 Deep Agents 文件后端/skills 的 graph，在当前本地 `langgraph-api 0.7.58` 下需要 `--allow-blocking`，否则容易被 `blockbuster` 拦成 `BlockingError`。
+- `research_demo`、`deepagent_demo`、`test_case_agent` 这类依赖 Deep Agents 文件后端/skills 的 graph 可能需要 `--allow-blocking`，否则同步文件 I/O 会被 `blockbuster` 拦成 `BlockingError`。实际 Agent Server 版本以锁文件、固定镜像 digest 与 `/info` 为准，详见 `docs/knowledge/09-langgraph-runtime-upgrade-and-event-migration.md`。
 - 如果是部署环境，可以在 `langgraph.json` 中直接使用内联 `env`：
 
 ```json

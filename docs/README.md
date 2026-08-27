@@ -47,6 +47,10 @@
 需要持久评审的 B2 变更和全部 B3 变更使用 `openspec/changes/` 管理。历史
 `.harness/plans/` 不再作为 active change 的位置。
 
+当前 Draft 方案：
+
+- [React Agent Web 重设计](./agent-web-redesign/README.md)
+
 ## 5. 文档状态
 
 文档状态定义和更新顺序见

@@ -1,4 +1,8 @@
-# LangGraph 流式协议与未来事件能力
+# LangGraph 流式协议与事件能力对照（历史补充）
+
+> 本文保留用于解释本地流格式与远程协议的层次差异。涉及版本基线、Protocol v2、Durable Run、
+> 发布或迁移决策时，必须以 [`09-langgraph-runtime-upgrade-and-event-migration.md`](09-langgraph-runtime-upgrade-and-event-migration.md)
+> 为准；本文任何历史版本或“保留 legacy fallback”表述均不构成现行实施依据。
 
 ## 1. 先区分三个不是一回事的版本
 
@@ -12,7 +16,7 @@
 
 ## 2. 本地 graph API
 
-当前环境安装 `langgraph==1.2.9`，因此支持：
+当前锁文件固定 `langgraph==1.2.11`，因此支持：
 
 ```python
 graph.stream(input, stream_mode="updates", subgraphs=True, version="v2")
@@ -63,19 +67,21 @@ v3 不是 v2 的强制升级。已有消费者若只处理 `updates`、`messages
 
 ## 3. 本仓库当前状态
 
-### 3.1 本地直接调用仍是 v1
+### 3.1 本地直接调用已收敛到 v2
 
-`runtime_service` 的测试与调试代码仍使用：
+`runtime_service` 的业务调试流消费者使用：
 
 ```python
-async for mode, event in agent.astream(
+async for part in agent.astream(
     input,
     stream_mode=["messages", "updates"],
+    version="v2",
 ):
     ...
 ```
 
-未传 `version="v2"`，因此这是默认 v1 元组格式。当前代码库没有 `stream_events(..., version="v3")` 的业务调用。
+因此消费者读取 `part["type"]`、`part["ns"]` 与 `part["data"]`，不再依赖 v1 元组形状。
+`astream_events(version="v3")` 仅在最小 harness 中验证内部投影，不能当作浏览器 HTTP 协议。
 
 ### 3.2 前端不是直接调用本地 graph
 
@@ -89,7 +95,8 @@ client.runs.stream(thread_id, assistant_id, ...)
 
 远程 SDK 的 `version` 和本地 `graph.stream(..., version=...)` 都涉及流格式，但必须对目标 Agent Server 做端到端兼容验证，不能只凭客户端 SDK 签名切换。
 
-当前运行时锁定 `langgraph-api==0.11.1`。该版本已 EOL；在升级运行时前，不应将 remote `version="v2"` 视作已验收能力。
+Agent Server 的实际部署基线必须由锁文件、固定镜像 digest 与实际 `/info` 输出共同证明；历史文档中的
+`langgraph-api==0.11.1` 不能作为当前基线，也不得把本地 `version="v2"` 当作远程 Protocol v2 的验收。
 
 ## 4. 当前已有的事件订阅通道
 
@@ -102,16 +109,19 @@ POST /api/langgraph/threads/{thread_id}/stream/events
 
 后者是 Agent Protocol v2 的线程级 SSE 订阅端点：客户端先建立订阅，再通过 `commands` 发送 `run.start` 或 `input.respond`。它不是 `runs.stream` 的改名，也不是本地 Python 的 `stream_events` 对象。
 
-该通道是未来实现事件投影、子图生命周期和 HITL 的正确远程协议方向；但当前项目尚未对接到前端，也未针对现有 `langgraph-api==0.11.1` 完成端到端验收。
+该通道已由 Agent Web 以 Bearer `fetch + ReadableStream` 接入，使用 body `since` 主动重连；真实 Agent
+Server 的 checkpoint、interrupt、replay 和 durability E2E 仍未完成，不能以本地 fixture 代替。
 
 ## 5. 推荐演进顺序
 
 1. 本地调试和测试：将确有流式消费的 `astream` 调用迁至 `version="v2"`，修改消费者为读取 `part["type"]`、`part["ns"]`、`part["data"]`。
-2. 远程普通聊天：继续使用 `client.runs.stream(...)`；运行时升级后，单独验证 `version="v2"`、`stream_subgraphs=True`、断线恢复和中断。
-3. 前端事件体验：基于 `/threads/{thread_id}/commands` 加 `/threads/{thread_id}/stream/events` 实现，而非新增一个猜测的 SDK 方法。
-4. 在协议 v2 事件流稳定后，再决定前端是否接入官方 `useStream`，或维持现有网关和状态管理。
+2. 正式 Agent Web：通过 `/threads/{thread_id}/commands` 与 `/threads/{thread_id}/stream/events` 操作和观察
+   Durable Run；不用 `runs.stream` 作为新页面 fallback。
+3. 远程普通流的历史消费者和 legacy 页面维持原状，直至共享环境复验、灰度与退役获得单独批准。
+4. Protocol v2 event stream 稳定后，再决定是否接入官方 `useStream`；现阶段保持 gateway 与单一
+   `RunEventsController` 状态模型。
 
-每一步都应保留现有 `runs.stream` 作为回退通道，直到 token、工具调用、子图、HITL 恢复和断线重连均完成端到端验收。
+legacy `runs.stream` 仍由旧页面使用，但它不是 Agent Web 的 fallback；退役必须另行获得批准。
 
 ## 6. Aegra 的位置
 

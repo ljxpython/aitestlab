@@ -220,6 +220,54 @@ class ProtocolV2RuntimeNormalizationTest(unittest.TestCase):
                 }
             )
 
+    def test_rejects_invalid_durable_run_parameters(self) -> None:
+        base_params = {"assistant_id": "assistant-1", "input": {"messages": []}}
+
+        with self.assertRaisesRegex(ValueError, "durability must be one of"):
+            normalize_protocol_v2_command(
+                payload={
+                    "id": 11,
+                    "method": "run.start",
+                    "params": {**base_params, "durability": "eventual"},
+                }
+            )
+
+        with self.assertRaisesRegex(ValueError, "durability must be one of"):
+            normalize_protocol_v2_command(
+                payload={
+                    "id": 14,
+                    "method": "run.start",
+                    "params": {**base_params, "durability": {"mode": "sync"}},
+                }
+            )
+
+        with self.assertRaisesRegex(ValueError, "stream_resumable must be a boolean"):
+            normalize_protocol_v2_command(
+                payload={
+                    "id": 12,
+                    "method": "run.start",
+                    "params": {**base_params, "stream_resumable": "true"},
+                }
+            )
+
+        with self.assertRaisesRegex(ValueError, "on_disconnect must be cancel or continue"):
+            normalize_protocol_v2_command(
+                payload={
+                    "id": 13,
+                    "method": "run.start",
+                    "params": {**base_params, "on_disconnect": "pause"},
+                }
+            )
+
+        with self.assertRaisesRegex(ValueError, "on_disconnect must be cancel or continue"):
+            normalize_protocol_v2_command(
+                payload={
+                    "id": 15,
+                    "method": "run.start",
+                    "params": {**base_params, "on_disconnect": ["continue"]},
+                }
+            )
+
     def test_preserves_non_run_command_envelope(self) -> None:
         payload = {
             "id": 9,

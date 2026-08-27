@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from collections.abc import AsyncIterator
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, Query, Request
@@ -21,6 +23,18 @@ from app.modules.runtime_gateway.application.service import RuntimeGatewayServic
 
 router = APIRouter(prefix="/api/langgraph", tags=["runtime-gateway"])
 
+_SENSITIVE_EVENT_KEYS = {
+    "access_token",
+    "api_key",
+    "authorization",
+    "cookie",
+    "id_token",
+    "password",
+    "refresh_token",
+    "secret",
+    "token",
+}
+
 
 def _normalize_ack(value: Any) -> Any:
     if value is None:
@@ -28,6 +42,54 @@ def _normalize_ack(value: Any) -> Any:
     if isinstance(value, dict) and not value:
         return {"ok": True}
     return value
+
+
+def _redact_event_value(value: Any) -> Any:
+    if isinstance(value, list):
+        return [_redact_event_value(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+    return {
+        key: "[REDACTED]"
+        if key.lower().replace("-", "_") in _SENSITIVE_EVENT_KEYS
+        else _redact_event_value(item)
+        for key, item in value.items()
+    }
+
+
+def _redact_sse_frame(frame: bytes) -> bytes:
+    try:
+        lines = frame.decode("utf-8").split("\n")
+    except UnicodeDecodeError:
+        return frame
+    data_positions = [index for index, line in enumerate(lines) if line.startswith("data:")]
+    if not data_positions:
+        return frame
+    data = "\n".join(lines[index][5:].lstrip() for index in data_positions)
+    try:
+        payload = json.loads(data)
+    except ValueError:
+        return frame
+    encoded = json.dumps(_redact_event_value(payload), ensure_ascii=False, separators=(",", ":"))
+    first_data_position = data_positions[0]
+    redacted_lines = [
+        f"data: {encoded}" if index == first_data_position else line
+        for index, line in enumerate(lines)
+        if index not in data_positions[1:]
+    ]
+    return "\n".join(redacted_lines).encode("utf-8")
+
+
+async def _redact_protocol_event_stream(stream: AsyncIterator[bytes]) -> AsyncIterator[bytes]:
+    buffer = b""
+    async for chunk in stream:
+        buffer += chunk.replace(b"\r\n", b"\n")
+        frames = buffer.split(b"\n\n")
+        buffer = frames.pop()
+        for frame in frames:
+            yield _redact_sse_frame(frame) + b"\n\n"
+    if buffer:
+        yield _redact_sse_frame(buffer)
 
 
 def _require_project_id(request: Request) -> str:
@@ -572,6 +634,7 @@ async def send_thread_command(
         project_id=project_id,
         thread_id=thread_id,
         payload=payload,
+        idempotency_key=request.headers.get("Idempotency-Key"),
     )
 
 
@@ -590,7 +653,7 @@ async def stream_thread_events(
         thread_id=thread_id,
         payload=payload,
     )
-    return StreamingResponse(stream, media_type="text/event-stream")
+    return StreamingResponse(_redact_protocol_event_stream(stream), media_type="text/event-stream")
 
 
 @router.post("/threads/{thread_id}/runs/wait")

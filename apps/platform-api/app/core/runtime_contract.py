@@ -39,6 +39,20 @@ RUNTIME_OPTION_KEYS = (
     "multimodal_parser_model_id",
 )
 
+PROTOCOL_V2_EVENT_CHANNELS = {
+    "values",
+    "updates",
+    "messages",
+    "tools",
+    "lifecycle",
+    "input",
+    "tasks",
+    "custom",
+}
+
+PROTOCOL_V2_RUN_DURABILITY = {"sync", "async", "exit"}
+PROTOCOL_V2_RUN_DISCONNECT = {"cancel", "continue"}
+
 
 def _validate_runtime_option_values(options: dict[str, Any]) -> None:
     string_keys = ("model_id", "system_prompt", "multimodal_parser_model_id")
@@ -229,12 +243,35 @@ def normalize_protocol_v2_command(
 
     run_params = normalized["params"]
     unknown_run_fields = sorted(
-        set(run_params) - {"assistant_id", "input", "config", "metadata"}
+        set(run_params)
+        - {
+            "assistant_id",
+            "input",
+            "config",
+            "metadata",
+            "durability",
+            "stream_resumable",
+            "on_disconnect",
+        }
     )
     if unknown_run_fields:
         raise ValueError(
             "Unsupported run.start fields: " + ", ".join(unknown_run_fields)
         )
+
+    run_params.setdefault("durability", "sync")
+    run_params.setdefault("stream_resumable", True)
+    run_params.setdefault("on_disconnect", "continue")
+    durability = run_params["durability"]
+    if not isinstance(durability, str) or durability not in PROTOCOL_V2_RUN_DURABILITY:
+        raise ValueError("run.start durability must be one of: sync, async, exit")
+    if not isinstance(run_params["stream_resumable"], bool):
+        raise ValueError("run.start stream_resumable must be a boolean")
+    if (
+        not isinstance(run_params["on_disconnect"], str)
+        or run_params["on_disconnect"] not in PROTOCOL_V2_RUN_DISCONNECT
+    ):
+        raise ValueError("run.start on_disconnect must be cancel or continue")
 
     config = ensure_dict(run_params.get("config"))
     configurable = ensure_dict(config.get("configurable"))
@@ -300,6 +337,15 @@ def normalize_protocol_v2_event_request(payload: dict[str, Any]) -> dict[str, An
         raise ValueError("Protocol v2 event channels must be a non-empty array")
     if any(not isinstance(channel, str) or not channel.strip() for channel in channels):
         raise ValueError("Protocol v2 event channels must contain non-empty strings")
+    unsupported_channels = sorted(
+        channel
+        for channel in channels
+        if channel not in PROTOCOL_V2_EVENT_CHANNELS and not channel.startswith("custom:")
+    )
+    if unsupported_channels:
+        raise ValueError(
+            "Unsupported Protocol v2 event channels: " + ", ".join(unsupported_channels)
+        )
 
     namespaces = payload.get("namespaces")
     if namespaces is not None and (

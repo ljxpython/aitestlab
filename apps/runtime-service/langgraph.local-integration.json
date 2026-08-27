@@ -1,0 +1,21 @@
+{
+  "python_version": "3.13",
+  "dependencies": ["./"],
+  "auth": {"path": "./runtime_service/auth/platform.py:platform_auth"},
+  "graphs": {
+    "assistant": {
+      "path": "./runtime_service/agents/assistant_agent/graph.py:graph",
+      "description": "本地 HTTP 集成验证使用的真实助手 graph，需要已配置的模型凭据。"
+    }
+  },
+  "http": {
+    "app": "./runtime_service/custom_routes/app.py:app",
+    "cors": {
+      "allow_origins": ["http://127.0.0.1:4173", "http://localhost:4173"],
+      "allow_methods": ["*"],
+      "allow_headers": ["*"],
+      "allow_credentials": false
+    }
+  },
+  "env": "./runtime_service/.env"
+}

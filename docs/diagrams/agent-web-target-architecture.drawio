@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="drawio" modified="2026-08-26T00:00:00.000Z" agent="Codex" version="31.1.5">
+  <diagram id="agent-web-architecture" name="目标架构">
+    <mxGraphModel dx="1200" dy="760" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="2" value="React Agent Web：正式 Durable Run 生产链" style="text;html=1;align=left;verticalAlign=middle;fontSize=24;fontStyle=1;fontColor=#171A20;" vertex="1" parent="1">
+          <mxGeometry x="40" y="30" width="900" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="3" value="正式平台 UI&#xa;apps/agent-web&#xa;React 19 + Query + RunEventsController" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F0FF;strokeColor=#4176E6;fontColor=#171A20;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="40" y="190" width="250" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="4" value="Platform API / Runtime Gateway&#xa;认证、project scope、permission、audit" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF0DF;strokeColor=#C97716;fontColor=#171A20;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="400" y="110" width="300" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="5" value="Run Coordinator&#xa;幂等、策略冻结、Run resource" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF8EF;strokeColor=#C97716;fontColor=#171A20;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="400" y="230" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="6" value="Run / idempotency record&#xa;(project, thread, key) + request digest" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFF8EF;strokeColor=#C97716;fontColor=#171A20;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="450" y="380" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="7" value="Runtime Service / LangGraph&#xa;graph、tool、checkpoint、durability=sync" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E5F6EC;strokeColor=#16804B;fontColor=#171A20;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="820" y="110" width="300" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="8" value="Durable Run&#xa;queued / running / waiting / terminal" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F1FBF5;strokeColor=#16804B;fontColor=#171A20;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="820" y="230" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="9" value="Checkpoint + resumable events" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#F1FBF5;strokeColor=#16804B;fontColor=#171A20;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="870" y="380" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="10" value="内部调试入口&#xa;runtime-web&#xa;不属于生产兼容面" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F2F4F7;strokeColor=#667085;fontColor=#344054;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="820" y="560" width="300" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="11" value="生产边界：Agent Web 不直连 runtime-service；SSE 不决定 Run 状态。" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F7F9FC;strokeColor=#98A2B3;fontColor=#475467;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="40" y="570" width="660" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="20" value="Protocol v2 command / Run snapshot / fetch SSE" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#4176E6;fontSize=11;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.35;entryX=0;entryY=0.35;" edge="1" parent="1" source="3" target="4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="21" value="授权、scope、策略" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#C97716;fontSize=11;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="4" target="5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="22" value="幂等映射" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#C97716;fontSize=11;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="5" target="6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="23" value="delegation + create" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#C97716;fontSize=11;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="5" target="7">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="24" value="Run state" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#16804B;fontSize=11;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="7" target="8">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="25" value="sync checkpoint / replay" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#16804B;fontSize=11;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="8" target="9">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="27" value="SSE bytes / redaction" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#16804B;fontSize=11;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.75;entryX=1;entryY=0.75;" edge="1" parent="1" source="7" target="4">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="760" y="340" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="durable-run-lifecycle" name="Run 生命周期">
+    <mxGraphModel dx="1200" dy="760" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="2" value="Durable Run：创建一次，事件可恢复" style="text;html=1;align=left;verticalAlign=middle;fontSize=24;fontStyle=1;fontColor=#171A20;" vertex="1" parent="1">
+          <mxGeometry x="40" y="30" width="900" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="3" value="提交消息&#xa;生成 idempotency key" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F0FF;strokeColor=#4176E6;fontColor=#171A20;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="40" y="180" width="170" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="4" value="POST commands&#xa;run.start" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF0DF;strokeColor=#C97716;fontColor=#171A20;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="290" y="180" width="170" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="5" value="queued / running&#xa;服务端事实" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E5F6EC;strokeColor=#16804B;fontColor=#171A20;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="540" y="180" width="180" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="6" value="POST events&#xa;fetch SSE + since" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F0FF;strokeColor=#4176E6;fontColor=#171A20;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="800" y="180" width="170" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="7" value="时间线投影&#xa;Protocol seq 去重" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F0FF;strokeColor=#4176E6;fontColor=#171A20;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="1050" y="180" width="170" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="8" value="页面刷新 / SSE 断线" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF8DB;strokeColor=#B76A00;fontColor=#171A20;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="540" y="400" width="180" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="9" value="GET Run snapshot" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF0DF;strokeColor=#C97716;fontColor=#171A20;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="810" y="410" width="170" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="10" value="非终态：POST since 重连&#xa;终态：刷新 thread snapshot" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F1FBF5;strokeColor=#16804B;fontColor=#171A20;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="400" width="230" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="20" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#4176E6;" edge="1" parent="1" source="3" target="4"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="21" value="同 key 重试返回同一 Run" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#C97716;fontSize=11;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="4" target="5"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="22" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#4176E6;" edge="1" parent="1" source="5" target="6"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="23" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#4176E6;" edge="1" parent="1" source="6" target="7"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="24" value="不重发 run.start" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#B76A00;fontSize=11;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="7" target="8"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="25" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#C97716;" edge="1" parent="1" source="8" target="9"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="26" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#16804B;" edge="1" parent="1" source="9" target="10"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="27" value="续接" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#4176E6;fontSize=11;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=0;entryX=0.5;entryY=1;" edge="1" parent="1" source="10" target="6"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1130" y="320" /><mxPoint x="885" y="320" /></Array></mxGeometry></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

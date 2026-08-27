@@ -124,7 +124,7 @@ uv run langgraph dev --config runtime_service/langgraph.json --port 8123 --no-br
 
 注意：`runtime_service/langgraph.json` 会自动加载 `runtime_service/.env`。如果 `.env` 中保留了旧的 `MODEL_ID`，它会覆盖 `settings.yaml` 的默认模型；排查模型配置问题时，先检查这里有没有陈旧值。
 
-如果启用了 `research_demo`、`deepagent_demo`、`test_case_agent` 这类依赖 Deep Agents 文件后端/skills 的 graph，当前本地 `langgraph dev` 调试请显式带上 `--allow-blocking`。这套依赖链内部仍有同步文件 IO（如 `resolve` / `readlink` / `stat`），在 `langgraph-api 0.7.58` 下会被 `blockbuster` 直接拦成 `BlockingError`。
+如果启用了 `research_demo`、`deepagent_demo`、`test_case_agent` 这类依赖 Deep Agents 文件后端/skills 的 graph，本地 `langgraph dev` 调试请显式带上 `--allow-blocking`。这套依赖链内部仍有同步文件 IO（如 `resolve` / `readlink` / `stat`），可能被 `blockbuster` 拦成 `BlockingError`。实际 Agent Server 版本以锁文件、固定镜像 digest 与 `/info` 为准，详见 `runtime_service/docs/knowledge/09-langgraph-runtime-upgrade-and-event-migration.md`。
 
 同时建议在 `.env` 中保留 `BG_JOB_ISOLATED_LOOPS=true`。它对托管/后台 worker 仍然有价值，但单独配置它并不能替代当前本地 dev 的 `--allow-blocking`。
 

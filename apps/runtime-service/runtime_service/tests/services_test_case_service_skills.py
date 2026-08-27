@@ -300,11 +300,14 @@ async def verify_live_stream(model_id: str = "deepseek_chat") -> None:
     tool_calls: list[str] = []
 
     async def _stream() -> None:
-        async for mode, event in agent.astream(
+        async for part in agent.astream(
             {"messages": [{"role": "user", "content": question}]},
             config=config,
             stream_mode=["messages", "updates"],
+            version="v2",
         ):
+            mode = part["type"]
+            event = part["data"]
             if mode == "messages":
                 msg, _ = event
                 text = getattr(msg, "content", "")

@@ -8,7 +8,7 @@
 
 目标分两层：
 
-1. 升级到当时最新且已验证的官方 LangGraph Agent Server，消除当前 `langgraph-api==0.11.1` 的 EOL 风险。
+1. 固定当前已验证的官方 LangGraph Agent Server 基线，消除历史 `langgraph-api==0.11.1` 表述带来的 EOL 判断歧义。
 2. 先稳定普通远程流，再演进到子图、工具生命周期和 HITL 的 Protocol v2 事件体验。
 
 不做：为了迁移新增 Aegra 兼容层、直接替换平台网关、一次性重写前端聊天状态管理。
@@ -28,20 +28,40 @@
 
 官方 Vue `useStream` 方案可以作为后续前端候选方案，但它不应成为 runtime 升级的前置条件。当前自有 gateway 和 Vue 状态层可以先保持不变。
 
+### Durable Run 的正式 `run.start` 参数
+
+正式 Protocol v2 `run.start` 默认固定以下 LangGraph Durable Run 语义：
+
+```json
+{
+  "durability": "sync",
+  "stream_resumable": true,
+  "on_disconnect": "continue"
+}
+```
+
+- `durability="sync"`：每个 checkpoint 在下一步执行前同步持久化，Run snapshot 是终态事实源。
+- `stream_resumable=true`：允许事件流按 `seq`/`since` 重放；浏览器断线不等于 Run 失败。
+- `on_disconnect="continue"`：观察者断开时继续执行 Durable Run，恢复只重新订阅，不重发创建命令。
+
+这三个字段属于公开 Protocol v2 command envelope；HTTP `Idempotency-Key` 仍只放 header，不能进入
+command payload。若上游 Agent Server 在隔离 E2E 中不接受其中任一字段，必须记录版本冲突并停止迁移，
+不能在浏览器侧静默删除或退回 legacy `runs.stream`。
+
 ## 3. 当前基线与已知事实
 
 | 项目项 | 当前情况 | 风险或动作 |
 | --- | --- | --- |
-| Python graph | `langgraph==1.2.9` | 本地支持 `astream(version="v2")` 与 `astream_events(version="v3")` |
-| Agent Server | `langgraph-api==0.11.1` | EOL，必须独立升级和验收 |
-| 远程 SDK | `langgraph-sdk==0.4.2` | `client.runs.stream(...)` 支持 `version`，默认 v1 |
+| Python graph | `langgraph==1.2.11` | 已由 `pyproject.toml` 固定；本地支持 `astream(version="v2")` 与 `astream_events(version="v3")` |
+| Agent Server | `langgraph-api==0.13.0`、基座 `langchain/langgraph-api:3.13` | 分别由 `uv.lock` 与 Dockerfile 固定；共享环境仍必须以镜像 digest、`/info` 与隔离 PostgreSQL/Redis 复验 |
+| 远程 SDK | `langgraph-sdk==0.4.3` | 已由 `pyproject.toml` 固定；Protocol v2 的生产 HTTP 契约另行验证 |
 | 普通前端流 | `client.runs.stream(...)` | 当前 payload 已使用 `streamSubgraphs`，仍按现有 SSE 消费 |
 | Protocol v2 网关 | `/threads/{thread_id}/commands`、`/threads/{thread_id}/stream/events` 已在 `platform-api` 暴露 | 尚未接入前端，且旧 Agent Server 未端到端验收 |
 | 自定义 HTTP 路由 | `runtime_service/custom_routes/app.py:app` | 必须验证与新 runtime 的 route/lifespan 合并顺序 |
 | 平台鉴权 | `runtime_service/auth/platform.py:platform_auth` | 必须验证 authenticate/on-access 回调签名和资源授权语义 |
 | 持久化 | PostgreSQL + Redis | 升级前必须做真实数据备份与兼容性评估 |
 
-现有文档中对 `langgraph-api` 版本存在历史残留表述；升级前不得相信文档中的版本号，应以锁文件、镜像 digest 和实际 `/info` 输出重新建立唯一基线。
+现有文档中可能仍有历史版本表述；不得将文档版本号视为部署证据，应以锁文件、镜像 digest 和实际 `/info` 输出建立唯一基线。
 
 ## 4. 分阶段工作清单
 

@@ -290,12 +290,15 @@ async def _stream_agent_run(
     update_summaries: list[dict[str, Any]] = []
 
     async def _run_stream() -> None:
-        async for mode, event in agent.astream(
+        async for part in agent.astream(
             {"messages": [message]},
             config=config,
             context=runtime_context,
             stream_mode=["messages", "updates"],
+            version="v2",
         ):
+            mode = part["type"]
+            event = part["data"]
             if mode == "messages":
                 stream_message, _metadata = event
                 text = _chunk_text(getattr(stream_message, "content", ""))

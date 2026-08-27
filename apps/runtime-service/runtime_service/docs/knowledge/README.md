@@ -11,8 +11,8 @@
 5. `05-runtime-contract-open-questions.md`
 6. `06-runtime-blueprint-pseudocode.md`
 7. `07-langgraph-ecosystem-repository-research.md`
-8. `08-streaming-protocols-and-future-events.md`
-9. `09-langgraph-runtime-upgrade-and-event-migration.md`
+8. `09-langgraph-runtime-upgrade-and-event-migration.md`
+9. `08-streaming-protocols-and-future-events.md`（历史协议对照；与 09 冲突时以 09 为准）
 
 阅读目标：
 
