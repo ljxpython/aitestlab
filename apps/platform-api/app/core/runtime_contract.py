@@ -40,6 +40,7 @@ RUNTIME_OPTION_KEYS = (
 )
 
 PROTOCOL_V2_EVENT_CHANNELS = {
+    "checkpoints",
     "values",
     "updates",
     "messages",

@@ -1,4 +1,5 @@
 import type { Message } from '@langchain/langgraph-sdk'
+import { normalizeRuntimeGatewayMessage } from '@/services/runtime-gateway/workspace.service'
 import type { ChatAttachmentBlock } from '@/utils/chat-content'
 import { extractToolCallsFromMessage } from '../../tool-call-utils'
 import type { ChatResolvedTarget } from '../../types'
@@ -127,7 +128,7 @@ function isGenericInternalErrorMessage(message: string): boolean {
 
 function extractRuntimeErrorText(value: unknown): string {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return extractErrorText(value)
+    return normalizeRuntimeGatewayMessage(value, extractErrorText(value))
   }
 
   const record = value as Record<string, unknown>
@@ -136,6 +137,11 @@ function extractRuntimeErrorText(value: unknown): string {
 
   if (isCancelledRunMessage(`${errorType} ${errorMessage}`)) {
     return ''
+  }
+
+  const normalizedErrorMessage = normalizeRuntimeGatewayMessage(value, errorMessage)
+  if (normalizedErrorMessage !== errorMessage) {
+    return normalizedErrorMessage
   }
 
   if (/^APIConnectionError$/i.test(errorType)) {

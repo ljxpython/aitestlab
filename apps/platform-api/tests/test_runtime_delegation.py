@@ -278,7 +278,7 @@ class ProtocolV2RuntimeNormalizationTest(unittest.TestCase):
 
     def test_validates_event_replay_subscription(self) -> None:
         payload = {
-            "channels": ["messages", "values", "tasks"],
+            "channels": ["messages", "values", "tasks", "checkpoints"],
             "namespaces": [[], ["worker"]],
             "depth": 2,
             "since": 41,

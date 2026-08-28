@@ -167,6 +167,21 @@ function extractErrorMessage(error: unknown, fallback: string): string {
   return fallback
 }
 
+export function normalizeRuntimeGatewayMessage(error: unknown, message: string): string {
+  const fields =
+    error && typeof error === 'object'
+      ? ['error', 'type', 'name', 'code']
+          .map((key) => (error as Record<string, unknown>)[key])
+          .filter((value): value is string => typeof value === 'string')
+      : []
+
+  if (/openaipermissiondeniederror|cloudflare|<!doctype html|<html[\s>]/i.test([...fields, message].join(' '))) {
+    return '模型上游请求被拒绝：当前模型网关返回权限或 Cloudflare 拦截，请检查 base_url、API key、模型部署和网络。'
+  }
+
+  return message
+}
+
 function resolveRuntimeGatewayErrorKind(status: number | null): RuntimeGatewayErrorKind {
   if (status === 401) {
     return 'unauthorized'
@@ -195,7 +210,7 @@ export function normalizeRuntimeGatewayError(
     kind: resolveRuntimeGatewayErrorKind(status),
     status,
     code: extractErrorCode(error),
-    message: extractErrorMessage(error, fallbackMessage)
+    message: normalizeRuntimeGatewayMessage(error, extractErrorMessage(error, fallbackMessage))
   }
 }
 

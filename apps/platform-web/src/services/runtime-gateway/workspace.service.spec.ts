@@ -11,7 +11,7 @@ vi.mock('@/services/http/client', () => ({
   platformHttpClient: platformHttpClientMock
 }))
 
-import { listRuntimeThreadsPage } from './workspace.service'
+import { listRuntimeThreadsPage, normalizeRuntimeGatewayError } from './workspace.service'
 
 describe('workspace runtime gateway service', () => {
   beforeEach(() => vi.clearAllMocks())
@@ -33,5 +33,14 @@ describe('workspace runtime gateway service', () => {
       metadata: { graph_id: 'assistant' },
       select: ['thread_id', 'metadata', 'status', 'created_at', 'updated_at']
     })
+  })
+
+  it('normalizes Cloudflare block pages returned by the model gateway', () => {
+    expect(
+      normalizeRuntimeGatewayError(
+        new Error("OpenAIPermissionDeniedError('<!DOCTYPE html><html>Cloudflare</html>')"),
+        '对话运行失败'
+      ).message
+    ).toBe('模型上游请求被拒绝：当前模型网关返回权限或 Cloudflare 拦截，请检查 base_url、API key、模型部署和网络。')
   })
 })

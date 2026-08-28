@@ -411,11 +411,11 @@ watch([activeInterruptIndex, activeActionIndex, isHitl], () => {
 </script>
 
 <template>
-  <div class="pw-panel-info mb-4 overflow-hidden p-0">
-    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-sky-200/70 px-4 py-3 dark:border-primary-900/30">
+  <div class="pw-panel-warning overflow-hidden p-0">
+    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-amber-200/70 px-4 py-3 dark:border-amber-900/30">
       <div>
-        <div class="text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-600 dark:text-primary-200">
-          Interrupt
+        <div class="text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-700 dark:text-amber-200">
+          需要你确认
         </div>
         <div class="mt-1 text-sm font-semibold text-slate-900 dark:text-white">
           {{ isHitl ? '等待人工决策' : '中断上下文' }}

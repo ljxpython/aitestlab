@@ -4,22 +4,18 @@ import BaseButton from '@/components/base/BaseButton.vue'
 import BaseIcon from '@/components/base/BaseIcon.vue'
 import { CHAT_ATTACHMENT_ACCEPT, type ChatAttachmentBlock } from '@/utils/chat-content'
 import ChatAttachmentPreview from './ChatAttachmentPreview.vue'
-import ChatInterruptPanel from './ChatInterruptPanel.vue'
 
 const props = defineProps<{
   modelValue: string
   attachments: ChatAttachmentBlock[]
   isRunning: boolean
   hasBlockingInterrupt: boolean
-  interruptPayload: unknown
   canStartThread: boolean
   showContinueAction: boolean
   canSendFreshMessage: boolean
   cancelling: boolean
   sendButtonLabel: string
   lastEventAt: string
-  onResumeInterruptedRun: (resumePayload: unknown, interruptId?: string) => Promise<boolean>
-  onResumeAllInterruptedRuns: (responsesById: Record<string, unknown>) => Promise<boolean>
   compact?: boolean
   focusMode?: boolean
 }>()
@@ -148,21 +144,13 @@ onMounted(async () => {
 
 <template>
   <div
-    class="px-4 pb-3 pt-2 transition-all duration-200 md:px-5"
-    :class="isFocusMode ? 'px-3 pb-2 pt-2 md:px-4' : props.compact ? 'px-4 pb-2 pt-2 md:px-5' : 'pb-3 pt-2'"
+    class="pw-chat-composer-wrap transition-all duration-200"
+    :class="isFocusMode ? 'px-3 pb-3 pt-2 md:px-4' : props.compact ? 'px-4 pb-3 pt-2 md:px-5' : ''"
   >
     <div
-      class="pw-panel mx-auto w-full border-gray-200/80 bg-white/96 shadow-md shadow-gray-200/70 transition-all duration-200 dark:border-dark-700/80 dark:bg-dark-900/94 dark:shadow-none"
-      :class="isFocusMode ? 'max-w-[860px] rounded-2xl p-2.5' : 'max-w-[860px] rounded-2xl p-2.5'"
+      class="pw-chat-composer transition-all duration-200"
+      :class="isFocusMode ? 'max-w-[780px]' : ''"
     >
-      <ChatInterruptPanel
-        v-if="hasBlockingInterrupt"
-        :interrupt="interruptPayload"
-        :submitting="isRunning"
-        :on-resume="onResumeInterruptedRun"
-        :on-resume-all="onResumeAllInterruptedRuns"
-      />
-
       <div
         v-if="attachments.length > 0"
         class="mb-4 flex flex-wrap gap-3"
@@ -193,11 +181,11 @@ onMounted(async () => {
 
       <div class="mt-2 space-y-1.5 transition-all duration-200">
         <div
-          class="flex items-center justify-between gap-3 transition-all duration-200"
-          :class="isFocusMode || props.compact ? 'gap-2' : ''"
+          class="flex flex-wrap items-center justify-between gap-2 transition-all duration-200 sm:flex-nowrap"
+          :class="isFocusMode || props.compact ? '' : 'sm:gap-3'"
         >
           <div
-            class="flex min-w-0 items-center gap-2 overflow-x-auto pb-1"
+            class="flex min-w-0 basis-full items-center gap-2 overflow-x-auto pb-1 sm:basis-auto"
             :class="isFocusMode || props.compact ? 'gap-2' : 'gap-2.5'"
           >
             <button
@@ -223,7 +211,7 @@ onMounted(async () => {
           </div>
 
           <div
-            class="flex shrink-0 items-center gap-2"
+            class="ml-auto flex shrink-0 items-center gap-2"
             :class="isFocusMode || props.compact ? 'gap-2' : 'gap-2.5'"
           >
             <BaseButton

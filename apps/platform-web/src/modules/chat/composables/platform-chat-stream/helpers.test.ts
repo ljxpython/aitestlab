@@ -31,6 +31,15 @@ describe('platform chat stream helpers', () => {
     ).toBe('模型上游连接失败：OpenAI 兼容模型代理连接异常，请检查当前模型的 base_url、API key、模型名和网络。')
   })
 
+  it('会把模型网关的 HTML 拒绝页归一化为可读错误', () => {
+    expect(
+      extractThreadFailureMessage(null, 'error', {
+        error: 'OpenAIPermissionDeniedError',
+        message: '<!DOCTYPE html><html><body>Cloudflare blocked the request</body></html>'
+      })
+    ).toBe('模型上游请求被拒绝：当前模型网关返回权限或 Cloudflare 拦截，请检查 base_url、API key、模型部署和网络。')
+  })
+
   it('会优先使用线程顶层的具体错误信息', () => {
     expect(
       extractThreadFailureMessage(null, 'error', {

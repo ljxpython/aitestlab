@@ -59,6 +59,28 @@ describe('createLanggraphAuthorizedFetch', () => {
     )
   })
 
+  it('adds one idempotency key to a thread command and reuses it after authentication refresh', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response('expired', { status: 401 }))
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+    const authFetch = createLanggraphAuthorizedFetch({
+      fetchImpl,
+      getAccessToken: () => 'expired-token',
+      refreshAccessToken: async () => 'refreshed-token'
+    })
+
+    await authFetch('http://example.com/api/langgraph/threads/thread-1/commands', {
+      method: 'POST',
+      body: JSON.stringify({ method: 'run.start' })
+    })
+
+    const firstKey = new Headers(fetchImpl.mock.calls[0]?.[1]?.headers).get('Idempotency-Key')
+    const retryKey = new Headers(fetchImpl.mock.calls[1]?.[1]?.headers).get('Idempotency-Key')
+    expect(firstKey).toMatch(/^run:/)
+    expect(retryKey).toBe(firstKey)
+  })
+
   it('returns the original 401 response when refresh fails', async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()

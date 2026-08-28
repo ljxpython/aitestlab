@@ -17,6 +17,7 @@ import { getMessageText } from '@/utils/threads'
 import ChatArtifactPanel from './ChatArtifactPanel.vue'
 import ChatComposer from './ChatComposer.vue'
 import ChatContextDrawer from './ChatContextDrawer.vue'
+import ChatInterruptPanel from './ChatInterruptPanel.vue'
 import ChatMessageList from './ChatMessageList.vue'
 import ChatRunOptionsDialog from './ChatRunOptionsDialog.vue'
 import ChatThreadDrawer from './ChatThreadDrawer.vue'
@@ -925,7 +926,7 @@ async function handleCancelRun() {
   >
     <div
       v-if="isFocusMode"
-      class="flex items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white/95 px-3 py-2 shadow-sm dark:border-dark-800 dark:bg-dark-900/95"
+      class="flex items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-3 py-2 shadow-sm dark:border-dark-800 dark:bg-dark-900"
     >
       <div class="min-w-0 flex items-center gap-2">
         <div class="text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-400 dark:text-dark-500">
@@ -1012,14 +1013,6 @@ async function handleCancelRun() {
     />
 
     <StateBanner
-      v-if="!isFocusMode && hasBlockingInterrupt"
-      title="等待人工决策"
-      description="当前运行进入 interrupt 状态。先处理下面的中断面板，再继续和 agent 交互。"
-      variant="warning"
-      :compact="isSurfaceCompact"
-    />
-
-    <StateBanner
       v-if="!isFocusMode && workspace.isViewingBranch.value"
       title="当前正在查看历史分支"
       description="你现在看到的是某个 checkpoint 分支下的消息快照。继续发送、编辑或重试时，会基于这个分支重新生成新的对话路径。"
@@ -1052,12 +1045,12 @@ async function handleCancelRun() {
 
     <SurfaceCard
       v-else
-      class="relative flex min-h-0 flex-1 flex-col overflow-hidden p-0"
+      class="pw-chat-workspace p-0"
     >
       <div
         v-if="!isFocusMode"
-        class="relative shrink-0 px-4 md:px-5"
-        :class="workspaceHeaderCollapsed ? 'py-1' : 'border-b border-gray-100 py-2 dark:border-dark-800 md:py-2.5'"
+        class="pw-chat-workspace-header"
+        :class="workspaceHeaderCollapsed ? 'py-1' : ''"
       >
         <div class="flex h-8 items-center gap-3">
           <div
@@ -1188,13 +1181,13 @@ async function handleCancelRun() {
         <div class="relative flex min-h-0 flex-1 flex-col overflow-hidden">
           <div
             ref="messagesViewport"
-            class="min-h-0 flex-1 overflow-y-auto px-5 py-4 md:px-6 md:py-5"
+            class="pw-chat-stream"
             :class="isSurfaceCompact ? 'px-4 py-3 md:px-5 md:py-4' : ''"
             @scroll="handleMessagesScroll"
           >
             <div
               ref="messagesContent"
-              class="mx-auto flex min-h-full w-full max-w-[860px] flex-col justify-end"
+              class="pw-chat-stream-content"
             >
               <div
                 v-if="workspace.loadingThreadDetail.value && renderMessages.length === 0"
@@ -1230,6 +1223,33 @@ async function handleCancelRun() {
                 @select-previous-branch="messageActions.selectPreviousMessageBranch"
                 @select-next-branch="messageActions.selectNextMessageBranch"
                 @message-meta-expanded-change="handleMessageMetaExpandedChange"
+              />
+
+              <div
+                v-else
+                class="pw-chat-empty-state"
+              >
+                <span class="pw-chat-empty-mark">
+                  <BaseIcon
+                    name="chat"
+                    size="lg"
+                  />
+                </span>
+                <h2 class="mt-4 text-xl font-semibold text-gray-900 dark:text-white">
+                  {{ display.emptyTitle || '开始新的对话' }}
+                </h2>
+                <p class="mt-2 max-w-lg text-sm leading-7 text-gray-500 dark:text-dark-300">
+                  {{ display.emptyDescription || '输入任务目标后，Agent 会在这里展示回复、执行步骤与需要你确认的操作。' }}
+                </p>
+              </div>
+
+              <ChatInterruptPanel
+                v-if="hasBlockingInterrupt"
+                class="pw-chat-interrupt"
+                :interrupt="workspace.interruptPayload.value"
+                :submitting="workspace.sending.value"
+                :on-resume="workspace.resumeInterruptedRun"
+                :on-resume-all="workspace.resumeAllInterruptedRuns"
               />
             </div>
           </div>
@@ -1291,15 +1311,12 @@ async function handleCancelRun() {
         :attachments="composerAttachments"
         :is-running="workspace.sending.value"
         :has-blocking-interrupt="hasBlockingInterrupt"
-        :interrupt-payload="workspace.interruptPayload.value"
         :can-start-thread="workspace.canStartThread.value"
         :show-continue-action="false"
         :can-send-fresh-message="canSendFreshMessage"
         :cancelling="workspace.cancelling.value"
         send-button-label="发送消息"
         :last-event-at="workspace.lastEventAt.value"
-        :on-resume-interrupted-run="workspace.resumeInterruptedRun"
-        :on-resume-all-interrupted-runs="workspace.resumeAllInterruptedRuns"
         :compact="isSurfaceCompact"
         :focus-mode="isFocusMode"
         @send="handleSend"

@@ -60,7 +60,7 @@ function toggleExpanded() {
 <template>
   <div
     v-if="hasMetaSummary"
-    class="pw-panel-muted mt-4 px-3 py-3"
+    class="pw-chat-run-summary mt-0"
   >
     <button
       type="button"
@@ -76,8 +76,8 @@ function toggleExpanded() {
             hasFailedTool
               ? 'pw-pill-soft-danger'
               : hasPendingTool
-              ? 'pw-pill-soft-info'
-              : 'pw-pill-soft-success'
+                ? 'pw-pill-soft-info'
+                : 'pw-pill-soft-success'
           "
         >
           <span
@@ -100,8 +100,8 @@ function toggleExpanded() {
             hasFailedSubAgent
               ? 'pw-pill-soft-danger'
               : hasPendingSubAgent
-              ? 'pw-pill-soft-warning'
-              : 'pw-pill-soft-success'
+                ? 'pw-pill-soft-warning'
+                : 'pw-pill-soft-success'
           "
         >
           <span
@@ -129,7 +129,7 @@ function toggleExpanded() {
       </span>
     </button>
 
-    <div class="mt-3 flex items-start gap-2 text-xs leading-6 text-slate-500 dark:text-dark-300">
+    <div class="mt-2 flex items-start gap-2 text-xs leading-6 text-slate-500 dark:text-dark-300">
       <BaseIcon
         name="info"
         size="xs"
@@ -140,7 +140,7 @@ function toggleExpanded() {
 
     <div
       v-if="isExpanded"
-      class="mt-4 space-y-4 border-t border-slate-200/80 pt-4 dark:border-dark-700"
+      class="mt-3 space-y-4 border-t border-slate-200/80 pt-4 dark:border-dark-700"
     >
       <div
         v-if="metaView.toolCalls.length > 0"
@@ -170,8 +170,8 @@ function toggleExpanded() {
                 tool.status === 'error'
                   ? 'pw-pill-soft-danger'
                   : tool.status === 'pending'
-                  ? 'pw-pill-soft-info'
-                  : 'pw-pill-soft-success'
+                    ? 'pw-pill-soft-info'
+                    : 'pw-pill-soft-success'
               "
             >
               <span
@@ -249,8 +249,8 @@ function toggleExpanded() {
                 item.status === 'error'
                   ? 'pw-pill-soft-danger'
                   : item.status === 'pending'
-                  ? 'pw-pill-soft-warning'
-                  : 'pw-pill-soft-success'
+                    ? 'pw-pill-soft-warning'
+                    : 'pw-pill-soft-success'
               "
             >
               <span

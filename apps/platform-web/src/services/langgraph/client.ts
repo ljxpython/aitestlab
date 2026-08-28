@@ -36,6 +36,45 @@ function withAccessToken(init: RequestInit | undefined, accessToken: string): Re
   }
 }
 
+function requiresCommandIdempotencyKey(input: RequestInfo | URL, init?: RequestInit): boolean {
+  const method = (
+    init?.method ||
+    (input instanceof Request ? input.method : 'GET')
+  ).toUpperCase()
+  if (method !== 'POST') {
+    return false
+  }
+
+  const url = input instanceof Request ? input.url : input.toString()
+  return /^\/api\/langgraph\/threads\/[^/]+\/commands\/?$/.test(
+    new URL(url, 'http://localhost').pathname
+  )
+}
+
+function withCommandIdempotencyKey(
+  input: RequestInfo | URL,
+  init?: RequestInit
+): RequestInit | undefined {
+  if (!requiresCommandIdempotencyKey(input, init)) {
+    return init
+  }
+
+  const headers = new Headers(init?.headers)
+  if (!headers.has('Idempotency-Key')) {
+    headers.set(
+      'Idempotency-Key',
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? `run:${crypto.randomUUID()}`
+        : `run:${Date.now()}:${Math.random().toString(16).slice(2)}`
+    )
+  }
+
+  return {
+    ...init,
+    headers
+  }
+}
+
 export function createLanggraphAuthorizedFetch(options: LanggraphAuthorizedFetchOptions = {}) {
   const fetchImpl = options.fetchImpl ?? fetch
   const readAccessToken = options.getAccessToken ?? getAccessToken
@@ -44,9 +83,10 @@ export function createLanggraphAuthorizedFetch(options: LanggraphAuthorizedFetch
   const expireSession = options.onSessionExpired ?? handleSessionExpired
 
   return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const requestInit = withCommandIdempotencyKey(input, init)
     const initialToken =
       (await resolveAuthorizedAccessToken()).trim() || readAccessToken().trim()
-    const initialResponse = await fetchImpl(input, withAccessToken(init, initialToken))
+    const initialResponse = await fetchImpl(input, withAccessToken(requestInit, initialToken))
     if (initialResponse.status !== 401) {
       return initialResponse
     }
@@ -59,7 +99,7 @@ export function createLanggraphAuthorizedFetch(options: LanggraphAuthorizedFetch
       return initialResponse
     }
 
-    const retryResponse = await fetchImpl(input, withAccessToken(init, nextAccessToken))
+    const retryResponse = await fetchImpl(input, withAccessToken(requestInit, nextAccessToken))
     if (retryResponse.status === 401 && readStoredSession()) {
       expireSession()
     }

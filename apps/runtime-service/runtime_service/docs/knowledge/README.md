@@ -12,7 +12,8 @@
 6. `06-runtime-blueprint-pseudocode.md`
 7. `07-langgraph-ecosystem-repository-research.md`
 8. `09-langgraph-runtime-upgrade-and-event-migration.md`
-9. `08-streaming-protocols-and-future-events.md`（历史协议对照；与 09 冲突时以 09 为准）
+9. `10-production-agent-platform-roadmap.md`
+10. `08-streaming-protocols-and-future-events.md`（历史协议对照；与 09 冲突时以 09 为准）
 
 阅读目标：
 
@@ -25,6 +26,7 @@
 - 了解优秀 LangGraph 产品如何处理生产运行、显式工作流、动态工具和评测
 - 搞清楚本地流格式、远程 SSE 协议，以及子图和 HITL 的演进路径
 - 搞清楚官方 runtime 升级、普通流和 Protocol v2 事件流的分阶段迁移工作
+- 搞清楚生产级 Agent 平台的架构结论、演进阶段和逐项讨论顺序
 
 阅读完成后，再回头看这些活代码会更顺：
 

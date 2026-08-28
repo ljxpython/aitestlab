@@ -11,7 +11,6 @@ function mountComposer(overrides: Partial<ComposerProps> = {}) {
       attachments: [],
       isRunning: false,
       hasBlockingInterrupt: false,
-      interruptPayload: null,
       canStartThread: true,
       showContinueAction: false,
       canSendFreshMessage: false,
@@ -19,8 +18,6 @@ function mountComposer(overrides: Partial<ComposerProps> = {}) {
       sendButtonLabel: '发送消息',
       lastEventAt: '',
       compact: true,
-      onResumeInterruptedRun: async () => true,
-      onResumeAllInterruptedRuns: async () => true,
       'onUpdate:modelValue': () => undefined,
       ...overrides
     } as ComposerProps,

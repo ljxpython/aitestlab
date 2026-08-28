@@ -1,3 +1,4 @@
+/* finesse · register=product · shell=platform-chat-workspace · palette=platform-neutral+primary · density=7 · SOUL=5 SPECTACLE=2 */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -173,6 +174,91 @@
 
   .pw-chat-bubble {
     @apply rounded-2xl border px-4 py-3 shadow-sm;
+  }
+
+  .pw-chat-workspace {
+    @apply relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-gray-50/70 shadow-sm;
+    @apply dark:border-dark-800 dark:bg-dark-950/45;
+  }
+
+  .pw-chat-workspace-header {
+    @apply relative z-10 shrink-0 border-b border-gray-200/80 bg-white px-4 py-2 md:px-5;
+    @apply dark:border-dark-800 dark:bg-dark-900;
+  }
+
+  .pw-chat-stream {
+    @apply min-h-0 flex-1 overflow-y-auto px-5 py-5 md:px-7 md:py-6;
+  }
+
+  .pw-chat-stream-content {
+    @apply mx-auto flex min-h-full w-full max-w-[780px] flex-col justify-end;
+  }
+
+  .pw-chat-turn {
+    @apply flex flex-col gap-2;
+  }
+
+  .pw-chat-turn-heading {
+    @apply flex items-center gap-2 text-xs text-gray-500 dark:text-dark-300;
+  }
+
+  .pw-chat-agent-mark {
+    @apply inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary-50 text-primary-600;
+    @apply dark:bg-primary-950/35 dark:text-primary-200;
+  }
+
+  .pw-chat-agent-message {
+    @apply w-full border-transparent bg-transparent p-0 shadow-none;
+  }
+
+  .pw-chat-user-message {
+    @apply border-primary-200 bg-primary-50/80 text-primary-950;
+    @apply dark:border-primary-900/40 dark:bg-primary-950/25 dark:text-primary-50;
+  }
+
+  .pw-chat-system-message {
+    @apply border-gray-200 bg-white/80 text-gray-800;
+    @apply dark:border-dark-700 dark:bg-dark-900/75 dark:text-gray-200;
+  }
+
+  .pw-chat-run-rail {
+    @apply ml-3 mt-3 border-l border-gray-200 pl-5 dark:border-dark-700;
+  }
+
+  .pw-chat-run-summary {
+    @apply rounded-xl border border-gray-200 bg-white/80 px-3.5 py-3 shadow-none;
+    @apply dark:border-dark-700 dark:bg-dark-900/70;
+  }
+
+  .pw-chat-live-step {
+    @apply ml-3 flex items-center gap-3 border-l border-primary-200 py-1 pl-5 text-sm text-gray-500;
+    @apply dark:border-primary-900/45 dark:text-dark-300;
+  }
+
+  .pw-chat-live-dot {
+    @apply h-2 w-2 shrink-0 rounded-full bg-primary-500;
+  }
+
+  .pw-chat-interrupt {
+    @apply mt-5;
+  }
+
+  .pw-chat-composer-wrap {
+    @apply shrink-0 px-4 pb-4 pt-2 md:px-5 md:pb-5;
+  }
+
+  .pw-chat-composer {
+    @apply mx-auto w-full max-w-[812px] rounded-[22px] border border-gray-200 bg-white px-3 py-2.5 shadow-sm;
+    @apply dark:border-dark-700 dark:bg-dark-900;
+  }
+
+  .pw-chat-empty-state {
+    @apply mx-auto flex w-full max-w-[680px] flex-1 flex-col items-center justify-center pb-16 text-center;
+  }
+
+  .pw-chat-empty-mark {
+    @apply inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-primary-50 text-primary-600;
+    @apply dark:bg-primary-950/35 dark:text-primary-200;
   }
 
   .btn,
