@@ -12,6 +12,7 @@ from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_core.tools import BaseTool
 from langgraph.pregel import Pregel
 
+from runtime_service.observability import with_langfuse_tracing
 
 class _DemoChatModel(FakeListChatModel):
     def bind_tools(
@@ -42,7 +43,7 @@ async def get_agent(config: RunnableConfig) -> Pregel:
     bound_configurable = dict(bound_config.get("configurable") or {})
     bound_configurable.pop("_runtime_model", None)
     bound_config["configurable"] = bound_configurable
-    return agent.with_config(bound_config)
+    return with_langfuse_tracing(agent, bound_config, graph_id="backend_demo")
 
 
 __all__ = ["get_agent"]

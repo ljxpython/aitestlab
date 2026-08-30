@@ -39,7 +39,7 @@ R0 新包和启动基线
   -> P1 Platform 控制面和配置快照整合
 ```
 
-当前已完成 R0、R1、R2、R3 和 R4，并通过各阶段门槛；当前阶段为 R5 可观测与事件投影准备。任何后续阶段的代码、Demo
+当前已完成 R0、R1、R2、R3 和 R4，并通过各阶段门槛；当前阶段为 R5 Runtime 可观测准备。任何后续阶段的代码、Demo
 或 Platform 整合不得提前实施；Demo 按本计划第 13 节随所属阶段进入。
 
 R0～R6 完成前不改 Platform 业务代码。P1 不是 Runtime 的前置条件，而是 Runtime 已经可以
@@ -57,7 +57,7 @@ R0～R6 完成前不改 Platform 业务代码。P1 不是 Runtime 的前置条�
 | R2 | [11 Service 目录规范](./11-agent-service-directory-architecture.md)、[13 目标目录](./13-runtime-service-target-code-layout.md) | [12 本地调试](./12-runtime-context-and-local-debug-architecture.md)、[24 启停设计](./24-package-langgraph-startup-shutdown-design.md)、[14 Contracts](./14-runtime-contracts-and-resolution-design.md) | `get_agent()` 组合根、`create_agent`、`StateGraph` 和 Demo 模板 |
 | R3 | [15 Middleware 生命周期](./15-runtime-middleware-lifecycle-and-failure-semantics.md) | [14 Contracts](./14-runtime-contracts-and-resolution-design.md)、[16 可观测设计](./16-runtime-observability-and-langfuse-design.md)、[25 测试契约](./25-runtime-testing-and-cross-service-contract-design.md) | 顺序、异常传播、超时、取消、重试和清理 |
 | R4 | [19 Tool/MCP/副作用](./19-runtime-tool-capability-mcp-and-side-effect-design.md)、[20 Backend/Workspace/Skills/Subagents](./20-runtime-backend-workspace-skills-and-subagents-design.md) | [11 Service 目录规范](./11-agent-service-directory-architecture.md)、[23 生命周期](./23-graph-thread-backend-checkpoint-lifecycle-design.md)、[14 Contracts](./14-runtime-contracts-and-resolution-design.md) | 显式工具装配、权限隔离、资源生命周期和子 Agent |
-| R5 | [16 可观测与 Langfuse](./16-runtime-observability-and-langfuse-design.md)、[18 事件与 Run Explorer](./18-open-swe-to-runtime-event-and-run-explorer-design.md) | [15 Middleware 生命周期](./15-runtime-middleware-lifecycle-and-failure-semantics.md)、[22 Platform/Runtime 契约](./22-platform-runtime-contract-design.md)、[25 测试契约](./25-runtime-testing-and-cross-service-contract-design.md) | Trace、日志、指标、脱敏和 Run Event 投影 |
+| R5 | [16 可观测与 Langfuse](./16-runtime-observability-and-langfuse-design.md) | [15 Middleware 生命周期](./15-runtime-middleware-lifecycle-and-failure-semantics.md)、[25 测试契约](./25-runtime-testing-and-cross-service-contract-design.md) | Runtime Trace、日志、指标、脱敏和 fail-soft |
 | R6 | [23 Graph/Thread/Checkpoint 生命周期](./23-graph-thread-backend-checkpoint-lifecycle-design.md)、[24 启停设计](./24-package-langgraph-startup-shutdown-design.md)、[25 测试契约](./25-runtime-testing-and-cross-service-contract-design.md) | [18 事件与 Run Explorer](./18-open-swe-to-runtime-event-and-run-explorer-design.md)、[22 Platform/Runtime 契约](./22-platform-runtime-contract-design.md) | Durable Run、恢复、重连、重启和终态收敛 |
 | P1 | [22 Platform/Runtime 契约](./22-platform-runtime-contract-design.md)、[27 分阶段整合](./27-platform-runtime-integration-phased-design.md) | [10 总路线](./10-production-agent-platform-roadmap.md)、[18 事件与 Run Explorer](./18-open-swe-to-runtime-event-and-run-explorer-design.md)、[25 测试契约](./25-runtime-testing-and-cross-service-contract-design.md) | 配置快照、Gateway、权限、幂等和跨服务契约 |
 
@@ -200,7 +200,7 @@ R4 同时完成三个能力 Demo：`deep_agent_demo`、`mcp_demo`、`backend_dem
 - Backend 失败不静默切换目录；
 - Thread、Workspace、Checkpoint 的恢复和清理有真实测试。
 
-## 8. R5：观测和事件投影
+## 8. R5：Runtime 可观测
 
 ### 目标
 
@@ -211,13 +211,14 @@ R4 同时完成三个能力 Demo：`deep_agent_demo`、`mcp_demo`、`backend_dem
 - Langfuse Trace：模型、Tool、Subagent 和 Graph span；
 - 结构化 Service 日志：`request_id`、`thread_id`、`run_id`、错误码和耗时；
 - Runtime 指标：成功、失败、超时、取消、Tool 错误、Token 和恢复次数；
-- 向 Platform 投影的安全 Run Event，不包含 Secret、完整 Prompt 或 Tool 参数。
+- 安全 metadata 脱敏和 Langfuse fail-soft 验证；
+- Run Event 投影和 Run Explorer 不属于 Runtime R5，留给后续 Platform 变更。
 
 ### 门槛
 
 - Langfuse 不可用不影响 Run 核心状态；
 - 每次 Run 可定位 Graph、Model、Tool、Checkpoint 和终态；
-- 日志和事件经过脱敏和大小限制。
+- 日志和 Trace metadata 经过脱敏和大小限制。
 
 ## 9. R6：Durable Run 真实验证
 
@@ -367,7 +368,7 @@ R1  让 Demo 统一使用 Contracts/Auth/Resolver/Modeling 的调用样例
 R2  实现 reference_agent 和 workflow_demo
 R3  将公共 Middleware、错误和 Trace 接入前两个 Demo
 R4  实现 deep_agent_demo、mcp_demo 和 backend_demo
-R5  为五个 Demo 增加日志、指标、事件和脱敏验证
+R5  为五个 Demo 增加 Trace、日志、指标和脱敏验证
 R6  对 reference_agent、workflow_demo 做必需 Durable E2E，其余做能力专项 E2E
 ```
 

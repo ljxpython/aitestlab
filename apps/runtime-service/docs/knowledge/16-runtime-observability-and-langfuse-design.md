@@ -16,6 +16,9 @@
 > 暂不展开：Langfuse 基础设施部署清单、跨服务 OpenTelemetry parent 传播、平台内嵌 Trace UI、
 > 动态采样和告警规则实现
 
+> R5 实施边界：以 `openspec/changes/runtime-service-r5-observability/` 为准。本阶段只实现
+> `LANGFUSE_ENABLED` 开关和 metadata 采集；正文采集、多模式 exporter 与 Platform 查询不在本阶段。
+
 ## 1. 本轮结论
 
 Runtime Service 使用 Langfuse 作为 Agent 工程 Trace Backend，但 Langfuse 不是整个平台的
@@ -152,7 +155,7 @@ async def get_agent(config: RunnableConfig) -> Pregel:
 
 `with_langfuse_tracing()` 必须满足：
 
-- `LANGFUSE_CAPTURE_MODE=off` 时原样返回 graph；
+- `LANGFUSE_ENABLED` 非 `true` 时原样返回 graph；
 - 保留并合并已有 callbacks、metadata 和 tags，禁止覆盖调用方配置；
 - 不创建 graph，不选择 Model、Prompt、Tool、Skill、Backend 或 Subagent；
 - 不读取业务数据库，不验 JWT，不把 Trace metadata 当作授权输入；
@@ -265,19 +268,23 @@ Trace。该能力不进入首期实现。
 
 ## 7. 数据采集与隐私
 
-使用单一部署级模式：
+R5 使用单一部署级 metadata 模式，配置沿用运行时 `.env`：
 
 ```text
-LANGFUSE_CAPTURE_MODE=off | metadata | content
+LANGFUSE_ENABLED=false
+LANGFUSE_PUBLIC_KEY=...
+LANGFUSE_SECRET_KEY=...
+LANGFUSE_BASE_URL=...
+LANGFUSE_TRACING_ENVIRONMENT=...
 ```
 
 规则：
 
-- 默认 `off`，未显式配置时不初始化 Langfuse；
-- 生产部署必须显式使用 `metadata`；
-- `content` 只允许受控开发环境显式开启；
+- `LANGFUSE_ENABLED` 未显式设置为 `true` 时不初始化 Langfuse；
+- 显式启用但 key 或 base URL 缺失时，lifespan 初始化失败；
+- R5 不实现 `content` 采集。未来如需开放正文采集，必须另起变更；
 - 该配置来自 env/secret deployment，不进入 `RuntimeContext`、Assistant 或 Run payload；
-- 生产的 `metadata` 模式在导出边界直接丢弃完整 input/output，不把脱敏正则当作唯一 DLP。
+- metadata 在导出边界直接丢弃完整 input/output，不把脱敏正则当作唯一 DLP。
 
 ### 7.1 metadata 模式记录
 
@@ -302,8 +309,8 @@ Open SWE 的 key/pattern 脱敏可以作为纵深防御，但无法识别所有�
 
 ### 8.1 启动
 
-- `off`：不导入或初始化 Langfuse Client；
-- `metadata/content` 且 key、base URL 等必填配置缺失：启动失败；
+- `LANGFUSE_ENABLED` 非 `true`：不导入或初始化 Langfuse Client；
+- 显式启用且 key、base URL 等必填配置缺失：启动失败；
 - 不用启动网络探测决定服务是否可用，避免 Langfuse 短暂不可达阻止 Runtime 启动；
 - Client 在应用 lifespan 中初始化一次，不在每个 Run 重建。
 

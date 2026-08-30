@@ -41,6 +41,23 @@ uv sync --frozen
 不要把 API Key 写入 `.env.example`、测试 fixture、日志或 OpenSpec。缺少真实模型凭据时，
 真实 E2E 必须报告未执行或失败，不能自动降级为 fake model。
 
+### Langfuse 可观测（R5）
+
+Runtime 默认不初始化 Langfuse。需要本地 Trace 时，在被 `langgraph.json` 和
+`langgraph.demo.json` 引用的 `.env` 中显式设置：
+
+```text
+LANGFUSE_ENABLED=true
+LANGFUSE_PUBLIC_KEY=<由部署环境提供>
+LANGFUSE_SECRET_KEY=<由部署环境提供>
+LANGFUSE_BASE_URL=<Langfuse 服务地址>
+LANGFUSE_TRACING_ENVIRONMENT=local
+```
+
+`LANGFUSE_ENABLED` 不是 `true` 时完全关闭；显式开启但缺少必填配置会在启动/首次构图时失败。
+R5 只发送脱敏 metadata，不发送完整 Prompt、模型响应、Tool 参数或凭据。`.env` 已被 Git 忽略，
+不要提交真实值。
+
 ## 本地启动
 
 从本目录执行：
