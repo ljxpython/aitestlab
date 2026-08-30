@@ -58,10 +58,11 @@
 21  Agent、Graph、Prompt、Tool Policy 版本与发布治理（延期）
 22  Platform API / Runtime Service JSON、错误、事件、幂等和权限契约
 23  Graph、Thread、Backend 与 Checkpoint 生命周期
-  24  Package、langgraph.json、启动与优雅退出
-  25  Runtime 测试目录、测试分层与跨服务契约测试
-  26  Runtime Custom Route 与模型配置边界
-  27  Platform API 与 Runtime Service 分阶段整合设计
+24  Package、langgraph.json、启动与优雅退出
+25  Runtime 测试目录、测试分层与跨服务契约测试
+26  Runtime Custom Route 与模型配置边界
+27  Platform API 与 Runtime Service 分阶段整合设计
+28  Runtime 绿色重构开发计划、Demo 和阶段门槛
 ```
 
 当前状态统一解释为：
@@ -295,18 +296,21 @@ factory 的理由。
 
 ## 6. 分阶段路线
 
-阶段按 `0 -> 1 -> 2 -> 3 -> 4` 推进。每一阶段先讨论并冻结最小契约，再实现，再提供该边界的
-证据；不把五个阶段塞进一次大重构。阶段与五条主线的关系如下：
+阶段按 `R0 -> R1 -> R2 -> R3 -> R4 -> R5 -> R6 -> P1` 推进。每一阶段先讨论并冻结最小契约，
+再实现并提供该边界的证据；不把所有能力塞进一次大重构。具体交付物和门槛以 28 号开发计划为准。
 
 | 阶段 | 目标 | 覆盖主线 | 当前状态 |
 | --- | --- | --- | --- |
-| 0 | Runtime Service 基座、Context、Contracts、Platform/Runtime JSON 契约 | Runtime 基座、控制面/执行面契约 | 原则已讨论，公共 API 待冻结 |
-| 1 | 公共 Middleware 可靠性内核 | Middleware 生命周期、失败语义 | 顺序已讨论，具体 API/测试待冻结 |
-| 2 | Durable Run、事件和可恢复流 | Platform/Runtime 契约、Run Explorer | 事件模型已讨论，投递/Schema/API 待冻结 |
-| 3 | Tool 显式装配、Capability、MCP、Backend、Workspace、Skills、Subagents | 能力和资源隔离 | 方案已讨论，具体 Service API 和资源恢复测试待冻结 |
-| 4 | Trace、日志、指标、成本、评测和发布 | 观测与质量门槛 | Trace 边界已讨论，成本/评测/SLO 待冻结 |
+| R0 | Runtime Service 基座与启动 | Runtime 基座 | 已完成并归档 |
+| R1 | Runtime Contracts、Auth、Resolver、Modeling | 运行时契约 | 已完成并归档 |
+| R2 | Agent Service 组合根和 Demo | Agent Service | 已完成并归档 |
+| R3 | Middleware 可靠性栈 | Middleware 生命周期 | 已完成并归档 |
+| R4 | Tool、MCP、Backend、Workspace、Skills、Subagents | 能力和资源隔离 | 已完成并归档 |
+| R5 | Trace、日志、指标和 Langfuse | 观测与排查 | 已完成并归档 |
+| R6 | Durable Run 真实部署验证 | 恢复、重连、重启和终态 | 规划中 |
+| P1 | Platform 控制面整合 | 配置快照、Gateway、权限和跨服务契约 | R6 通过后再开始 |
 
-阶段 0～4 不是五套 Agent 架构，而是同一个 Runtime Service 内核的依赖顺序。所有 Agent
+R0～R6/P1 不是多套 Agent 架构，而是同一个 Runtime Service 内核的依赖顺序。所有 Agent
 最终都使用同一套 Context、Middleware、Capability 和观测契约。可运行 Demo 的覆盖矩阵和实现
 时点统一维护在 28 号开发计划的“可运行 Demo 计划”章节。
 

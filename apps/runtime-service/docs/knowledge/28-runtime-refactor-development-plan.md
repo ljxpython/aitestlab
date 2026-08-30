@@ -2,7 +2,7 @@
 
 > 文档类型：Draft
 >
-> 状态：R0、R1、R2、R3、R4 已实施并归档；下一阶段为 R5
+> 状态：R0、R1、R2、R3、R4、R5 已实施并归档；当前进入 R6 规划
 >
 > 适用范围：`apps/runtime-service`，以及后续最短的 `platform-api` 整合链路
 >
@@ -39,8 +39,8 @@ R0 新包和启动基线
   -> P1 Platform 控制面和配置快照整合
 ```
 
-当前已完成 R0、R1、R2、R3 和 R4，并通过各阶段门槛；当前阶段为 R5 Runtime 可观测准备。任何后续阶段的代码、Demo
-或 Platform 整合不得提前实施；Demo 按本计划第 13 节随所属阶段进入。
+当前已完成 R0、R1、R2、R3、R4 和 R5，并通过各阶段门槛；当前阶段为 R6 Durable Run 真实部署验证规划。
+任何后续阶段的代码、Demo 或 Platform 整合不得提前实施；Demo 按本计划第 13 节随所属阶段进入。
 
 R0～R6 完成前不改 Platform 业务代码。P1 不是 Runtime 的前置条件，而是 Runtime 已经可以
 独立运行后的第二条工作流。
@@ -200,7 +200,7 @@ R4 同时完成三个能力 Demo：`deep_agent_demo`、`mcp_demo`、`backend_dem
 - Backend 失败不静默切换目录；
 - Thread、Workspace、Checkpoint 的恢复和清理有真实测试。
 
-## 8. R5：Runtime 可观测
+## 8. R5：Runtime 可观测（已完成）
 
 ### 目标
 
@@ -220,7 +220,7 @@ R4 同时完成三个能力 Demo：`deep_agent_demo`、`mcp_demo`、`backend_dem
 - 每次 Run 可定位 Graph、Model、Tool、Checkpoint 和终态；
 - 日志和 Trace metadata 经过脱敏和大小限制。
 
-## 9. R6：Durable Run 真实验证
+## 9. R6：Durable Run 真实验证（规划中）
 
 ### 目标
 
