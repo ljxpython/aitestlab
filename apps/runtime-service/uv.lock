@@ -1175,7 +1175,7 @@ inmem = [
 [[package]]
 name = "langgraph-open-teach"
 version = "0.1.2"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "deepagents" },
     { name = "fastapi" },

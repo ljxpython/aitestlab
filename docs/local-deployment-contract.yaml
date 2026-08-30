@@ -189,7 +189,7 @@ services:
                   api_key: <your_api_key>
     start:
       workdir: apps/runtime-service
-      command: uv run langgraph dev --config runtime_service/langgraph.json --port 8123 --no-browser
+      command: uv run langgraph dev --config langgraph.json --port 8123 --no-browser
     health_checks:
       - curl -H "x-api-key: $PLATFORM_RUNTIME_MANAGEMENT_API_KEY" http://127.0.0.1:8123/info
       - curl -H "x-api-key: $PLATFORM_RUNTIME_MANAGEMENT_API_KEY" http://127.0.0.1:8123/internal/capabilities/models

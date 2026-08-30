@@ -169,7 +169,7 @@
 ### 5.3 当前仓库的设计落点原则
 
 - 仓库级规则：进根目录 `docs/`
-- Runtime 范式：进 `apps/runtime-service/runtime_service/docs/standards/`
+- Runtime 范式：进 `apps/runtime-service/docs/knowledge/`；新 `docs/standards/` 将按绿色重构重新生成
 - Runtime 学习资料：进 `apps/runtime-service/runtime_service/docs/knowledge/`
 - Runtime 排障：进 `apps/runtime-service/runtime_service/docs/runbooks/`
 - 仓库级思想方法：进根目录 `docs/knowledge/`

@@ -101,7 +101,7 @@ Verification plan: 运行相关 lint/typecheck；检查目标页面桌面和移�
 Locus: apps/runtime-service
 Affected chain: runtime-service 内部 resolver -> 调用方
 Standards loaded:
-  - apps/runtime-service/runtime_service/docs/standards/02-architecture.md
+  - apps/runtime-service/docs/knowledge/28-runtime-refactor-development-plan.md
   - 与该 resolver 所属模块最相关的 leaf playbook
 Band: B1 Local
 Verification plan: 先写/运行复现空值的局部测试；再运行 resolver 相关测试

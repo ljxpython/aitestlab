@@ -1,0 +1,151 @@
+- generic [ref=e3]:
+  - complementary "项目与会话" [ref=e4]:
+    - generic [ref=e9]:
+      - strong [ref=e10]: Agent Platform
+      - generic [ref=e11]: Trial workspace
+    - button "切换项目" [ref=e12] [cursor=pointer]:
+      - generic [ref=e13]: A
+      - generic [ref=e14]:
+        - strong [ref=e15]: Agent Platform
+        - generic [ref=e16]: 知识库验证项目
+    - button "新建试用会话" [ref=e19] [cursor=pointer]
+    - textbox "搜索会话" [ref=e26]
+    - navigation "试用会话列表" [ref=e27]:
+      - paragraph [ref=e28]: 进行中
+      - button "测试需求文档生成 Testcase Agent · 刚刚" [ref=e29] [cursor=pointer]:
+        - generic [ref=e31]:
+          - strong [ref=e32]: 测试需求文档生成
+          - generic [ref=e33]: Testcase Agent · 刚刚
+      - button "订单表字段说明 SQL Agent · 12 分钟前" [ref=e38] [cursor=pointer]:
+        - generic [ref=e40]:
+          - strong [ref=e41]: 订单表字段说明
+          - generic [ref=e42]: SQL Agent · 12 分钟前
+      - paragraph [ref=e43]: 最近使用
+      - button "知识库检索策略 Research Agent · 昨天" [ref=e44] [cursor=pointer]:
+        - generic [ref=e46]:
+          - strong [ref=e47]: 知识库检索策略
+          - generic [ref=e48]: Research Agent · 昨天
+      - button "登录流程边界整理 Testcase Agent V2 · 周一" [ref=e49] [cursor=pointer]:
+        - generic [ref=e51]:
+          - strong [ref=e52]: 登录流程边界整理
+          - generic [ref=e53]: Testcase Agent V2 · 周一
+    - generic [ref=e54]:
+      - button "在控制面中管理" [ref=e55] [cursor=pointer]
+      - button "试用说明" [ref=e64] [cursor=pointer]
+  - banner [ref=e69]:
+    - generic [ref=e71]:
+      - paragraph [ref=e72]: 试用入口 · Testcase Agent
+      - heading "测试需求文档生成" [level=1] [ref=e73]
+    - generic [ref=e74]:
+      - generic [ref=e75]:
+        - generic [ref=e79]: 选择目标
+        - combobox "选择目标" [ref=e80]:
+          - option "Testcase Agent" [selected]
+          - option "SQL Agent"
+          - option "Testcase Agent V2"
+      - generic [ref=e81]: 运行中
+      - button "切换到深色主题" [ref=e83] [cursor=pointer]
+      - button "收起检查面板" [pressed] [ref=e86] [cursor=pointer]
+  - main "Agent 运行时间线" [ref=e90]:
+    - generic [ref=e91]: 试用界面只展示本地样例，不会提交任务或访问项目数据。
+    - generic [ref=e96]:
+      - generic [ref=e98]:
+        - paragraph [ref=e99]: 请读取这份需求文档，先整理关键业务流程，再给出第一批测试用例草案。
+        - generic [ref=e100]: 你 · 刚刚
+      - region "Agent 当前运行" [ref=e101]:
+        - generic [ref=e107]:
+          - strong [ref=e108]: Testcase Agent
+          - paragraph [ref=e109]:
+            - text: Run
+            - generic [ref=e110]: run_trial_27
+            - text: ·
+            - generic [ref=e111]: 运行中
+        - paragraph [ref=e114]: 已读取需求文档，正在把业务规则与边界条件整理为可审阅的测试场景。
+        - generic [ref=e115]:
+          - article [ref=e116]:
+            - generic [ref=e121]:
+              - generic [ref=e122]:
+                - strong [ref=e123]: 读取需求文档
+                - generic [ref=e124]: 完成于 8 秒前
+              - paragraph [ref=e125]: 识别到业务流程、角色和关键字段。
+            - img "已完成" [ref=e126]
+          - article [ref=e128]:
+            - generic [ref=e133]:
+              - generic [ref=e134]:
+                - strong [ref=e135]: 提取业务规则
+                - generic [ref=e136]: 完成于 3 秒前
+              - paragraph [ref=e137]: 已整理登录、下单、取消与退款的主要分支。
+            - img "已完成" [ref=e138]
+          - article [ref=e140]:
+            - generic:
+              - generic:
+                - strong: 确认生成范围
+                - generic [ref=e145]: 需要审阅
+              - paragraph: 发现涉及退款的高风险路径，等待你确认范围。
+            - generic "正在执行" [ref=e146]
+          - article [ref=e147]:
+            - generic [ref=e152]:
+              - generic [ref=e153]:
+                - strong [ref=e154]: 生成测试用例
+                - generic [ref=e155]: 等待
+              - paragraph [ref=e156]: 等待范围确认后执行。
+            - generic "等待执行" [ref=e157]
+      - region "等待审阅" [ref=e158]:
+        - generic [ref=e163]:
+          - paragraph [ref=e164]: 需要你确认
+          - heading "把退款与取消路径纳入第一批用例？" [level=2] [ref=e165]
+          - paragraph [ref=e166]: 这会增加高风险边界场景，生成结果会标明需要人工复核的规则。
+          - link "查看依据：步骤 02 的业务规则" [ref=e167] [cursor=pointer]:
+            - /url: "#evidence"
+        - generic [ref=e168]:
+          - button "改一下" [ref=e169] [cursor=pointer]
+          - button "拒绝" [ref=e170] [cursor=pointer]
+          - button "批准并继续" [ref=e171] [cursor=pointer]
+    - generic [ref=e173]:
+      - generic [ref=e174]:
+        - button "添加附件" [ref=e175] [cursor=pointer]
+        - generic [ref=e179]: Testcase Agent
+        - button "运行选项" [ref=e183] [cursor=pointer]
+      - textbox "补充任务说明，或在审阅后继续对话" [ref=e187]
+      - generic [ref=e188]:
+        - generic [ref=e189]: Ctrl + Enter
+        - button "停止" [ref=e190] [cursor=pointer]
+        - button "发送消息" [disabled] [ref=e193]
+  - complementary "运行检查面板" [ref=e197]:
+    - generic [ref=e198]:
+      - generic [ref=e199]:
+        - paragraph [ref=e200]: 当前线程
+        - heading "运行检查" [level=2] [ref=e201]
+      - button "关闭检查面板" [ref=e202] [cursor=pointer]
+    - tablist "运行信息" [ref=e206]:
+      - tab "运行" [selected] [ref=e207] [cursor=pointer]
+      - tab "计划" [ref=e210] [cursor=pointer]
+      - tab "文件" [ref=e214] [cursor=pointer]
+      - tab "历史" [ref=e217] [cursor=pointer]
+    - generic [ref=e222]:
+      - region "运行状态" [ref=e223]:
+        - generic [ref=e224]:
+          - generic [ref=e225]: 运行中
+          - generic [ref=e227]: 试用样例
+        - heading "文档解析与用例草案" [level=3] [ref=e228]
+        - paragraph [ref=e229]: Testcase Agent 正在把需求文档转为可审阅的用例集合。
+        - generic [ref=e230]:
+          - generic [ref=e231]:
+            - term [ref=e232]: 当前阶段
+            - definition [ref=e233]: 等待范围确认
+          - generic [ref=e234]:
+            - term [ref=e235]: 运行编号
+            - definition [ref=e236]: run_trial_27
+      - generic [ref=e237]:
+        - heading "受控上下文" [level=3] [ref=e239]
+        - generic [ref=e243]:
+          - generic [ref=e247]: 需求说明_v3.pdf
+          - generic [ref=e248]: 已读取
+        - generic [ref=e249]:
+          - generic [ref=e252]: 测试用例工具
+          - generic [ref=e253]: 允许
+      - generic [ref=e254]:
+        - generic [ref=e255]:
+          - heading "试用额度" [level=3] [ref=e256]
+          - generic [ref=e257]: 样例数据
+        - paragraph [ref=e260]: 本次运行的消耗和限制会在接入后端后显示在这里。

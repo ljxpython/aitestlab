@@ -257,7 +257,7 @@ scripts/dev-down.sh
 
 ```bash
 cd apps/runtime-service
-uv run langgraph dev --config runtime_service/langgraph.json --port 8123 --no-browser
+uv run langgraph dev --config langgraph.json --port 8123 --no-browser
 ```
 
 如果你在本地调试依赖 Deep Agents 文件后端/skills 的 graph，按该应用 README 的说明带 `--allow-blocking`。

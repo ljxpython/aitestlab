@@ -244,11 +244,11 @@ Repo 级 Harness 要解决的是：
 
 当前应重点看这些内容：
 
-- `apps/runtime-service/runtime_service/docs/standards/`
+- `apps/runtime-service/docs/knowledge/`
 - `apps/runtime-service/runtime_service/docs/knowledge/`
 - `apps/runtime-service/runtime_service/docs/runbooks/`
 - `apps/runtime-service/runtime_service/tests/harness/`
-- `apps/runtime-service/runtime_service/langgraph.json`
+- `apps/runtime-service/langgraph.json`
 
 它的核心目标不是“graph 能跑”，而是：
 

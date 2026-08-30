@@ -1,192 +1,133 @@
-# langgraph-agent-studio
+# Runtime Service
 
-文档类型：`Current App Overview`
-
-`apps/runtime-service` 是当前正式架构里的 runtime 执行层，也是仓库总哲学 `AI Harness` 下的智能体开发主战场。
-
-当前正式主链里，它的位置是：
+`apps/runtime-service` 是 LangGraph、LangChain 和 DeepAgents 的执行层。当前按绿色重构开发，
+新代码唯一位于：
 
 ```text
-platform-web -> platform-api -> runtime-service
-runtime-service -> interaction-data-service
-runtime-web -> runtime-service   (optional debug path)
+apps/runtime-service/src/runtime_service/
 ```
 
-如果你要先理解仓库级正式链路与本地 bring-up 口径，先看：
+旧 `runtime_service/` 包已经归档到 `archive/apps/runtime-service/runtime_service/`，不再导入、
+适配或维护。
 
-- `docs/local-deployment-contract.yaml`
-- `docs/local-dev.md`
-- `docs/deployment-guide.md`
-- `docs/development-paradigm.md`
+## R0 基线
 
-如果你要理解 `runtime-service` 自己的内部范式和 graph/runtime 资料，再回到本目录与 `runtime_service/docs/**`。
+R0 当前提供两个参考入口：
 
-## 开发范式入口
+- `reference_agent`：`create_agent` + fake model
+- `workflow_demo`：Typed `StateGraph` + 确定性节点
 
-跨应用统一开发方式先看根文档：
+生产配置 `langgraph.json` 只注册 `reference_agent`；本地学习配置
+`langgraph.demo.json` 注册两个 Demo。每个 Service 的正式入口都是：
 
-- `docs/development-paradigm.md`
+```python
+async def get_agent(config: RunnableConfig) -> Pregel:
+    ...
+```
 
-对 `runtime-service` 来说，最重要的执行原则是：
-
-1. 智能体开发主战场在这里，先把 graph / prompt / tools / middleware 做通
-2. 先在低依赖层做真实验证，再决定要不要接平台页面
-3. 关键链路优先用真实模型、真实文件、真实下游服务验证，不要用 mock 掩盖问题
-4. 如果模型会口头声称成功，必须再查真实 tool call 和远端结果，不能只信最终回复
-5. 平台真实链路下，受信上下文由 `platform-api` 注入，运行时服务不再自己发明透传规则
-
-## 0) 前置说明（必读）
-
-本项目运行前需要先把两处配置准备好：
-
-- `runtime_service/.env`：运行时环境变量（由 `runtime_service/langgraph.json` 自动加载）
-- `runtime_service/conf/settings.yaml`：模型组配置（模型 provider / model / base_url / api_key）
-
-### 0.1 配置 `runtime_service/.env`
-
-1) 从模板复制：
+## 安装和配置
 
 ```bash
-cp runtime_service/.env.example runtime_service/.env
+uv sync --frozen
 ```
 
-2) 至少确认以下变量已填写：
+真实模型 E2E 使用项目根 `.env`。该文件已加入 Git 忽略，变量从本机
+`~/.my_best/.env` 注入：
 
-- `APP_ENV`：环境名（如 `test` / `production`），用于选择 `settings.yaml` 的环境块
+- `DEEPSEEK_PROXY_URL`、`DEEPSEEK_PROXY_API_KEY`、`DEEPSEEK_PROXY_DEFAULT_MODEL`：文本模型
+- `GPT_PROXY_URL`、`GPT_PROXY_API_KEY`、`GPT_PROXY_DEFAULT_MODEL`：多模态模型
+- `RUNTIME_E2E=1`：显式开启真实模型 E2E
 
-`MODEL_ID` 使用规则：
-
-- 留空或不设置：使用 `runtime_service/conf/settings.yaml` 当前环境块里的 `default_model_id`
-- 显式设置：覆盖默认模型；值必须在 `runtime_service/conf/settings.yaml` 的 `models` 中存在
-
-建议默认先留空，只有明确要覆盖默认模型时再填写，避免本地 `.env` 长期残留旧的 model id。
-
-可选（按需启用）：
-
-- `SYSTEM_PROMPT`：运行时覆盖 prompt。若未设置，则由各个 graph 自己回退到业务默认提示词
-- `MULTIMODAL_PARSER_MODEL_ID`：共享 `MultimodalMiddleware` 的附件解析模型默认值；未显式覆盖 `parser_model_id` 的 graph 会使用它
-  - 当前容器化基线默认值：`gpt_5.4-ccr`
-- `ENABLE_TOOLS`：公共工具池总开关
-- `TOOLS`：公共工具白名单（逗号分隔，支持本地工具与 `mcp:<server>`）
-
-若你需要 OAuth 鉴权（Supabase），还需在 `.env` 中准备：
-
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_KEY`
-- 可选：`SUPABASE_TIMEOUT_SECONDS`
-
-并使用带鉴权配置启动：`--config runtime_service/langgraph_auth.json`。
-
-### 0.2 配置 `runtime_service/conf/settings.yaml`
-
-配置加载逻辑在 `runtime_service/conf/settings.py`：会先读 `settings.yaml`，再叠加 `settings.local.yaml`（本地覆写）。
-
-建议从模板开始：
-
-```bash
-cp runtime_service/conf/settings.yaml.example runtime_service/conf/settings.yaml
-```
-
-最小可运行要求：
-
-- `default.default_model_id`：默认模型组 id
-- `default.models.<model_id>`：每个模型组必须包含以下四个字段：
-  - `model_provider`
-  - `model`
-  - `base_url`
-  - `api_key`
-
-说明：运行时可以显式传/设置 `MODEL_ID`，也可以直接使用 `default_model_id`；模型四元组由 `settings.yaml` 统一映射。
-
-安全建议：真实 `api_key` / 内网 `base_url` 建议放在 `settings.local.yaml` 做本地覆写，避免提交到仓库。
-
-### 0.3 更多文档（推荐）
-
-推荐按下面顺序阅读：
-
-1. `runtime_service/docs/README.md`
-2. `runtime_service/docs/02-architecture.md`
-3. `runtime_service/agents/assistant_agent/graph.py`
-
-更完整的开发/验证说明见：`runtime_service/docs/README.md`。
+不要把 API Key 写入 `.env.example`、测试 fixture、日志或 OpenSpec。缺少真实模型凭据时，
+真实 E2E 必须报告未执行或失败，不能自动降级为 fake model。
 
 ## 本地启动
 
-在当前仓库中，推荐以前台方式启动，便于联调和排错：
+从本目录执行：
 
 ```bash
-# from repo root
-cd apps/runtime-service
-uv run langgraph dev --config runtime_service/langgraph.json --port 8123 --no-browser --allow-blocking
+uv run langgraph dev --config ./langgraph.json --port 8123 --no-browser
 ```
 
-如果你已经在 `apps/runtime-service` 目录内，直接执行最后一行 `uv run ...` 即可。
-
-注意：`runtime_service/langgraph.json` 会自动加载 `runtime_service/.env`。如果 `.env` 中保留了旧的 `MODEL_ID`，它会覆盖 `settings.yaml` 的默认模型；排查模型配置问题时，先检查这里有没有陈旧值。
-
-如果启用了 `research_demo`、`deepagent_demo`、`test_case_agent` 这类依赖 Deep Agents 文件后端/skills 的 graph，本地 `langgraph dev` 调试请显式带上 `--allow-blocking`。这套依赖链内部仍有同步文件 IO（如 `resolve` / `readlink` / `stat`），可能被 `blockbuster` 拦成 `BlockingError`。实际 Agent Server 版本以锁文件、固定镜像 digest 与 `/info` 为准，详见 `runtime_service/docs/knowledge/09-langgraph-runtime-upgrade-and-event-migration.md`。
-
-同时建议在 `.env` 中保留 `BG_JOB_ISOLATED_LOOPS=true`。它对托管/后台 worker 仍然有价值，但单独配置它并不能替代当前本地 dev 的 `--allow-blocking`。
-
-如果是部署环境，可以直接在配置或容器环境变量中声明：
-
-```json
-{
-  "graphs": {
-    "agent": "./graph.py:graph"
-  },
-  "env": {
-    "BG_JOB_ISOLATED_LOOPS": "true"
-  }
-}
-```
-
-容器环境也可以直接在启动前导出：
+学习两个 Demo 时使用：
 
 ```bash
-export BG_JOB_ISOLATED_LOOPS=true
+uv run langgraph dev --config ./langgraph.demo.json --port 8124 --no-browser
 ```
 
-这两种方式都适合部署侧注入环境变量；当前仓库本地联调仍以 `.env` + `--allow-blocking` 为准。
-
-启动后建议先做最小健康检查：
+启动后检查：
 
 ```bash
 curl http://127.0.0.1:8123/info
-curl http://127.0.0.1:8123/internal/capabilities/models
-curl http://127.0.0.1:8123/internal/capabilities/tools
 ```
 
-如果你需要查看当前仓库统一的本地联调口径，参考根级文档：
+R0 使用 fake model，不需要 Platform API 或 Provider 凭据即可启动。Auth、RuntimeContext、
+Middleware、Tool、Backend、Checkpoint 和 Platform Gateway 按 28 号计划的后续阶段实施。
 
-- `docs/local-dev.md`
-- `docs/env-matrix.md`
-- `docs/deployment-guide.md`
+## R4 能力 Demo（已完成）
 
-## 本应用的开发与验证要求
+`langgraph.demo.json` 注册五个可学习 Graph：
 
-如果本轮只改 `runtime-service`，推荐顺序是：
+- `reference_agent`：`create_agent`、RuntimeContext、Middleware 和显式只读 Tool；
+- `workflow_demo`：Typed `StateGraph`；
+- `deep_agent_demo`：`create_deep_agent`、`StateBackend`、Bundled Skill、缩权 Subagent；
+- `mcp_demo`：Service 私有 stdio fake MCP（`MultiServerMCPClient.get_tools()`）、名称冲突和 allowlist；
+- `backend_demo`：Thread-scoped `StateBackend`。
 
-1. 先明确：
-   - 这是新 graph、已有 graph、还是某个服务内部能力调整
-   - 输入是什么
-   - 工具链路是什么
-   - 是否需要持久化
-2. 直接在本层做真实验证：
-   - 真实模型
-   - 真实 PDF / 图片 / 文本
-   - 真实 `interaction-data-service`
-   - 真实流式输出和 tool call 记录
-3. 验证通过后，再接 `runtime-web` 或 `platform-web`
+每个 Service 的组合逻辑都直接写在自己的 `get_agent()` 中。没有公共 `build_agent`、Builder、
+Factory 或 Registry；只有在出现真实重复或复杂生命周期时，才允许 Service 私有下划线辅助函数。
 
-推荐优先使用：
+R4 已归档。下一阶段是 R5 Runtime 可观测、Run Event 和事件投影；对应 Platform Run Explorer
+变更在 Runtime 验证完成后再实施。
 
-- 服务级 debug/live 脚本
-- `runtime_service/tests/*`
-- `runtime_service/docs/*` 中沉淀的真实排查命令
+本地运行能力 Demo：
 
-关键约束：
+```bash
+uv run langgraph dev --config ./langgraph.demo.json --port 8124 --no-browser
+```
 
-- 没有真实 tool call 和真实远端结果，不算真正成功
-- 中间件不要乱耦合业务落库逻辑
-- 默认先把服务层闭环跑通，再决定是否进入平台层联调
+## R1 Runtime 合同
+
+R1 已新增 `src/runtime_service/runtime/` 公共最小能力：
+
+- `contracts.py`：不可变的 Principal、Context、Policy、Defaults 和 Resolved Config
+- `resolver.py`：严格解析、默认值合并、Tool allowlist 检查和稳定 hash
+- `auth.py`：短期 Runtime Delegation JWT 验证
+- `modeling.py`：`deepseek:`、`openai:` 显式模型构造和官方 `init_chat_model` 回退
+- `runtime_config.py`：只解析新 Context，不兼容旧配置字段
+
+R1 不修改 R0 Graph，也不读取 Platform API。R1 单元测试使用本地合同和假构造器：
+
+```bash
+uv run pytest tests/runtime -q
+```
+
+模型 Provider 凭据只在 `modeling.py` 的执行边界读取；R1 测试不会调用真实 Provider。
+
+## 测试
+
+快速测试不访问外部服务：
+
+```bash
+uv run pytest tests/test_r0_baseline.py -q
+```
+
+真实文本模型 E2E：
+
+```bash
+RUNTIME_E2E=1 uv run pytest tests/e2e/test_reference_agent_real_model.py -m e2e -q
+```
+
+真实模型 E2E 必须使用 DeepSeek 文本中转；后续多模态 E2E 使用 GPT 中转。测试分层和跨服务
+契约见 `docs/knowledge/25-runtime-testing-and-cross-service-contract-design.md`。
+
+## 文档入口
+
+1. `docs/README.md`
+2. `docs/knowledge/28-runtime-refactor-development-plan.md`
+3. `docs/knowledge/13-runtime-service-target-code-layout.md`
+4. `docs/knowledge/24-package-langgraph-startup-shutdown-design.md`
+5. `docs/knowledge/25-runtime-testing-and-cross-service-contract-design.md`
+
+`docs/standards/` 将在 R0 完成后，根据绿色重构后的实际实现重新生成；在此之前不要引用归档
+目录中的旧标准。

@@ -90,7 +90,7 @@
 
 ```bash
 cd apps/runtime-service
-uv run langgraph dev --config runtime_service/langgraph.json --port 8123 --no-browser
+uv run langgraph dev --config langgraph.json --port 8123 --no-browser
 ```
 
 ### 4.2 `apps/interaction-data-service`

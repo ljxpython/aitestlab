@@ -161,7 +161,7 @@
 
 当前仓库里，真正和 AI 能力强相关的内容都已经收敛到 `runtime-service`：
 
-- graph 注册在 `runtime_service/langgraph.json`
+- graph 注册在 `apps/runtime-service/langgraph.json`
 - 运行时业务输入收敛在 `runtime_service/runtime/context.py`
 - graph 运行时解析收敛在 `runtime_service/middlewares/runtime_request.py`
 - 模型装配在 `runtime_service/runtime/modeling.py`
@@ -321,7 +321,7 @@ graph = create_agent(
 - `apps/platform-api/docs/handbook/project-handbook.md`
 - `apps/platform-web/docs/control-plane-page-standard.md`
 - `apps/runtime-web/README.md`
-- `apps/runtime-service/runtime_service/docs/README.md`
+- `apps/runtime-service/docs/README.md`
 - `apps/runtime-service/runtime_service/docs/05-template-to-runnable-agent-10min.md`
 - `apps/interaction-data-service/README.md`
 

@@ -1,0 +1,151 @@
+- generic [ref=f3e3]:
+  - complementary "项目与会话" [ref=f3e4]:
+    - generic [ref=f3e9]:
+      - strong [ref=f3e10]: Agent Platform
+      - generic [ref=f3e11]: Trial workspace
+    - button "切换项目" [ref=f3e12] [cursor=pointer]:
+      - generic [ref=f3e13]: A
+      - generic [ref=f3e14]:
+        - strong [ref=f3e15]: Agent Platform
+        - generic [ref=f3e16]: 知识库验证项目
+    - button "新建试用会话" [ref=f3e19] [cursor=pointer]
+    - textbox "搜索会话" [ref=f3e26]
+    - navigation "试用会话列表" [ref=f3e27]:
+      - paragraph [ref=f3e28]: 进行中
+      - button "测试需求文档生成 Testcase Agent · 刚刚" [ref=f3e29] [cursor=pointer]:
+        - generic [ref=f3e31]:
+          - strong [ref=f3e32]: 测试需求文档生成
+          - generic [ref=f3e33]: Testcase Agent · 刚刚
+      - button "订单表字段说明 SQL Agent · 12 分钟前" [ref=f3e38] [cursor=pointer]:
+        - generic [ref=f3e40]:
+          - strong [ref=f3e41]: 订单表字段说明
+          - generic [ref=f3e42]: SQL Agent · 12 分钟前
+      - paragraph [ref=f3e43]: 最近使用
+      - button "知识库检索策略 Research Agent · 昨天" [ref=f3e44] [cursor=pointer]:
+        - generic [ref=f3e46]:
+          - strong [ref=f3e47]: 知识库检索策略
+          - generic [ref=f3e48]: Research Agent · 昨天
+      - button "登录流程边界整理 Testcase Agent V2 · 周一" [ref=f3e49] [cursor=pointer]:
+        - generic [ref=f3e51]:
+          - strong [ref=f3e52]: 登录流程边界整理
+          - generic [ref=f3e53]: Testcase Agent V2 · 周一
+    - generic [ref=f3e54]:
+      - button "在控制面中管理" [ref=f3e55] [cursor=pointer]
+      - button "试用说明" [ref=f3e64] [cursor=pointer]
+  - banner [ref=f3e69]:
+    - generic [ref=f3e71]:
+      - paragraph [ref=f3e72]: 试用入口 · Testcase Agent
+      - heading "测试需求文档生成" [level=1] [ref=f3e73]
+    - generic [ref=f3e74]:
+      - generic [ref=f3e75]:
+        - generic [ref=f3e79]: 选择目标
+        - combobox "选择目标" [ref=f3e80]:
+          - option "Testcase Agent" [selected]
+          - option "SQL Agent"
+          - option "Testcase Agent V2"
+      - generic [ref=f3e81]: 运行中
+      - button "切换到深色主题" [ref=f3e83] [cursor=pointer]
+      - button "收起检查面板" [pressed] [ref=f3e86] [cursor=pointer]
+  - main "Agent 运行时间线" [ref=f3e90]:
+    - generic [ref=f3e91]: 试用界面只展示本地样例，不会提交任务或访问项目数据。
+    - generic [ref=f3e96]:
+      - generic [ref=f3e98]:
+        - paragraph [ref=f3e99]: 请读取这份需求文档，先整理关键业务流程，再给出第一批测试用例草案。
+        - generic [ref=f3e100]: 你 · 刚刚
+      - region "Agent 当前运行" [ref=f3e101]:
+        - generic [ref=f3e107]:
+          - strong [ref=f3e108]: Testcase Agent
+          - paragraph [ref=f3e109]:
+            - text: Run
+            - generic [ref=f3e110]: run_trial_27
+            - text: ·
+            - generic [ref=f3e111]: 运行中
+        - paragraph [ref=f3e114]: 已读取需求文档，正在把业务规则与边界条件整理为可审阅的测试场景。
+        - generic [ref=f3e115]:
+          - article [ref=f3e116]:
+            - generic [ref=f3e121]:
+              - generic [ref=f3e122]:
+                - strong [ref=f3e123]: 读取需求文档
+                - generic [ref=f3e124]: 完成于 8 秒前
+              - paragraph [ref=f3e125]: 识别到业务流程、角色和关键字段。
+            - img "已完成" [ref=f3e126]
+          - article [ref=f3e128]:
+            - generic [ref=f3e133]:
+              - generic [ref=f3e134]:
+                - strong [ref=f3e135]: 提取业务规则
+                - generic [ref=f3e136]: 完成于 3 秒前
+              - paragraph [ref=f3e137]: 已整理登录、下单、取消与退款的主要分支。
+            - img "已完成" [ref=f3e138]
+          - article [ref=f3e140]:
+            - generic [ref=f3e145]:
+              - generic [ref=f3e146]:
+                - strong [ref=f3e147]: 确认生成范围
+                - generic [ref=f3e148]: 需要审阅
+              - paragraph [ref=f3e149]: 发现涉及退款的高风险路径，等待你确认范围。
+            - generic "正在执行" [ref=f3e150]
+          - article [ref=f3e151]:
+            - generic [ref=f3e156]:
+              - generic [ref=f3e157]:
+                - strong [ref=f3e158]: 生成测试用例
+                - generic [ref=f3e159]: 等待
+              - paragraph [ref=f3e160]: 等待范围确认后执行。
+            - generic "等待执行" [ref=f3e161]
+      - region "等待审阅" [ref=f3e162]:
+        - generic [ref=f3e167]:
+          - paragraph [ref=f3e168]: 需要你确认
+          - heading "把退款与取消路径纳入第一批用例？" [level=2] [ref=f3e169]
+          - paragraph [ref=f3e170]: 这会增加高风险边界场景，生成结果会标明需要人工复核的规则。
+          - link "查看依据：步骤 02 的业务规则" [ref=f3e171] [cursor=pointer]:
+            - /url: "#evidence"
+        - generic [ref=f3e172]:
+          - button "改一下" [ref=f3e173] [cursor=pointer]
+          - button "拒绝" [ref=f3e174] [cursor=pointer]
+          - button "批准并继续" [ref=f3e175] [cursor=pointer]
+    - generic [ref=f3e177]:
+      - generic [ref=f3e178]:
+        - button "添加附件" [ref=f3e179] [cursor=pointer]
+        - generic [ref=f3e183]: Testcase Agent
+        - button "运行选项" [ref=f3e187] [cursor=pointer]
+      - textbox "补充任务说明，或在审阅后继续对话" [ref=f3e191]
+      - generic [ref=f3e192]:
+        - generic [ref=f3e193]: Ctrl + Enter
+        - button "停止" [ref=f3e194] [cursor=pointer]
+        - button "发送消息" [disabled] [ref=f3e197]
+  - complementary "运行检查面板" [ref=f3e201]:
+    - generic [ref=f3e202]:
+      - generic [ref=f3e203]:
+        - paragraph [ref=f3e204]: 当前线程
+        - heading "运行检查" [level=2] [ref=f3e205]
+      - button "关闭检查面板" [ref=f3e206] [cursor=pointer]
+    - tablist "运行信息" [ref=f3e210]:
+      - tab "运行" [selected] [ref=f3e211] [cursor=pointer]
+      - tab "计划" [ref=f3e214] [cursor=pointer]
+      - tab "文件" [ref=f3e218] [cursor=pointer]
+      - tab "历史" [ref=f3e221] [cursor=pointer]
+    - generic [ref=f3e226]:
+      - region "运行状态" [ref=f3e227]:
+        - generic [ref=f3e228]:
+          - generic [ref=f3e229]: 运行中
+          - generic [ref=f3e231]: 试用样例
+        - heading "文档解析与用例草案" [level=3] [ref=f3e232]
+        - paragraph [ref=f3e233]: Testcase Agent 正在把需求文档转为可审阅的用例集合。
+        - generic [ref=f3e234]:
+          - generic [ref=f3e235]:
+            - term [ref=f3e236]: 当前阶段
+            - definition [ref=f3e237]: 等待范围确认
+          - generic [ref=f3e238]:
+            - term [ref=f3e239]: 运行编号
+            - definition [ref=f3e240]: run_trial_27
+      - generic [ref=f3e241]:
+        - heading "受控上下文" [level=3] [ref=f3e243]
+        - generic [ref=f3e247]:
+          - generic [ref=f3e251]: 需求说明_v3.pdf
+          - generic [ref=f3e252]: 已读取
+        - generic [ref=f3e253]:
+          - generic [ref=f3e256]: 测试用例工具
+          - generic [ref=f3e257]: 允许
+      - generic [ref=f3e258]:
+        - generic [ref=f3e259]:
+          - heading "试用额度" [level=3] [ref=f3e260]
+          - generic [ref=f3e261]: 样例数据
+        - paragraph [ref=f3e264]: 本次运行的消耗和限制会在接入后端后显示在这里。

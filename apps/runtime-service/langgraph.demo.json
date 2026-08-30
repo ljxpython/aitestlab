@@ -1,0 +1,28 @@
+{
+  "$schema": "https://langgra.ph/schema.json",
+  "python_version": "3.13",
+  "dependencies": ["."],
+  "graphs": {
+    "reference_agent": {
+      "path": "./src/runtime_service/graphs/reference_agent.py:get_agent",
+      "description": "R2 Runtime-aware create_agent reference service with explicit model resolution."
+    },
+    "workflow_demo": {
+      "path": "./src/runtime_service/graphs/workflow_demo.py:get_agent",
+      "description": "R0 deterministic StateGraph workflow with typed state."
+    },
+    "deep_agent_demo": {
+      "path": "./src/runtime_service/graphs/deep_agent_demo.py:get_agent",
+      "description": "R4 create_deep_agent with StateBackend, bundled Skill, and restricted Subagent."
+    },
+    "mcp_demo": {
+      "path": "./src/runtime_service/graphs/mcp_demo.py:get_agent",
+      "description": "R4 service-private fake MCP loader with explicit allowlist and collision failure."
+    },
+    "backend_demo": {
+      "path": "./src/runtime_service/graphs/backend_demo.py:get_agent",
+      "description": "R4 StateBackend demo for thread-scoped workspace isolation."
+    }
+  },
+  "env": ".env"
+}

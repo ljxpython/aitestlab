@@ -28,7 +28,7 @@ uv run uvicorn main:app --host 0.0.0.0 --port 2142 --reload
 ### 2. 启动 LangGraph 开发服务
 
 ```bash
-uv run langgraph dev --config runtime_service/langgraph.json --port 8123 --no-browser
+uv run langgraph dev --config langgraph.json --port 8123 --no-browser
 ```
 
 如果是容器环境，需要同步带上：
@@ -159,7 +159,7 @@ pnpm --dir "apps/platform-web-vue" dev --host 127.0.0.1 --port 3173
 优先检查：
 
 - `8123` LangGraph 服务是否启动
-- `runtime_service/langgraph.json` 是否已带 `BG_JOB_ISOLATED_LOOPS=true`
+- `langgraph.json` 是否已带 `BG_JOB_ISOLATED_LOOPS=true`
 - `platform-api` 日志里是否有上游 `500`
 
 ### 某页能打开但数据为空

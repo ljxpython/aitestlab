@@ -177,7 +177,7 @@ OpenSpec Skills。只有多个真实 change 反复暴露相同缺口时才重新
 
 ### `runtime-service`
 
-- 标准：`apps/runtime-service/runtime_service/docs/standards/*.md`
+- 标准：`apps/runtime-service/docs/standards/*.md`（绿色重构标准待重新生成）
 - 可执行门禁：`apps/runtime-service/runtime_service/tests/harness/*.py`
 
 ### `runtime-web`

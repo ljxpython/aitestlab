@@ -436,6 +436,7 @@ deploy/.env.stack
 /graphify-out/
 /.harness/graphify-out/
 **/.codegraph/
+.finesse/
 
 # Keep machine-local Codex state ignored, but version shared project skills.
 /.codex/*

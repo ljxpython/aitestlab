@@ -1,0 +1,12 @@
+{
+  "$schema": "https://langgra.ph/schema.json",
+  "python_version": "3.13",
+  "dependencies": ["."],
+  "graphs": {
+    "reference_agent": {
+      "path": "./src/runtime_service/graphs/reference_agent.py:get_agent",
+      "description": "R2 Runtime-aware create_agent reference service with explicit model resolution."
+    }
+  },
+  "env": ".env"
+}

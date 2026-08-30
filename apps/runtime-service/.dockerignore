@@ -11,9 +11,7 @@ __pycache__
 *.pyd
 .python-version
 .tmp.langgraph.docker.json
+archive
+.env
 deploy
 deploy/.env.runtime-service
-runtime_service/.env
-runtime_service/conf/settings.local.yaml
-runtime_service/test_data
-runtime_service/tests

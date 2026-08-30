@@ -93,17 +93,17 @@
 
 默认容器化 config 源：
 
-- `runtime_service/langgraph.json`
+- `langgraph.json`
 
 若未来需要鉴权模式，可另行支持：
 
-- `runtime_service/langgraph_auth.json`
+- `langgraph.json`（R1 加入 Auth 后更新）
 
 ## 4. Graph 范围
 
 当前规划默认：
 
-- 跟随现有 `runtime_service/langgraph.json` 注册的 graph 集
+- 跟随根级 `langgraph.json` 注册的 graph 集
 
 当前已知风险：
 

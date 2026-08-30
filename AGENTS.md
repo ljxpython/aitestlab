@@ -78,8 +78,8 @@ Research alone is not B3 unless its decision affects a governed boundary.
   - module shape: `apps/platform-api/docs/handbook/*.md`
   - permission/audit/operations: `apps/platform-api/docs/standards/*.md`
 - `runtime-service`
-  - standards: `apps/runtime-service/runtime_service/docs/standards/*.md`
-  - executable contracts: `apps/runtime-service/runtime_service/tests/harness/*.py`
+  - standards: `apps/runtime-service/docs/standards/*.md` (greenfield standards will be regenerated)
+  - executable contracts: `apps/runtime-service/tests/*.py`
 - `runtime-web`
   - `apps/runtime-web/docs/standards/runtime-web-debug-standard.md`
 - `interaction-data-service`
