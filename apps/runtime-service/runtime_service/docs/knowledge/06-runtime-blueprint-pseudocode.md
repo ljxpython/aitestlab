@@ -1,5 +1,9 @@
 # runtime_service 标准重构蓝图（伪代码）
 
+> 历史讨论：本文不作为新 Runtime 实现依据。新架构契约以
+> `14-runtime-contracts-and-resolution-design.md` 为准；本文的 Tool Registry、旧字段和
+> 多层 RuntimeRequest 方案均已废弃。
+
 > 本文档只回答一件事：如果现在不管兼容，按官方推荐和最小复杂度重做，`runtime_service` 应该长什么样。
 
 ## 1. 总结版结论

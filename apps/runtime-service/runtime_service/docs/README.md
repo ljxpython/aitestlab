@@ -175,6 +175,17 @@ fixtures 存放在 `runtime_service/test_data/`。
 7. `docs/knowledge/07-langgraph-ecosystem-repository-research.md`
 8. `docs/knowledge/09-langgraph-runtime-upgrade-and-event-migration.md`
 9. `docs/knowledge/10-production-agent-platform-roadmap.md`
+10. `docs/knowledge/11-agent-service-directory-architecture.md`（Draft）
+11. `docs/knowledge/12-runtime-context-and-local-debug-architecture.md`（Draft）
+12. `docs/knowledge/13-runtime-service-target-code-layout.md`（Draft）
+13. `docs/knowledge/14-runtime-contracts-and-resolution-design.md`（Draft）
+14. `docs/knowledge/15-runtime-middleware-lifecycle-and-failure-semantics.md`（Draft）
+15. `docs/knowledge/16-runtime-observability-and-langfuse-design.md`（Draft）
+16. `docs/knowledge/17-platform-observability-query-and-admin-console-design.md`（Draft）
+17. `docs/knowledge/18-open-swe-to-runtime-event-and-run-explorer-design.md`（Draft）
+18. `docs/knowledge/19-runtime-tool-capability-mcp-and-side-effect-design.md`（Draft）
+19. `docs/knowledge/20-runtime-backend-workspace-skills-and-subagents-design.md`（Draft）
+20. `docs/knowledge/21-agent-release-versioning-rollout-rollback-and-run-binding-design.md`（Draft）
 
 ## 开发约定
 
