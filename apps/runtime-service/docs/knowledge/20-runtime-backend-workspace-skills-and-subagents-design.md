@@ -599,6 +599,39 @@ Backend 设计不改变 11 号文档已经确定的 factory 原则：
 
 没有这些证据时继续在 `get_agent()` 中直接使用 Deep Agents 官方能力。
 
+## 17. R4 Harness 对齐审核（2026-08-31）
+
+本表只审计 R4 在本文定义的 Backend、Workspace、Skills 和 Subagent 边界。`✅` 只表示该行要求
+已有代码和可失败验证；`StateBackend`、fake model 和进程内 graph 只能证明 local/composition，
+不能证明跨 Worker Durable、真实 Sandbox 或生产租户隔离。
+
+| Requirement | 要求 | 是否实现 | 实现位置 | 测试/验证位置 | 真实调用案例与缺口 | Open SWE 取舍 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `20-R4-001` | Deep Agent 显式使用 `create_deep_agent`、Bundled Skill 和 `StateBackend` | ✅ | `services/deep_agent_demo/agent.py:46-51`；`skills/runtime-notes/SKILL.md` | `tests/services/test_r4_capability_demos.py:27-30,48-50`；R4 定向测试 `10 passed` | graph 真实编译并出现 `SkillsMiddleware.before_agent`；未执行真实 Skill 任务 | 复用 Deep Agents 官方构造，不建公共 Deep Agent Factory |
+| `20-R4-002` | Subagent 显式声明 prompt、model、Tool 子集，不继承父 Agent 全部业务能力 | ❌ | `services/deep_agent_demo/agent.py:39-45` 有 `tools=[]` 声明 | 当前测试未断言 Subagent 配置、调用结果或工具集合 | 代码看似缩权，但没有真实委派案例和失败断言，不能把它算完成 | 借鉴 Open SWE 的显式缩权；不复制其 coding-agent Subagent 业务 Tool |
+| `20-R4-003` | 真实 graph 覆盖 `stream_subgraphs`、namespace 和 Subagent 事件投影 | ❌ | 当前无事件投影或专项 stream 适配 | 当前无 Subagent graph invocation/stream 测试 | 只验证 graph 节点存在，未证明子图事件可区分 | 保留 Deep Agents 原生 namespace；需要真实展示需求后再加最小适配 |
+| `20-R4-004` | 同一 Thread 跨 Turn 保留 StateBackend 文件，不同 Thread 互相隔离 | ❌ | `services/backend_demo/agent.py:37-40` 每次构图创建进程内 `StateBackend` | `tests/services/test_r4_capability_demos.py:72-75` 只断言 graph 对象不同；无文件跨 Turn 测试 | 没有实际读写、thread_id、checkpoint 或跨 Thread 断言 | 借鉴 Open SWE Thread 绑定语义；不把进程内对象误当持久化事实源 |
+| `20-R4-005` | Bundled Skills 挂载在受控路径并由代码级权限禁止写入 | ❌ | `deep_agent_demo/agent.py:29,49` 只传 Skill 目录，无 `FilesystemPermission`/只读 Backend | 当前无 `/skills/**` 写入、编辑拒绝测试 | 路径存在不等于只读；Agent 仍可能通过内置文件 Tool 改写，需锁定版本契约测试 | 借鉴 Open SWE `ReadOnlyBackend` 原则，优先使用官方 Permission |
+| `20-R4-006` | Backend 按 Thread 动态创建/重连 Workspace，失败不静默切换目录 | ❌ | `backend_demo/agent.py:31-46` 无 thread-scoped binding、workspace path 或 reconnect | `tests/services/test_r4_capability_demos.py:78-86` 只模拟 `create_deep_agent` 抛错 | 初始化异常会传播，但真实 Backend 不可达、已删除和替换语义没有实现 | 借鉴 `ensure_sandbox_for_thread()` 的失败分类，不复制全局 Sandbox cache |
+| `20-R4-007` | worker 重启后按持久化资源 ID 重建 Workspace，并有清理/TTL 证据 | ❌ | 当前无 `backend.py`、持久化 binding 或 cleanup owner | 当前无 worker restart、TTL、quota 或 cleanup 测试 | `StateBackend` 不能证明跨进程重建；该能力需要真实 Backend/Durable 边界 | 只在真实 Provider 重复出现后抽取最小连接 helper |
+| `20-R4-008` | RuntimeContext 不能注入任意 Backend、Skill 路径或 Subagent 定义 | ❌ | R4 `get_agent()` 仅读取 test model，未接公共 Runtime Policy | 当前无恶意 context/configurable 注入测试 | 代码未读取这些字段只是局部事实，不等于 fail-closed 合同 | 不复制动态插件/Skill Provider；需把拒绝边界接入 Service |
+| `20-R4-009` | Deep Agent 和 Subagent 的业务/内置 Tool 均符合显式允许范围 | ❌ | `deep_agent_demo/agent.py:46-51` 未配置内置 Tool 排除或 Permission | 当前无模型可见 Tool 列表和伪造 Tool Call 测试 | `tools=[]` 只约束业务 Subagent Tool，不能覆盖内置 filesystem/execute/task | 借鉴 Open SWE 显式排除，按当前 Deep Agents 版本补 `HarnessProfile`/middleware 契约 |
+| `20-R4-010` | 本地 Deep/Backend Demo 构图不依赖 Platform 或外部资源 | ✅ | `deep_agent_demo/agent.py:46-51`；`backend_demo/agent.py:37-40` | `tests/services/test_r4_capability_demos.py:27-30`；本地 `get_agent({})` graph probe 通过 | Deep/Backend 构图不连外部服务；MCP 单独使用本地 stdio fake；正式 introspection 端点仍未专项验证 | 不引入生产 Sandbox；保留本地可运行 Demo |
+| `20-R4-011` | 不建设 Backend/Workspace/Skill/Subagent Registry、Manager 或通用 Builder | ✅ | R4 源码无公共管理层，能力均在 Service `agent.py` 显式装配 | `tests/services/test_r4_capability_demos.py:33-45`；源码目录静态检查 | 当前没有第二份资源事实源；属于设计性“不实现” | 遵守 Open SWE 取舍，只借鉴组合根显式声明 |
+| `20-R4-012` | User/Organization Skills、真实 Sandbox、独立 Subagent Run 按设计后置 | ❌ | 本文 §7.3、§9、§14 | 当前无对应测试；文档明确列为首期不实现 | 这是后置项，不计入 R4 缺陷，但不能计入 R4 已实现能力 | 不提前搬入 Open SWE 的 StoreBackend、Sandbox 和 AsyncSubAgent 复杂度 |
+
+### 17.1 本文 R4 判定
+
+```text
+Deep Agent/Skill/Subagent skeleton = local partial
+Backend/Workspace isolation = not implemented
+Cross-worker resource recovery and cleanup = deferred/blocked by missing provider evidence
+```
+
+当前可以确认 Deep Agent、Bundled Skill、显式 `tools=[]` Subagent 和进程内 StateBackend 的构图
+骨架；不能确认 Skill 只读、Thread 文件跨 Turn、动态 Workspace、跨 Worker 重连、内置 Tool 收缩
+或资源清理。因此本文对应能力不能标记为无条件完成。
+
 ## 16. 参考依据
 
 - Open SWE `agent/server.py:ensure_sandbox_for_thread()`：Thread Sandbox 创建、重连和替换语义；
@@ -612,3 +645,18 @@ Backend 设计不改变 11 号文档已经确定的 factory 原则：
 
 本轮只形成设计文档，不创建 Runtime 源码、不接入 Sandbox、不迁移 Legacy、不修改依赖，也不
 调用 OpenSpec。
+
+## 18. R4 Apply Evidence Update (2026-09-01)
+
+以下表格覆盖第 17 节的旧审计结论。`StateBackend + InMemorySaver` 只证明 local 协议，不能升级为跨 Worker Durable 或 Sandbox 证据。
+
+| Requirement | 是否实现 | 实现位置 | 测试/验证位置 | 结论与缺口 |
+| --- | --- | --- | --- | --- |
+| `20-R4-004` 同 Thread 跨 Turn、不同 Thread 隔离 | ✅ | `services/backend_demo/agent.py` 的 `StateBackend` + test-only checkpointer | `test_backend_workspace_survives_graph_rebuild_for_same_thread`；`test_backend_workspace_isolated_between_threads` | 同 `InMemorySaver`、重建 graph 后同 Thread 可读；不同 Thread 为 not found |
+| `20-R4-005` Bundled Skill 只读边界 | ✅ | `deep_agent_demo/agent.py` 的 `/skills/**` deny Permission 和只读 Tool surface | `test_deep_agent_rejects_skill_write_before_backend_execution` | 写调用在 Runtime Tool Policy 前置拒绝，Permission 同时是代码级纵深防御；未向模型暴露 write/edit Tool |
+| `20-R4-006` Backend 失败不 fallback | ✅ | `services/backend_demo/agent.py` | `test_backend_demo_does_not_fallback_after_initialization_failure` | 初始化错误传播；未切换宿主机目录或替代 Backend |
+| `20-R4-009` Deep Agent 内置 Tool 受限 | ✅ | `deep_agent_demo/agent.py`；`backend_demo/agent.py`；`RuntimeConfigMiddleware` | 真 graph Tool surface、`execute`/`task` forged-call 测试 | Deep Agent 只保留 `ls/read_file/glob/grep/task`；Backend 不保留 `execute/task` |
+| `20-R4-002` Subagent 实际缩权委派 | ❌ | 子 Agent 已显式声明 `tools=[]` 和 filesystem middleware | 无真实 task delegation 断言 | 保持 task 3.4 未完成 |
+| `20-R4-007` 跨 Worker 资源恢复、TTL/cleanup | ❌ | 无 | 无 durable 环境证据 | 需要真实 Agent Server durable checkpointer 和 Sandbox Provider；当前 `blocked` |
+
+本轮状态：`R4 workspace local-complete`；Thread durable、Sandbox、清理和跨 Worker 恢复不是已实现能力。

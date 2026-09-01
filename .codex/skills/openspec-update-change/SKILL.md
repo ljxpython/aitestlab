@@ -3,7 +3,6 @@ name: openspec-update-change
 description: Update an OpenSpec change by revising its existing planning artifacts and keeping them coherent with one another. Use when the user wants to revise a change's plan, fold new decisions into it, or reconcile its artifacts after an edit. Never edits code.
 allowed-tools: Bash(openspec:*)
 license: MIT
-compatibility: Requires openspec CLI.
 metadata:
   author: openspec
   version: "1.0"
@@ -54,8 +53,10 @@ Revise a change's existing planning artifacts and keep them coherent. Never edit
    - Read the artifact(s) the request touches and the change's other existing artifacts.
    - Apply the requested edit. Then check every other existing artifact against it - in ANY direction: an edit to a later artifact may require revising an earlier one, not only the other way around. Build order is a useful reading order, not a constraint on which artifacts may be revised.
    - Note everything that is now inconsistent, missing, or contradictory.
-   - Revise only files that already exist (`existingOutputPaths`). Do NOT create artifacts that don't exist yet, and do NOT invent new files under a glob artifact - note them and point the user to `/opsx:continue` to create them.
+   - Revise only files that already exist (`existingOutputPaths`). Do NOT create artifacts that don't exist yet, and Do NOT invent new files under a glob artifact - note them and point the user to `/opsx:continue` to create them.
    - If the change is already coherent, say so and make no edits.
+   - Treat `verification.md` as the evidence source when it exists. If tasks say done but verification is still partial, skipped, or blocked on required boundaries, revise the planning artifacts instead of preserving a false green state.
+   - Use `$openspec-completion-gate` for the done / partial / blocked / deferred vocabulary.
 
 5. **Confirm and apply, one artifact at a time**
    - Show each proposed revision and why. Write only after the user confirms.
@@ -84,3 +85,4 @@ After each invocation, show:
 - Do not advance the build frontier: no new artifacts, no new files under glob artifacts - that is `/opsx:continue`'s job.
 - Confirm every edit with the user before writing.
 - If the request changes the change's *intent* rather than refining it, recommend starting fresh with `/opsx:new` (the "Update vs. Start Fresh" heuristic).
+- Keep the status words narrow: local-complete, chain-complete, blocked, or deferred. Do not collapse a partial boundary into "done".

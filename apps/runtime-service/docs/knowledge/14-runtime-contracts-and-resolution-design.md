@@ -919,8 +919,9 @@ pre-apply review。
 6. 验收后再把 11、12、13、14 号 Draft 的批准结论转成 `docs/standards/` 当前标准；旧标准
    中互相冲突的 `platform_runtime` 描述直接废弃。
 
-本轮不创建源码目录、不实现 JWT 或 Resolver。文档冻结后，通过一个受控 B3 change 直接创建
-新实现；不迁移或兼容 Legacy。
+上述内容记录的是设计冻结时的初始状态；`runtime-service-r1-contract-closure` 已按 B3
+变更完成当前 Runtime 合同、Auth 适配和 Resolver 接线。后续修改仍必须沿用本目录和
+Harness 验证规则，不迁移或兼容 Legacy。
 
 ## 18. 参考依据
 
@@ -939,3 +940,37 @@ pre-apply review。
 - Open SWE：`agent/utils/thread_settings.py`
 - Open SWE：`agent/middleware/prepare_run.py`
 - Open SWE：`agent/dashboard/agent_overrides.py`
+
+## 19. 实现对齐目录
+
+> 本目录是 R1 主文档的验收记录。代码存在、单元测试通过或 OpenSpec task 勾选，均不能单独
+> 证明真实 Agent Server 链路完成。`是否实现` 只有 Requirement 整体满足时才填 `✅`；其余状态统一填 `❌`。
+> 状态使用 `.harness/templates/design-implementation-alignment.md`。
+
+| ID | 要求 | 实现位置 | 测试/检查 | 验证记录 | 状态 | 是否实现 | 缺口/后续 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `14-R1-CON-001` | 五类 Runtime 类型不可变并公开导出 | `src/runtime_service/runtime/contracts.py:6-55`；`runtime/__init__.py:3-38` | `tests/runtime/test_contracts_and_resolver.py:test_contracts_are_frozen` | 快速全套：`77 passed`；五类实例均尝试字段修改并失败 | `implemented-local` | ✅ | 只证明本地类型边界，不证明跨进程序列化后的不可变性 |
+| `14-R1-CON-002` | Context 严格拒绝未知字段、身份字段、旧字段，保留 None/空 tuple 语义 | `runtime/resolver.py:75-104,147-157`；`runtime/runtime_config.py:12-21` | `tests/runtime/test_contracts_and_resolver.py:43-70` | R1 单测通过；未知字段、身份字段、legacy 字段和空 Tools 有证据 | `implemented-local` | ✅ | 真实 Agent Server 是否在 Middleware 前丢弃未知字段仍由 R2 集成验证 |
+| `14-R1-CON-003` | 类型、范围、bool、NaN、无穷和边界值严格校验 | `runtime/resolver.py:54-72,150-156` | `tests/runtime/test_contracts_and_resolver.py:test_context_parser_rejects_invalid_generation_values` | 快速全套：`77 passed`；bool、NaN、inf、负值、零值和超范围输入均失败 | `implemented-local` | ✅ | 合法边界的语义由当前 dataclass/Provider 组合继续覆盖 |
+| `14-R1-RES-001` | Resolver 是无 I/O、输入不变的纯函数，完成默认值合并和稳定 hash | `runtime/resolver.py:204-279` | `tests/runtime/test_contracts_and_resolver.py:test_resolver_does_not_mutate_inputs_or_perform_io`；hash/merge tests | 快速全套：`77 passed`；输入保持不变，`open` 被替换为失败门禁，等价输入 hash 稳定 | `implemented-local` | ✅ | 只证明本地调用无 I/O，不替代真实服务链路检查 |
+| `14-R1-RES-002` | Required/Optional Tool 按 Agent、Project、Actor Policy 交集 fail-closed | `runtime/resolver.py:253-263`；`services/reference_agent/agent.py:_TOOL_PERMISSIONS` | `tests/runtime/test_contracts_and_resolver.py:test_resolver_enforces_actor_tool_permissions`；`tests/services/reference_agent/test_agent.py` | 快速全套：`77 passed`；Required/Optional 缺 Actor permission 均失败，reference tool 使用私有映射 | `implemented-local` | ✅ | 只覆盖当前 Service 的显式映射，不创建公共 Capability Registry |
+| `14-R1-AUTH-001` | JWT 签名、issuer、audience、时间、type 和已知 claim 校验 | `runtime/auth.py:14-104` | `tests/runtime/test_auth.py:44-80` | 合法 token、签名、过期、type、tenant/project 一致性和未知 claim 通过 | `implemented-local` | ✅ | 仅是本地 HS256 函数验证，不是 Agent Server Auth 接线证据 |
+| `14-R1-AUTH-002` | Delegation claims 包含并验证 scope 与 Context hash | `runtime/auth.py:18-223`；`runtime/resolver.py:230-255` | `tests/runtime/test_auth.py:test_scope_and_context_hash_claims_fail_closed`；`test_scope_and_context_are_checked_against_execution_inputs` | 快速全套：`77 passed`；缺失/篡改 hash、scope 结构、tenant/project/assistant/thread 不一致均失败 | `implemented-local` | ✅ | Platform 签发链和真实 Gateway payload 不在本 change |
+| `14-R1-POL-001` | RuntimePolicy 来自已验证 snapshot，且与 Principal scope/权限一致 | `runtime/auth.py:130-169`；`runtime/resolver.py:253-263` | `tests/runtime/test_auth.py`；`tests/runtime/test_contracts_and_resolver.py:test_resolver_enforces_actor_tool_permissions` | 快速全套：`77 passed`；policy allowlist、Principal scope 和 Actor permission 均参与决议 | `implemented-local` | ✅ | policy snapshot 的上游 Platform 产生与轮换属于后续整合 |
+| `14-R1-MOD-001` | 只接受 ResolvedRuntimeConfig，显式构造 DeepSeek/GPT/标准 Provider Model | `runtime/modeling.py:36-72` | `tests/runtime/test_modeling.py:31-90` | `uv run pytest tests/runtime -q`：Provider 参数和缺凭据失败映射通过 | `implemented-local` | ✅ | 真实 Provider 不属于 R1 本地单测门槛；生产凭据和模型目录属于后续链路 |
+| `14-R1-ERR-001` | 错误码稳定，字符串摘要不泄漏 token/secret/claims | `runtime/errors.py:4-18`；`runtime/auth.py:40-41` | `tests/runtime/test_auth.py:66-75`；`test_modeling.py:69-72` | 错误只暴露 code/field，错误测试通过 | `implemented-local` | ✅ | 需要在真实 HTTP 错误映射中继续验证 401/403/400/500 语义 |
+| `14-R1-SNAP-001` | ResolvedRuntimeConfig 只包含可序列化执行事实并形成 config_hash | `runtime/contracts.py:43-55`；`runtime/resolver.py:308-382` | `tests/runtime/test_contracts_and_resolver.py:test_runtime_context_hash_and_snapshot_are_safe_and_stable` | 快速全套：`77 passed`；JSON round-trip、hash 篡改失败，snapshot 不含完整 Prompt/JWT/secret/model/callback | `implemented-local` | ✅ | snapshot 不是 Durable checkpoint；跨 Worker 持久化仍由 R6 验证 |
+| `14-R1-BOUND-001` | model_id 位于 Context，不从 configurable 读取业务模型/身份/权限 | `runtime/resolver.py:21-24,75-104`；`services/reference_agent/agent.py:53-70` | `tests/runtime/test_contracts_and_resolver.py`；`tests/services/reference_agent/test_agent.py:test_context_override_is_resolved_before_model_creation` | 快速全套：`77 passed`；旧字段和身份字段拒绝，`_runtime_model` 仅作为显式测试注入并从生产 bound config 移除 | `implemented-local` | ✅ | `_runtime_model` 仍是测试边界；真实 Server execution info 的最终字段形状需链路测试确认 |
+| `14-R1-CHAIN-001` | Agent Server Auth 构造 Principal/Policy，RuntimeContext 进入同一 Resolver 链 | `auth/platform.py`；`langgraph.json`；`middlewares/runtime_config.py`；`reference_agent/agent.py` | `tests/integration/test_agent_server_auth.py`；`tests/e2e/test_reference_agent_real_model.py`；Middleware tests | `RUNTIME_E2E=1` 集成测试：`2 passed`；匿名 `401`、无效 JWT `401`、合法 JWT `200`，并以 `temperature=0` 真实调用 DeepSeek 返回 `e2e-ok` | `implemented-chain` | ✅ | 证明 local Agent Server shortest chain；Platform 正式签发链和 R6 Durable 不在本 change |
+
+### R1 结论
+
+```text
+R1 capability-chain-complete-local-agent-server / platform-durable-deferred
+```
+
+可以确认：五类类型、严格解析、纯 Resolver、JWT scope/context_hash、Actor Tool 权限交集、
+安全 snapshot、Modeling 和稳定错误类型已经存在并有本地测试；Auth path 到 RuntimeContext、
+Resolver、真实 DeepSeek Model 的 local Agent Server shortest chain 也已通过。未覆盖的是
+Platform 正式签发链、生产部署和 Durable 恢复，因此 R1 结论是
+`capability-chain-complete-local-agent-server / platform-durable-deferred`。

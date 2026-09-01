@@ -34,6 +34,10 @@ result = await graph.ainvoke(
 不会写入 `configurable` 或 Prompt。无 Thread 级外部资源时默认 graph 可复用；未来需要
 Workspace/Sandbox 时才改为按 Thread 动态构图。
 
-R3 在组合根中显式加入 `RuntimeConfigMiddleware`、官方模型/工具调用上限和单次模型超时。
+R3 在组合根中显式加入 `RuntimeConfigMiddleware`、官方模型/工具调用上限、Tool retry/error
+和单次模型超时。`ToolRetryMiddleware` 只对 `read_reference` 这个明确只读 Tool 重试
+`ConnectionError`；`ToolErrorMiddleware` 只向模型暴露脱敏的 `ValueError`/临时连接错误，未知异常继续传播。
+测试可以显式注入 fallback model 或开启 model retry 来验证官方组件的真实 graph 行为；生产默认不从
+`configurable` 注入 fallback，也不默认开启 model retry。
 R4 增加 `read_reference` 只读 Tool，并同时通过模型可见性过滤和执行前 allowlist 检查；写入、
 MCP、Sandbox 和 Subagent 能力由对应 R4 Demo 单独展示，不塞进这个最小模板。

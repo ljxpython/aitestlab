@@ -16,8 +16,8 @@
 > 暂不展开：Langfuse 基础设施部署清单、跨服务 OpenTelemetry parent 传播、平台内嵌 Trace UI、
 > 动态采样和告警规则实现
 
-> R5 实施边界：以 `openspec/changes/runtime-service-r5-observability/` 为准。本阶段只实现
-> `LANGFUSE_ENABLED` 开关和 metadata 采集；正文采集、多模式 exporter 与 Platform 查询不在本阶段。
+> R5 实施边界：以 `openspec/changes/archive/2026-08-30-runtime-service-r5-observability/` 为准。
+> 当前审核结论为 adapter/local-contract 部分完成；正文采集、多模式 exporter 与 Platform 查询不在本阶段。
 
 ## 1. 本轮结论
 
@@ -448,3 +448,39 @@ Langfuse 当前 Trace 更新和并发 Handler 行为以真实契约测试为准�
 - Open SWE 学习文档：`19-local-observability/03-self-hosted-langfuse.md`
 - LangChain `RunnableConfig` callbacks、metadata 和 tags 传播契约
 - Langfuse Python SDK 与 LangChain Callback integration
+
+## 15. R5 Harness 对齐审核（2026-09-01）
+
+本表按当前源码、当前测试和可重跑命令审核，覆盖并修正 R5 归档记录中的乐观结论。`是否实现` 只有
+Requirement 整体有正确边界、实现和可失败验证时才填 `✅`；`local` 不等于生产，明确后置项也不
+伪装成已实现。
+
+| Requirement | 是否实现 | 实现位置 | 测试/验证位置 | 证据与缺口 |
+| --- | --- | --- | --- | --- |
+| R5-001 Langfuse 默认关闭、显式开启校验、lazy SDK import | ✅ | `src/runtime_service/observability/langfuse.py`；`src/runtime_service/webapp.py` | `tests/observability/test_langfuse.py`；dev server 和目标镜像均加载 `webapp.py:app` | 默认关闭和显式缺失配置成立；目标镜像在 combined lifespan 进入前被 Agent Server entitlement `403` 阻断 |
+| R5-002 进程级 Client 与 shutdown bounded flush | ✅ | `webapp.py:lifespan`；`langfuse.py:initialize_langfuse/close_langfuse` | `uv run pytest tests/observability -q`：`25 passed`；dev server 可启动 | Runtime 本地 lifespan 已接管 client；目标镜像未进入 application startup，生产 SIGTERM/drain 仍无证据 |
+| R5-003 Graph return boundary 合并 callbacks、metadata、tags | ✅ | `langfuse.py:_approved_metadata/_trusted_metadata/_merge_config`；五个 Demo 返回边界 | `tests/observability/test_langfuse.py`；`tests/observability/test_graph_tracing.py` | caller 只保留 allowlist，trusted 值覆盖 attacker，高基数 tag 丢弃 |
+| R5-004 可信 Runtime metadata 覆盖不可信身份 | ✅ | `reference_agent`、`deep_agent_demo`、`backend_demo`、`mcp_demo` 传入 resolver 摘要；workflow 只保留技术字段 | `tests/observability/test_langfuse.py`；`tests/services/test_r4_capability_demos.py`；`test_graph_tracing.py` | 未验证 metadata 不生成 `langfuse_user_id`；workflow 不伪造匿名身份 |
+| R5-005 metadata-only、完整正文丢弃和敏感字段脱敏 | ✅ | `langfuse.py:_redact/_mask` | `tests/observability/test_langfuse.py`；真实 smoke | 本地边界和真实 SDK callback 通过；不是完整 DLP |
+| R5-006 Run/Tool/Token/耗时诊断信号 | ✅ | `langfuse.py:_RuntimeDiagnosticsCallback/get_observability_metrics` | `tests/observability/test_langfuse.py`；真实 Agent/Deep Agent graph tests | 日志含 graph/run/thread/request、状态、耗时、Tool error 和 token；远端 metrics exporter 不由 Runtime 自建 |
+| R5-007 Langfuse/exporter/queue/flush 故障 fail-soft | ❌ | `langfuse.py:_FailSoftCallback/close_langfuse` | callback 异常、flush error/timeout 和原始 Model/Tool/interrupt/cancel/timeout 语义已覆盖 | SDK 自带有界 queue，但 Runtime 尚未将 queue drop 接入稳定 `event_dropped` Counter，也没有 queue saturation 可重跑证据 |
+| R5-008 Model、Tool、Subagent 父子 Trace 层级与并发隔离 | ✅ | adapter callback 绑定；现有 `create_agent`/`create_deep_agent` graph | `tests/observability/test_graph_tracing.py`：Model/Tool/Subagent 传播通过 | 已证明 LangChain callback 事件传播和本地隔离；尚未查询 Langfuse 服务端最终 observation 树 |
+| R5-009 五个 Service 都接入统一 adapter | ✅ | `services/{reference_agent,workflow_demo,deep_agent_demo,mcp_demo,backend_demo}/agent.py` | `tests/services/test_r4_capability_demos.py`；全量 Runtime tests | 五个入口统一接线，MCP trusted metadata 已补齐，workflow 保持匿名边界 |
+| R5-010 跨服务 request/platform trace 与 Runtime run/thread 传播 | ❌ | adapter 只读取传入 `RunnableConfig` metadata/configurable | 无 Agent Server -> Service -> Langfuse 传播测试 | Platform Gateway、可信 parent、四类关联 ID 查询链未实现；文档已明确后置，不能计入 R5 完成 |
+| R5-011 Run 状态、SSE、Audit 与 Langfuse 职责分离 | ✅ | 本文 §2、§6；R5 未实现 Run Coordinator/查询代理 | 设计静态检查；无 Runtime 代码复制状态机 | 作为“不建设”的边界成立；不代表 Run Event、Run Explorer 已存在 |
+| R5-012 真实 Langfuse Trace smoke 可重跑 | ✅ | `tests/e2e/test_langfuse_real.py` | `RUNTIME_R5=1 uv run pytest tests/e2e/test_langfuse_real.py -m e2e -q`：`1 passed`；`.env` 凭据已实际读取 | workflow Trace、`auth_check()` 和 flush 通过；服务端异步可查询性和 UI 查询不在当前 smoke 内 |
+
+### 15.1 本文 R5 判定
+
+```text
+R5 runtime-contract/lifecycle/real-smoke = complete-local
+R5 exporter queue-drop/production-container evidence = incomplete
+R5 cross-service propagation = deferred-by-design
+```
+
+当前可以确认：服务 lifespan、Client/Callback adapter、可信 metadata allowlist、五个入口接线、
+Model/Tool/Subagent callback 传播、结构化诊断和真实 Langfuse smoke 均有可重跑证据。不能确认：
+目标镜像已证明 Docker 配置能加载 custom auth、`webapp.py:app` 并连接 PostgreSQL/Redis，但 Agent Server
+entitlement 检查返回 `403`，在 application startup 完成前以退出码 `3` 退出。因而仍不能确认生产容器
+SIGTERM/drain、SDK queue drop 的 Runtime Counter、服务端最终 observation 树和跨服务传播。
+因此 R5 可写成 `complete-local`，不能写成生产全链路完成。

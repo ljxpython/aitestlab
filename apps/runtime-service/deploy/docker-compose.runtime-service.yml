@@ -46,10 +46,18 @@ services:
       postgres:
         condition: service_healthy
     env_file:
-      - .env.runtime-service
+      - path: .env.runtime-service
+        required: false
     environment:
       REDIS_URI: "redis://${RUNTIME_REDIS_HOST:-redis}:${RUNTIME_REDIS_PORT:-6379}/${RUNTIME_REDIS_DB:-0}"
       POSTGRES_URI: "postgres://${RUNTIME_POSTGRES_USER:-runtime_service}:${RUNTIME_POSTGRES_PASSWORD:-runtime_service}@${RUNTIME_POSTGRES_HOST:-postgres}:5432/${RUNTIME_POSTGRES_DB:-runtime_service}?sslmode=disable"
+      DEEPSEEK_PROXY_URL: "${DEEPSEEK_PROXY_URL:-}"
+      DEEPSEEK_PROXY_API_KEY: "${DEEPSEEK_PROXY_API_KEY:-}"
+      GPT_PROXY_URL: "${GPT_PROXY_URL:-}"
+      GPT_PROXY_API_KEY: "${GPT_PROXY_API_KEY:-}"
+      LANGSMITH_API_KEY: "${LANGSMITH_API_KEY:-}"
+      LANGSMITH_ENDPOINT: "${LANGSMITH_ENDPOINT:-https://api.smith.langchain.com}"
+      LANGGRAPH_CLOUD_LICENSE_KEY: "${LANGGRAPH_CLOUD_LICENSE_KEY:-}"
     healthcheck:
       test: ["CMD", "python", "/api/healthcheck.py"]
       interval: 60s

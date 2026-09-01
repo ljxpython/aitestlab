@@ -122,9 +122,10 @@ after_agent      graph 正常完成后一次
 - `wrap_*` 形成嵌套调用，顺序必须通过锁定版本契约测试固定；
 - `after_*` 按声明顺序的逆序执行。
 
-不能只看列表猜测异常由谁捕获。特别是 `ToolRetryMiddleware` 和
-`ToolErrorMiddleware` 的组合，实施时必须按当前锁定 LangChain 版本的官方示例和契约测试
-确认：重试先耗尽，最后的可恢复异常才转换为 `ToolMessage`。
+当前锁定 LangChain 版本中，Model/Tool wrap 列表第一个 Middleware 是最外层。因此
+`ToolErrorMiddleware` 必须列在 `ToolRetryMiddleware` 之前，形成
+`ToolError(ToolRetry(provider))`：重试先耗尽，最后的可恢复异常才转换为 `ToolMessage`。
+不能只看列表猜测异常由谁捕获，必须用当前锁定版本的官方示例和契约测试固定该顺序。
 
 ## 4. 推荐执行链路
 
@@ -522,3 +523,40 @@ Middleware。
 - Open SWE：`agent/middleware/tool_error_handler.py`
 - Open SWE：`agent/middleware/repair_orphaned_tool_calls.py`
 - Open SWE：`agent/middleware/stable_tool_order.py`
+
+## 15. R3 Harness 对齐审核（2026-08-31 基线）
+
+本表只认“代码已接入 + 有对应验证”的能力。单独构造某个 Middleware 的单测不能证明
+Reference Agent 使用了它；fake/local 证据只能证明本地组合能力，不能升级为真实 Provider、跨进程
+Durable 或生产完成。`✅` 表示当前基线已实现，`❌` 表示未实现、未接线或证据不足；明确后置项保留在表中，
+但不应被当成 R3 当前缺陷遗漏。
+
+| 能力 | 设计要求 | 是否实现 | 代码位置 | 验证/测试位置 | 真实调用案例 | Open SWE 取舍 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Runtime 配置复核 | Agent、Model、Tool 边界重新解析 Context/Policy，未授权立即失败 | ✅ | `src/runtime_service/middlewares/runtime_config.py:37` | `tests/middlewares/test_runtime_middleware.py:65`、`tests/services/reference_agent/test_agent.py:104` | Reference Agent fake graph 已调用 Model 边界；Tool 边界有直接契约测试 | 不复制 `DynamicToolMiddleware`，由同一 Resolver 过滤可见和可执行 Tool |
+| Model 调用上限 | 每个 Agent 配置有界 run limit | ✅ | `services/reference_agent/agent.py:107` | `tests/services/reference_agent/test_middleware_order.py:31` | Reference Agent graph 已装配并执行该链 | 复用 LangChain 官方组件 |
+| Tool 调用上限 | 带 Tool 的 Agent 配置有界 run limit | ✅ | `services/reference_agent/agent.py:108` | `tests/services/reference_agent/test_middleware_order.py:31` | Reference Agent graph 已装配；边界行为仍需专项断言 | 复用 LangChain 官方组件 |
+| 单次 Model timeout | 只取消单次 Provider call，传播 timeout/cancel，不负责 Run deadline | ✅ | `src/runtime_service/middlewares/model_call_timeout.py:11` | `tests/middlewares/test_runtime_middleware.py:185`、`:203` | fake handler 超时/取消已验证；真实 Provider timeout 尚无证据 | 借鉴 `model_call_timeout.py`，保留最小标准库实现 |
+| Tool retry | 只重试明确幂等 Tool 和明确临时异常，耗尽后交给外层错误处理 | ✅ | `services/reference_agent/agent.py:157` | `tests/services/reference_agent/test_middleware_order.py:133` | Reference Agent graph 已验证首次临时失败后第二次成功，以及预算耗尽 | 借鉴 `task_retry.py` 的分类；复用官方 `ToolRetryMiddleware`，拒绝 Open SWE 业务逻辑 |
+| Tool error | 只将明确可恢复错误转为脱敏 `ToolMessage`，未知异常/控制流继续传播 | ✅ | `services/reference_agent/agent.py:156` | `tests/services/reference_agent/test_middleware_order.py:166`、`:196`、`:229` | Reference Agent graph 已验证 ValueError、重试耗尽后的 ConnectionError 和未知 RuntimeError | 借鉴错误对模型可见；不复制 Open SWE 全捕获 `tool_error_handler.py` |
+| Model fallback | Service 显式声明且候选模型经过 Policy，临时 Provider 错误才切换 | ❌（仅 test-only） | `services/reference_agent/agent.py:166`，只接受显式 `_runtime_model` + `_runtime_fallback_model` | `tests/services/reference_agent/test_middleware_order.py:258` | local graph 已验证 primary `ConnectionError` 后使用 fallback；无生产 Provider/Model catalog 证据 | 借鉴 `model_fallback.py` 的错误分类；当前官方组件本身不提供异常 predicate，生产接入需另行冻结策略，不能隐式读取 env/configurable |
+| Model retry | 默认关闭；启用时异常、次数、总预算明确且不与 SDK retry 相乘 | ❌（仅 test-only） | `services/reference_agent/agent.py:172`，只接受显式 `_runtime_model_retry=true` | `tests/services/reference_agent/test_middleware_order.py:276` | local graph 已验证一次重试成功和预算耗尽后传播异常；无真实 Provider retry 预算证据 | 复用官方 `ModelRetryMiddleware` 的显式配置；Open SWE 的重试策略不直接搬入公共层 |
+| Human-in-the-loop | 敏感 Tool 通过 `interrupt()` 暂停并可恢复 | ❌（后置） | R3 无写 Tool；R2/R6 Workflow/Coordinator 负责恢复边界 | 当前无 R3 Tool HITL 测试 | Reference Agent 没有需审批 Tool | 仅借鉴官方/Deep Agents `interrupt_on`，不为只读 Demo 虚构审批流程 |
+| PrepareRun | fingerprint + checkpoint latch，准备动作幂等 | ❌（后置） | 当前无 Runtime Service 实现 | 当前无测试 | 当前无需要 workspace/凭证准备的 Service | 借鉴 Open SWE `prepare_run.py`；首个真实需要它的 Service 私有实现 |
+| Timeout wrap-up | 长任务在总 deadline 前主动收尾 | ❌（后置） | 当前无 Runtime Service 实现 | 当前无测试 | 当前无长任务收尾案例 | Open SWE `timeout_wrapup.py` 是产品行为，不替代 Run Coordinator deadline |
+| Orphaned Tool Call recovery | 取消后恢复时补全未知结果 ToolMessage，不自动重试非幂等 Tool | ❌（待 R6 复现） | 当前无 Runtime Service 实现 | 当前无 checkpoint/resume 复现 | 当前无 Durable 恢复案例 | 只在锁定 LangGraph 版本真实复现后再借鉴 `repair_orphaned_tool_calls.py` |
+| Stable Tool result order | 并行 Tool 结果按 call order 稳定化 | ❌（待证据） | 当前无 Runtime Service 实现 | 当前无并行 Tool/cache 证据 | 当前无并行 Tool 案例 | 仅在有 Prompt cache 性能测量后借鉴 `stable_tool_order.py` |
+| Provider message sanitizer | 针对已复现 Provider/SDK 协议问题修复消息 | ❌（不适用） | 当前无 Runtime Service 实现 | 当前无复现问题 | 当前无 sanitizer 案例 | Open SWE 的 Fireworks/OpenAI/Thinking 修复属于 Provider 私有兼容层 |
+| Sandbox circuit breaker | 有状态 Sandbox 不可达时停止调用并明确未知副作用 | ❌（不适用） | 当前无 Sandbox Backend | 当前无 Sandbox 测试 | 当前无 Sandbox 案例 | 借鉴原则，不搬 `sandbox_circuit_breaker.py` 的 Slack/GitHub 通知 |
+| Queue/dynamic/exclude/plan/PR/workflow Middleware | Open SWE 的消息队列、动态 Tool、计划和代码托管业务 | ❌（不属于 R3） | 当前无对应 Runtime 责任边界 | 当前无 Runtime 契约 | 当前无对应案例 | `check_message_queue.py`、`dynamic_tools.py`、`plan_mode.py`、`pr_creation_guard.py` 等不进入公共 Runtime |
+
+### 15.1 当前 R3 判定
+
+```text
+R3 baseline = minimum-stack-local-complete / full-reliability-incomplete
+```
+
+当前真正能打 ✅ 的是 Runtime 配置复核、Model/Tool 限次、单次 Model timeout，以及 Reference Agent
+真实 graph 中的 Tool Error/Retry。Model fallback/retry 已有显式 test-only graph 案例，但尚未形成
+生产模型目录和 Provider 证据，因此表中仍保持 ❌。`runtime-service-r3-middleware-closure` 变更
+完成后，R3 仍应限定为 local/组合完成，不得宣称 Durable 或生产可靠性完成。

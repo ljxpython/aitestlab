@@ -54,9 +54,19 @@ LANGFUSE_BASE_URL=<Langfuse 服务地址>
 LANGFUSE_TRACING_ENVIRONMENT=local
 ```
 
-`LANGFUSE_ENABLED` 不是 `true` 时完全关闭；显式开启但缺少必填配置会在启动/首次构图时失败。
+`LANGFUSE_ENABLED` 不是 `true` 时完全关闭；显式开启但缺少必填配置会在 application lifespan 启动时失败。
 R5 只发送脱敏 metadata，不发送完整 Prompt、模型响应、Tool 参数或凭据。`.env` 已被 Git 忽略，
 不要提交真实值。
+
+生产和 Demo 配置都通过 `http.app=runtime_service.webapp:app` 管理进程级 Langfuse client；该 app
+不添加业务路由。真实 smoke 必须显式执行：
+
+```bash
+RUNTIME_R5=1 uv run pytest tests/e2e/test_langfuse_real.py -m e2e -q
+```
+
+目标镜像已能加载该 custom app 并连接 PostgreSQL/Redis，但当前 Agent Server entitlement 检查返回
+`403`，容器在 application startup 完成前以退出码 `3` 退出。生产 SIGTERM 与 bounded flush 因此仍未验证。
 
 ## 本地启动
 
@@ -78,8 +88,9 @@ uv run langgraph dev --config ./langgraph.demo.json --port 8124 --no-browser
 curl http://127.0.0.1:8123/info
 ```
 
-R0 使用 fake model，不需要 Platform API 或 Provider 凭据即可启动。Auth、RuntimeContext、
-Middleware、Tool、Backend、Checkpoint 和 Platform Gateway 按 28 号计划的后续阶段实施。
+R0 使用 fake model，不需要 Platform API 或 Provider 凭据即可启动。当前 R3 已接入 Runtime
+配置、调用上限、Tool Error/Retry 和单次 Model timeout；生产 Provider fallback/retry、Durable
+Checkpoint 和 Platform Gateway 仍按 28 号计划单独验收。
 
 ## R4 能力 Demo（已完成）
 
@@ -94,8 +105,11 @@ Middleware、Tool、Backend、Checkpoint 和 Platform Gateway 按 28 号计划�
 每个 Service 的组合逻辑都直接写在自己的 `get_agent()` 中。没有公共 `build_agent`、Builder、
 Factory 或 Registry；只有在出现真实重复或复杂生命周期时，才允许 Service 私有下划线辅助函数。
 
-R4 已归档。下一阶段是 R5 Runtime 可观测、Run Event 和事件投影；对应 Platform Run Explorer
-变更在 Runtime 验证完成后再实施。
+R4 已归档。R5 已完成 Runtime 本地生命周期、可信 metadata、Model/Tool/Subagent callback 和真实
+Langfuse smoke；目标镜像仅完成 custom app import，SDK queue drop 指标、生产容器 startup/SIGTERM/drain
+和跨服务传播仍未闭合。R6 Durable
+Run 真实部署验证继续后置。
+Platform Run Explorer 仍留到 Runtime 验证完成后的 P1 阶段。
 
 本地运行能力 Demo：
 
@@ -137,6 +151,31 @@ RUNTIME_E2E=1 uv run pytest tests/e2e/test_reference_agent_real_model.py -m e2e 
 
 真实模型 E2E 必须使用 DeepSeek 文本中转；后续多模态 E2E 使用 GPT 中转。测试分层和跨服务
 契约见 `docs/knowledge/25-runtime-testing-and-cross-service-contract-design.md`。
+
+## R6 Durable Run 验证
+
+R6 使用 Agent Server 原生 Thread/Run/Checkpoint，不在 Runtime 内实现第二套持久化状态机。
+快速测试不会启动外部服务；真实 Durable 测试需要一个正在运行的 Agent Server，并设置：
+
+```text
+RUNTIME_DURABLE_URL=http://127.0.0.1:8123
+RUNTIME_DURABLE_ASSISTANT_ID=reference_agent
+```
+
+启动隔离 PostgreSQL、Redis 和 Runtime 容器并执行一次 smoke：
+
+```bash
+./scripts/r6-durable-smoke.sh
+```
+
+该脚本使用测试专用本地 Delegation Token，凭据只从环境变量读取，不调用 Platform API。保留
+容器以便排查时设置 `R6_KEEP_SERVICES=1`。Durable 测试命令：
+
+```bash
+RUNTIME_DURABLE_URL=http://127.0.0.1:8123 uv run pytest tests/durable -m durable -q
+```
+
+缺少真实服务时测试会明确跳过，不能将跳过结果当作 R6 通过。
 
 ## 文档入口
 

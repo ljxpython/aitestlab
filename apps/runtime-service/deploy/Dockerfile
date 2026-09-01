@@ -1,8 +1,7 @@
-FROM langchain/langgraph-api:3.13
+FROM langchain/langgraph-api:3.13@sha256:61ad2a5beb30020eecf05a5a8108bcaba7ed44cbebb570e565611e760f1e4a40
 
-# Repo-managed Dockerfile for runtime-service container delivery.
-# This file is based on the current LangGraph dockerfile generation pattern,
-# but is checked into the repo so end users can build without local CLI setup.
+# Generated from ../langgraph.json with `langgraph dockerfile`; regenerate this
+# file after production config changes. The pinned base image is intentional.
 
 # -- Adding local package ./ --
 ADD ./ /deps/runtime-service
@@ -17,7 +16,9 @@ RUN for dep in /deps/*; do \
     done
 # -- End of local dependencies install --
 
-ENV LANGSERVE_GRAPHS='{"reference_agent": {"path": "/deps/runtime-service/src/runtime_service/graphs/reference_agent.py:get_agent", "description": "R0 reference create_agent service using a deterministic fake model."}}'
+ENV LANGGRAPH_AUTH='{"path": "/deps/runtime-service/src/runtime_service/auth/platform.py:auth", "openapi": {"securitySchemes": {"RuntimeBearer": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}}, "security": [{"RuntimeBearer": []}]}}'
+ENV LANGGRAPH_HTTP='{"app": "/deps/runtime-service/src/runtime_service/webapp.py:app"}'
+ENV LANGSERVE_GRAPHS='{"reference_agent": {"path": "/deps/runtime-service/src/runtime_service/graphs/reference_agent.py:get_agent", "description": "R2 Runtime-aware create_agent reference service with explicit model resolution."}}'
 
 # Keep env-file loading in compose/runtime config. This image only sets the
 # graph/http registry and installs the app package.

@@ -8,11 +8,34 @@ import pytest
 from dotenv import dotenv_values
 
 from runtime_service.runtime import RuntimeContext
+from runtime_service.runtime.resolver import runtime_context_hash
 from runtime_service.services.reference_agent.agent import get_agent
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 pytestmark = pytest.mark.e2e
+
+
+def _auth_user() -> dict[str, object]:
+    return {
+        "runtime_principal": {
+            "user_id": "e2e-user",
+            "tenant_id": "e2e-tenant",
+            "project_id": "e2e-project",
+            "role": "developer",
+            "permissions": ["runtime.tool.read"],
+        },
+        "runtime_policy": {
+            "version": "e2e-policy-v1",
+            "allowed_model_ids": ["deepseek:DeepSeek-V4-Flash"],
+            "allowed_tool_names": ["read_reference"],
+        },
+        "runtime_scope": {
+            "tenant_id": "e2e-tenant",
+            "project_id": "e2e-project",
+        },
+        "runtime_context_hash": runtime_context_hash(None),
+    }
 
 
 def test_reference_agent_real_deepseek_e2e(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -31,7 +54,16 @@ def test_reference_agent_real_deepseek_e2e(monkeypatch: pytest.MonkeyPatch) -> N
     for name in required:
         monkeypatch.setenv(name, str(settings[name]))
 
-    graph = asyncio.run(get_agent({}))
+    graph = asyncio.run(
+        get_agent(
+            {
+                "configurable": {
+                    "langgraph_auth_user": _auth_user(),
+                    "_runtime_test_local_auth": True,
+                }
+            }
+        )
+    )
     result = asyncio.run(
         graph.ainvoke(
             {"messages": [{"role": "user", "content": "Reply with exactly: e2e-ok"}]},

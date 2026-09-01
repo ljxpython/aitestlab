@@ -31,8 +31,9 @@
 - 用户应可直接使用 `docker compose build` / `docker compose up -d`
 - 不要求用户先安装 LangGraph CLI
 - 当前验证结论：
-  - `langgraph-api` license-gated 基座镜像在无 key 条件下会启动失败
-  - 本仓应改为基于 `langgraph dev` 能力的容器运行路线
+  - `langgraph-api` 的 `licensed` 变体在没有有效 Agent Server 资格时会启动失败
+  - `langgraph dev` 是无 License 的 `local_dev` / in-memory 路线，不能替代本 compose 的
+    PostgreSQL/Redis Durable Run 验证
 
 说明：
 
@@ -48,34 +49,15 @@
 - `runtime_service/.env`
 - `runtime_service/conf/settings.local.yaml`
 
-其中：
+其中 `.env` 或 `deploy/.env.runtime-service` 只由部署环境提供真实模型配置；
+当前 Runtime 代码不读取 `runtime_service/conf/settings.local.yaml`，也不维护共享多模态
+附件解析模型配置。
 
-- `.env` 放轻量环境选择与默认项
-- `settings.local.yaml` 放真实模型组配置
+### 3.2 当前 R6 配置
 
-容器里的共享多模态附件解析默认模型：
-
-- `MULTIMODAL_PARSER_MODEL_ID`
-- 当前容器化基线默认值：`gpt_5.4-ccr`
-
-如果未配置这个值，代码默认会回退到 `doubao_vision_mini`。
-
-### 3.2 runtime 私有 knowledge MCP
-
-规划中的 env 名称：
-
-- `TEST_CASE_V2_KNOWLEDGE_MCP_ENABLED`
-- `TEST_CASE_V2_KNOWLEDGE_MCP_URL`
-- `TEST_CASE_V2_KNOWLEDGE_TIMEOUT_SECONDS`
-- `TEST_CASE_V2_KNOWLEDGE_SSE_READ_TIMEOUT_SECONDS`
-
-这些值属于：
-
-- service-private runtime config
-
-不属于：
-
-- 公共 MCP registry
+R6 Compose 只负责 Agent Server、PostgreSQL 和 Redis 的隔离启动；Runtime 模型凭据从
+部署环境注入，Durable 测试地址和 Assistant ID 由测试命令显式提供。R6 尚未通过真实
+Agent Server Durable 验证，不能把本文件当作生产发布指南。
 
 ### 3.3 runtime 远端持久化
 
@@ -124,11 +106,13 @@
 - `apps/runtime-service/deploy/.env.runtime-service.example`
 - `apps/runtime-service/.dockerignore`
 
-仍待完成：
+当前验证状态：
 
-- 镜像 build 级验证
-- 容器启动级验证
-- health / graph registry 运行级验证
+- 镜像 build：已通过，`runtime-service:r5-harness` image ID 为 `d44956945b33`
+- PostgreSQL / Redis：已通过健康检查
+- 容器启动：镜像已加载 custom auth 和 `webapp.py:app` 并连接 PostgreSQL/Redis；当前 Agent Server
+  entitlement 请求返回 `403`，application startup 未完成，退出码为 `3`
+- shutdown：由于 startup 被 entitlement 阻断，SIGTERM、bounded flush 和 drain 尚未验证
 
 当前验证发现：
 
@@ -136,15 +120,15 @@
   - `/info`
   - `/internal/capabilities/models`
   - `/internal/capabilities/tools`
-- 因此后续 runtime 容器应改为围绕该运行模式构建
+- 该结果只覆盖本地开发和 in-memory 持久化，不覆盖 Durable Run
 
 更新结论：
 
-- 当前交付继续沿用官方 `langgraph-api` 基座镜像路线
-- 运行模式按 Lite 模式收敛：
-  - 提供 `LANGSMITH_API_KEY`
-  - 提供有效 `LANGSMITH_ENDPOINT`（默认 `https://api.smith.langchain.com`）
-  - `LANGGRAPH_CLOUD_LICENSE_KEY` 留空
+- 当前交付继续沿用官方 `langgraph-api` 基座镜像路线。
+- 本地 compose 测试需要具备 LangGraph Cloud 访问资格的 `LANGSMITH_API_KEY`；生产/自托管需要
+  `LANGGRAPH_CLOUD_LICENSE_KEY`。
+- 普通 LangSmith API Key 不等于 Agent Server 资格；若只做本地开发，使用 `langgraph dev`，无需
+  License，但只能得到 in-memory 运行证据。
 
 ## 6. 更新与重建
 

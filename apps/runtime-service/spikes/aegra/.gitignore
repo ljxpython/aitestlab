@@ -1,0 +1,5 @@
+.aegra.pid
+aegra.log
+.pytest_cache/
+.venv/
+__pycache__/

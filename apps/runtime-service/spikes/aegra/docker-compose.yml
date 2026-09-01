@@ -1,0 +1,32 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: aegra_spike
+      POSTGRES_USER: aegra_spike
+      POSTGRES_PASSWORD: aegra_spike
+    ports:
+      - "${AEGRA_SPIKE_POSTGRES_PORT:-55432}:5432"
+    volumes:
+      - aegra-spike-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aegra_spike -d aegra_spike"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${AEGRA_SPIKE_REDIS_PORT:-56379}:6379"
+    volumes:
+      - aegra-spike-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  aegra-spike-postgres:
+  aegra-spike-redis:

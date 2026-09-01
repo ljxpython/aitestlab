@@ -31,8 +31,9 @@ Platform API    -> 调度、幂等、权限、Run 默认值和控制面
 5. 静态 Graph 在启动阶段加载；Thread Sandbox、MCP 和用户级 Backend 延迟到真实 Run。
 6. Agent Server 负责生产 Queue、Thread、Run、Checkpoint 和 shutdown drain；Service 不实现第二套生命周期管理器。
 7. 优雅退出先停止接收新任务，再让进行中的 Run 在可恢复边界退出；硬退出由 Agent Server 的恢复/清理机制处理。
-8. 本次不配置 `langgraph.json.http.app`，不新增 Runtime Custom Route；前端和模型配置由
-   Platform API 承担，Runtime 只消费透传的 RuntimeContext。
+8. `langgraph.json.http.app` 只挂载 `runtime_service.webapp:app` 的生命周期，用于进程级 Langfuse
+   初始化和有界关闭；不新增 Runtime Custom Route。前端和模型配置由 Platform API 承担，Runtime
+   只消费透传的 RuntimeContext。
 
 ## 2. Package 结构
 
@@ -51,6 +52,7 @@ apps/runtime-service/
 │       ├── runtime/
 │       ├── middlewares/
 │       ├── observability/
+│       ├── webapp.py
 │       ├── graphs/
 │       │   └── reference_agent.py
 │       └── services/
@@ -102,8 +104,11 @@ LangGraph CLI 默认读取当前目录的 `langgraph.json`。目标配置：
   "$schema": "https://langgra.ph/schema.json",
   "python_version": "3.13",
   "dependencies": ["."],
+  "http": {
+    "app": "./src/runtime_service/webapp.py:app"
+  },
   "auth": {
-    "path": "./src/runtime_service/auth/platform.py:platform_auth"
+    "path": "./src/runtime_service/auth/platform.py:auth"
   },
   "graphs": {
     "reference_agent": {
@@ -115,8 +120,8 @@ LangGraph CLI 默认读取当前目录的 `langgraph.json`。目标配置：
 }
 ```
 
-当前配置不包含 `http.app`。只有未来出现明确的非 LangGraph 协议或 Runtime 专属只读诊断需求，
-才在单独评审后增加一个 `http_app.py`，并同时验证路由认证、命名空间和默认路由覆盖风险。
+当前 `http.app` 只承载生命周期，不提供业务路由。任何未来 Runtime Custom Route 都必须单独评审，
+同时验证路由认证、命名空间和默认路由覆盖风险。
 
 字段职责：
 
@@ -277,6 +282,15 @@ except GraphDrained:
 
 Agent Server 已经负责 Queue lease、Run 状态、恢复和 sweeper。Service 不实现全局 signal handler、Run 列表扫描或自定义重试队列。
 
+R5 使用 `http.app` 的 FastAPI lifespan 管理进程级 Langfuse client：startup 只校验显式启用的
+Langfuse 配置并初始化一次，shutdown 执行一次有界 flush。该 app 不拥有 Run、Thread、Queue 或
+Checkpoint，也不添加业务路由；生产 drain 和 Worker recovery 仍由 Agent Server 负责。
+
+目标生产镜像验证已确认 Agent Server 能加载 custom auth 和 `webapp.py:app`，并连接 PostgreSQL/Redis；
+但当前 LangSmith 账号的 Agent Server entitlement 检查返回 `403`，combined lifespan 尚未完成 startup，
+容器以退出码 `3` 退出。因此这条证据只证明镜像配置和 app import，不证明生产 startup、SIGTERM、
+bounded flush 或 drain。
+
 ### 7.2 Hard Shutdown
 
 进程崩溃或 Grace Period 到期时：
@@ -346,3 +360,18 @@ Run 不能因为客户端 SSE 断开就被标记为取消；断线策略由 Plat
 - Graceful Shutdown：`/oss/python/langgraph/fault-tolerance#graceful-shutdown`
 - Agent Server Run Lifecycle：`/langsmith/agent-server#run-execution-lifecycle`
 - Open SWE：`agent/server.py`、`langgraph.json`
+
+## 12. 实现对齐目录
+
+> 本目录只核对本文在 R0 可验收的部分。Agent Server Durable、优雅退出和资源恢复
+> 属于 R6 或生产部署门槛，不得用 `langgraph dev` 的 in-memory 结果冒充。
+
+| ID | 要求 | 阶段 | 实现位置 | 测试位置 | 验证记录 | 状态 | 缺口/后续 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `24-R0-DEP-001` | 安装后可从 `src` 导入 `runtime_service` | R0 | `pyproject.toml`；`src/runtime_service/__init__.py` | `tests/test_r0_baseline.py:22-25` | 本轮 `uv run python -c "import runtime_service"` 通过 | `implemented-local` | 继续保留安装后 import 检查 |
+| `24-R0-DEP-002` | 根 `langgraph.json` 是生产 Graph 注册入口 | R0 | `langgraph.json:1-10` | `tests/test_r0_baseline.py:28-34` | 配置解析通过；本地服务 `/info` 返回 `0.13.0` / `1.2.11` | `implemented-local` | 当前配置按 R0 延后 Auth，不能写成生产认证已完成 |
+| `24-R0-DEP-003` | R0 基线不依赖 R4 Demo 注册，完整 Demo 配置由 R4 验收 | R0 | `langgraph.demo.json:5-25`；R4 测试归属 | `tests/test_r0_baseline.py`；`tests/services/test_r4_capability_demos.py:test_demo_config_registers_all_r4_capability_graphs` | R0 `6 passed`；R4 `10 passed` | `implemented-local` | `langgraph.demo.json` 按设计注册五个示例；R0 不再把 R4 Graph 当作自身门槛 |
+| `24-R0-DEP-004` | Dockerfile 的 Graph 注册由生产配置生成并保持同步 | R0 | `deploy/Dockerfile:3-20`；`langgraph.json:5-10` | `tests/test_r0_baseline.py:test_docker_graph_registry_matches_production_config` | R0 `6 passed`，逐项比较 Graph ID、路径和描述 | `implemented-local` | 修改 `langgraph.json` 后必须重新生成 Dockerfile；测试不替代真实容器启动验证 |
+| `24-R0-DEP-005` | `langgraph dev --config ./langgraph.json` 能启动并可 introspection | R0 | `langgraph.json`；`graphs/reference_agent.py` | `tests/test_r0_baseline.py`；`curl /info` | 本轮启动成功，`/info` 返回 JSON；日志显示 `noop` auth 和 in-memory runtime | `implemented-local` | 只证明 local_dev，不证明 licensed Agent Server |
+| `24-R0-DEP-006` | Graph/Auth/依赖非法时不能进入 ready | R0 | 当前无统一启动失败门禁 | 无 | 未找到可失败的启动失败测试 | `missing` | 增加最小非法配置/导入失败检查；生产 readiness 留给 R6/部署验证 |
+| `24-R0-DEP-007` | Agent Server 负责 Queue、Checkpoint、drain 和 worker recovery | R6 | Agent Server 外部能力 | `tests/durable/` | R0 不执行；当前 Durable 测试因无 `RUNTIME_DURABLE_URL` 全部 skip | `deferred` | 不把 R6 后置能力算进 R0 |

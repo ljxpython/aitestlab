@@ -3,7 +3,6 @@ name: openspec-propose
 description: Propose a new change with all artifacts generated in one step. Use when the user wants to quickly describe what they want to build and get a complete proposal with design, specs, and tasks ready for implementation.
 allowed-tools: Bash(openspec:*)
 license: MIT
-compatibility: Requires openspec CLI.
 metadata:
   author: openspec
   version: "1.0"
@@ -79,6 +78,11 @@ When ready to implement, run /opsx:apply
       - Check if every artifact ID in `applyRequires` has `status: "done"` in the artifacts array
       - Stop when all `applyRequires` artifacts are done
 
+   c. **Write evidence into the plan**
+      - Make acceptance criteria explicit enough that later verification can say pass, blocked, or deferred without guessing.
+      - For any boundary that depends on external services or real deployment, record the required evidence and the blocked state up front.
+      - For the completion vocabulary, follow `$openspec-completion-gate` and its `references/completion-gate.md`.
+
    c. **If an artifact requires user input** (unclear context):
       - Use **AskUserQuestion tool** to clarify
       - Then continue with creation
@@ -102,6 +106,7 @@ After completing all artifacts, summarize:
 - The schema defines what each artifact should contain - follow it
 - Read dependency artifacts for context before creating new ones
 - Use `template` as the structure for your output file - fill in its sections
+- Keep task wording tied to evidence, not vibes. If a task cannot be verified locally, say so in the artifact instead of implying completion.
 - **IMPORTANT**: `context` and `rules` are constraints for YOU, not content for the file
   - Do NOT copy `<context>`, `<rules>`, `<project_context>` blocks into the artifact
   - These guide what you write, but should never appear in the output

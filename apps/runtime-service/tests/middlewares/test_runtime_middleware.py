@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 
 import pytest
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
@@ -15,6 +16,8 @@ from runtime_service.runtime import (
     RuntimePolicy,
     RuntimePrincipal,
     RuntimeResolutionError,
+    RuntimeAuthError,
+    runtime_context_hash,
 )
 from langchain.agents.middleware import (
     ModelRequest,
@@ -41,7 +44,7 @@ def write_tool(topic: str) -> str:
 
 
 def _middleware(*, builder=None) -> RuntimeConfigMiddleware:
-    principal = RuntimePrincipal("u", "t", "p", "developer", ())
+    principal = RuntimePrincipal("u", "t", "p", "developer", ("read_tool",))
     policy = RuntimePolicy("p1", ("test:model",), ("read_tool",))
     defaults = AgentDefaults(
         model_id="test:model",
@@ -56,6 +59,7 @@ def _middleware(*, builder=None) -> RuntimeConfigMiddleware:
         defaults=defaults,
         base_model=FakeListChatModel(responses=["ok"]),
         model_builder=builder or (lambda _: FakeListChatModel(responses=["override"])),
+        local_fallback=True,
     )
 
 
@@ -119,6 +123,70 @@ def test_runtime_middleware_filters_unknown_tools_before_model_visibility() -> N
 
     asyncio.run(middleware.awrap_model_call(request, handler))
     assert [item.name for item in called[0].tools] == ["read_tool"]
+
+
+def _server_runtime(*, context_hash: str | None = None) -> Runtime:
+    user = {
+        "runtime_principal": {
+            "user_id": "server-user",
+            "tenant_id": "server-tenant",
+            "project_id": "server-project",
+            "role": "developer",
+            "permissions": ["read_tool"],
+        },
+        "runtime_policy": {
+            "version": "server-policy",
+            "allowed_model_ids": ["test:model"],
+            "allowed_tool_names": ["read_tool"],
+        },
+        "runtime_scope": {"tenant_id": "server-tenant", "project_id": "server-project"},
+        "runtime_context_hash": context_hash or runtime_context_hash(None),
+    }
+    return Runtime(
+        context=RuntimeContext(),
+        server_info=SimpleNamespace(user=user, assistant_id="assistant-a"),
+        execution_info=SimpleNamespace(thread_id="thread-a"),
+    )
+
+
+def test_runtime_middleware_uses_verified_server_user_facts() -> None:
+    middleware = RuntimeConfigMiddleware(
+        principal=RuntimePrincipal("constructor-user", "t", "p", "developer", ()),
+        policy=RuntimePolicy("constructor-policy", ("test:model",), ()),
+        defaults=AgentDefaults("test:model", "prompt", "v1", optional_tool_names=("read_tool",)),
+        base_model=FakeListChatModel(responses=["ok"]),
+        local_fallback=False,
+    )
+    request = ModelRequest(
+        model=FakeListChatModel(responses=["ok"]),
+        messages=[HumanMessage(content="hello")],
+        tools=[read_tool],
+        runtime=_server_runtime(),
+    )
+    called: list[ModelRequest] = []
+
+    async def handler(value: ModelRequest):
+        called.append(value)
+        return "response"
+
+    asyncio.run(middleware.awrap_model_call(request, handler))
+    assert [item.name for item in called[0].tools] == ["read_tool"]
+
+
+def test_runtime_middleware_rejects_context_hash_mismatch() -> None:
+    middleware = _middleware()
+    request = ModelRequest(
+        model=FakeListChatModel(responses=["ok"]),
+        messages=[HumanMessage(content="hello")],
+        runtime=_server_runtime(context_hash="sha256:" + "0" * 64),
+    )
+
+    async def handler(_request: ModelRequest):
+        raise AssertionError("handler must not run")
+
+    with pytest.raises(RuntimeAuthError) as error:
+        asyncio.run(middleware.awrap_model_call(request, handler))
+    assert error.value.code == "runtime.auth.context_hash_mismatch"
 
 
 def test_model_call_timeout_propagates_timeout() -> None:

@@ -18,6 +18,7 @@ async def load_mcp_tools(
     *,
     allowed_names: tuple[str, ...] = ("mcp_read",),
     conflict: bool = False,
+    required: bool = True,
 ) -> list[BaseTool]:
     """Load tools through the official MCP adapter, then enforce local policy."""
 
@@ -38,7 +39,12 @@ async def load_mcp_tools(
             },
         }
     client = MultiServerMCPClient(dict(connections), tool_name_prefix=False)
-    tools = await client.get_tools()
+    try:
+        tools = await client.get_tools()
+    except Exception as exc:
+        if not required:
+            return []
+        raise RuntimeResolutionError("runtime.mcp.required_unavailable") from exc
     names = [tool.name for tool in tools]
     if len(names) != len(set(names)):
         raise RuntimeResolutionError("runtime.tool.name_conflict", "tool_name")

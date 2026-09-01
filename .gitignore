@@ -435,6 +435,7 @@ deploy/.env.stack
 # Local code intelligence output and caches.
 /graphify-out/
 /.harness/graphify-out/
+**/graphify-out/
 **/.codegraph/
 .finesse/
 

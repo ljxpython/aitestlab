@@ -2,7 +2,7 @@
 
 > 文档类型：Draft
 >
-> 状态：R0、R1、R2、R3、R4、R5 已实施并归档；当前进入 R6 规划
+> 状态：R0-R5 仅完成部分局部能力；R4 已完成 local harness 验收，但生产资源链仍阻塞；R6 正在实施且当前阻塞
 >
 > 适用范围：`apps/runtime-service`，以及后续最短的 `platform-api` 整合链路
 >
@@ -39,8 +39,10 @@ R0 新包和启动基线
   -> P1 Platform 控制面和配置快照整合
 ```
 
-当前已完成 R0、R1、R2、R3、R4 和 R5，并通过各阶段门槛；当前阶段为 R6 Durable Run 真实部署验证规划。
-任何后续阶段的代码、Demo 或 Platform 整合不得提前实施；Demo 按本计划第 13 节随所属阶段进入。
+当前阶段为 R6 Durable Run 真实部署验证实施。R0-R5 的“局部实现”和“生产链路完成”必须分开理解；
+逐文档对齐、证据等级和剩余缺口见 [31 号审计](./31-runtime-refactor-alignment-audit.md)。
+R6 未取得真实 PostgreSQL/Redis/Worker 证据前，任何后续阶段的代码、Demo 或 Platform 整合不得提前实施；
+Demo 按本计划第 13 节随所属阶段进入。
 
 R0～R6 完成前不改 Platform 业务代码。P1 不是 Runtime 的前置条件，而是 Runtime 已经可以
 独立运行后的第二条工作流。
@@ -149,7 +151,9 @@ R0～R6 完成前不改 Platform 业务代码。P1 不是 Runtime 的前置条�
 
 ### 目标
 
-按 15 号文档实现最小、显式、有顺序的 Middleware 生命周期。
+按 15 号文档实现最小、显式、有顺序的 Middleware 生命周期。当前 R3 closure 已补齐
+Reference Agent 的 Tool Error/Retry 真实 graph 证据；生产 Provider fallback/retry、Run deadline
+和 finalization 仍按 15 号文档的边界单独验收或后置。
 
 ### 首批顺序
 
@@ -200,7 +204,7 @@ R4 同时完成三个能力 Demo：`deep_agent_demo`、`mcp_demo`、`backend_dem
 - Backend 失败不静默切换目录；
 - Thread、Workspace、Checkpoint 的恢复和清理有真实测试。
 
-## 8. R5：Runtime 可观测（已完成）
+## 8. R5：Runtime 可观测（Runtime 闭环完成，生产 exporter 仍有边界）
 
 ### 目标
 
@@ -220,7 +224,15 @@ R4 同时完成三个能力 Demo：`deep_agent_demo`、`mcp_demo`、`backend_dem
 - 每次 Run 可定位 Graph、Model、Tool、Checkpoint 和终态；
 - 日志和 Trace metadata 经过脱敏和大小限制。
 
-## 9. R6：Durable Run 真实验证（规划中）
+R5 closure 已补齐 Runtime 内部生命周期、可信 metadata allowlist、Model/Tool/Subagent callback
+传播、结构化诊断和可重跑真实 Langfuse smoke。`16-runtime-observability-and-langfuse-design.md`
+的 Harness 表逐项记录了 `✅/❌` 和命令证据。Langfuse SDK queue drop 的 Runtime 专属
+`event_dropped` Counter、目标生产容器 SIGTERM/drain 和跨服务传播仍未完成。目标镜像已加载
+`webapp.py:app` 并连通 PostgreSQL/Redis，但 Agent Server entitlement `403` 使其在 application startup
+完成前以退出码 `3` 退出；这些边界不能因为本地 `langgraph dev`、归档 OpenSpec 或 `.env` 中存在凭据
+而升级为生产全链路完成。
+
+## 9. R6：Durable Run 真实验证（实施中）
 
 ### 目标
 
@@ -234,6 +246,13 @@ R4 同时完成三个能力 Demo：`deep_agent_demo`、`mcp_demo`、`backend_dem
 - cancel、timeout、Tool failure 和 terminal 状态收敛；
 - SSE 重连按游标补发且不重复；
 - 不依赖 Platform API 也能使用本地 Token 完成 smoke test。
+
+当前实现提供 `scripts/r6-durable-smoke.sh`，使用 `deploy/docker-compose.runtime-service.yml`
+启动隔离 PostgreSQL、Redis 和 Agent Server。这里使用官方 `langgraph-api` 的
+`licensed` 变体：本地测试需要具备 LangGraph Cloud 访问资格的 `LANGSMITH_API_KEY`，生产/自托管
+需要 `LANGGRAPH_CLOUD_LICENSE_KEY`。普通 LangSmith API Key（即使可访问 LangSmith API）不等于
+Agent Server 资格。无 License 的 `langgraph dev` 仅能证明本地 in-memory 协议，不作为 Durable
+Run 通过证据。
 
 R6 通过后，Runtime 才进入可被 Platform 调用的状态。
 
@@ -372,9 +391,11 @@ R5  为五个 Demo 增加 Trace、日志、指标和脱敏验证
 R6  对 reference_agent、workflow_demo 做必需 Durable E2E，其余做能力专项 E2E
 ```
 
-R4 的组合原则已经落地：每个 Demo 在自己的 `get_agent()` 中直接调用官方构造函数并显式装配
-能力。不会新增公共 `build_agent`、Builder、Factory 或 Registry；只有真实重复、复杂资源生命周期
-或独立测试边界出现时，才允许 Service 私有的下划线辅助函数。
+R4 的 Demo 组合骨架已经落地：每个 Demo 在自己的 `get_agent()` 中直接调用官方构造函数并显式装配
+当前演示能力。不会新增公共 `build_agent`、Builder、Factory 或 Registry；只有真实重复、复杂资源
+生命周期或独立测试边界出现时，才允许 Service 私有的下划线辅助函数。组合骨架不等于 R4 全部门槛
+通过；19、20 号文档的 R4 Harness 表明确记录 Policy、写 Tool、Thread Workspace、Skill 只读、
+跨 Worker 重建和清理等缺口。
 
 Demo 必须跟随阶段实现，不能等全部 Runtime 开发完成后再临时补写。R2 的两个 Demo 是第一条
 完整纵向链路和后续复制模板；R4 的三个 Demo 只在对应公共能力有最小实现后加入。
@@ -393,3 +414,106 @@ Demo 必须跟随阶段实现，不能等全部 Runtime 开发完成后再临时
 8. 生产 `langgraph.json` 不自动注册 Demo。
 
 Demo 不引入公共 Builder、Factory、Registry、Plugin、Custom Route 或重复的 Runtime 内核。
+
+### 13.6 R4 Apply 验收状态（2026-09-01）
+
+R4 apply 已完成本地能力闭环，但不能把本地内存适配器写成生产 Durable 证据。`InMemorySaver`、
+进程内 `StateBackend`、本地 fake MCP 和 fake model 只允许用于 local harness；没有可用 Agent Server
+Durable entitlement、PostgreSQL/Redis、跨 Worker 重建和真实 Sandbox Provider 时，生产状态必须保持
+`blocked`。
+
+| 边界 | 是否实现 | 实现与验证位置 | 证据结论 |
+| --- | --- | --- | --- |
+| Tool Policy 与 Deep Agents 内置 Tool 收缩 | ✅ | `services/{deep_agent_demo,mcp_demo,backend_demo}/agent.py`；`tests/services/test_r4_capability_demos.py` | `44 passed`；模型可见面和 handler 前均拒绝未授权 Tool |
+| MCP Service 私有加载、冲突和 required/optional 语义 | ✅ | `services/mcp_demo/loader.py`；同上测试 | 本地 stdio fake graph 闭环；不等于远程生产 MCP |
+| Skill 只读和 Backend fail-closed | ✅ | `deep_agent_demo/agent.py`、`backend_demo/agent.py`；同上测试 | 写 Skill、伪造 `execute/task`、Backend 初始化失败均拒绝 |
+| Thread Workspace 本地协议 | ✅ | `backend_demo/agent.py`；`test_backend_workspace_survives_graph_rebuild_for_same_thread`、`test_backend_workspace_isolated_between_threads` | 同 Thread 重建可读、不同 Thread 隔离；仅 `InMemorySaver` 证据 |
+| Subagent 实际委派缩权 | ❌ | `deep_agent_demo/agent.py` 已声明 `tools=[]` | 尚无真实 task delegation、事件和工具隔离断言，OpenSpec `3.4` 保持开放 |
+| Durable Workspace、跨 Worker/服务重启、清理 | ❌ | `tests/durable/`、R4 smoke 入口 | 当前环境无可用 entitlement/resources；OpenSpec `5.4/5.5/5.6`、`6.2/6.3` 保持开放 |
+
+R4 当前状态：`local-complete / production-chain-blocked`。本节覆盖并更新 19、20 号文档中的
+旧 R4 结论；具体 Requirement 明细以两份领域文档的 Apply Evidence Update 为准。
+
+## 14. R0 实现对齐目录
+
+> 本目录是 R0 的阶段验收入口。每一行必须能追到设计要求、源码、可失败测试和
+> 验证记录；未满足的项保留为缺口，不因 OpenSpec task 勾选而自动变绿。`是否实现` 只有
+> Requirement 整体满足时才填 `✅`；其余状态统一填 `❌`。
+
+| ID | 要求 | 实现位置 | 测试/检查 | 验证记录 | 状态 | 是否实现 | 结论 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `28-R0-001` | 新 `src/runtime_service` 包可安装导入 | `pyproject.toml`；`src/runtime_service/` | `tests/test_r0_baseline.py:22-25` | 本轮 import 通过；历史 `uv lock`/`uv sync` 通过 | `implemented-local` | ✅ | 已完成本地基线 |
+| `28-R0-002` | `reference_agent` 和 `workflow_demo` 骨架、稳定导出和 `get_agent` | `src/runtime_service/graphs/*.py`；`services/*/agent.py` | `tests/test_r0_baseline.py:52-61` | `6 passed` | `implemented-local` | ✅ | 已完成本地基线 |
+| `28-R0-003` | fake model 和 Typed StateGraph 最小执行 | `services/reference_agent/agent.py:83-90`；`workflow_demo/workflow.py:8-15` | `tests/test_r0_baseline.py:64-81` | `6 passed` | `implemented-local` | ✅ | 已完成最小执行，不等于 R2 完整 Workflow |
+| `28-R0-004` | 生产配置只注册 `reference_agent` | `langgraph.json:5-10` | `tests/test_r0_baseline.py:28-34` | JSON 检查通过 | `implemented-local` | ✅ | 已完成 |
+| `28-R0-005` | R0 基线与 R4 Demo 配置、测试相互独立 | `langgraph.demo.json:5-25`；R0/R4 测试文件 | `tests/test_r0_baseline.py`；`tests/services/test_r4_capability_demos.py:test_demo_config_registers_all_r4_capability_graphs` | R0 `6 passed`；R4 `10 passed` | `implemented-local` | ✅ | R4 的三个能力 Graph 由 R4 测试负责，R0 不再依赖其存在 |
+| `28-R0-006` | `langgraph dev` 启动、`/info` introspection 成功 | 根配置；稳定 Graph 入口 | `curl -fsS http://127.0.0.1:8123/info` | 本轮启动成功，返回 LangGraph API `0.13.0`、Python `1.2.11` | `implemented-local` | ✅ | 只证明 local_dev/in-memory |
+| `28-R0-007` | 旧包、旧 Graph 和旧入口不进入新导入链 | 应用根无旧可导入包；新代码均从 `src/runtime_service` 导入 | import 路径断言、静态 `rg` | 本轮 import 和静态检查通过 | `implemented-local` | ✅ | 已完成，但 `conftest.py` 仍是测试路径兜底 |
+| `28-R0-008` | 显式真实模型 E2E；无凭据不得降级 fake | `tests/e2e/test_reference_agent_real_model.py:18-70` | `RUNTIME_E2E=1 uv run pytest tests/e2e/test_reference_agent_real_model.py -m e2e -q` | 本轮真实 DeepSeek E2E：`1 passed in 11.61s`；使用 `.env` 配置，未降级 fake | `implemented-local` | ✅ | 仍是直接 local graph E2E；Agent Server/Durable 证据分别由 R1/R6 记录 |
+| `28-R0-009` | Dockerfile Graph 注册由 `langgraph.json` 生成并受同步门禁保护 | `deploy/Dockerfile:3-20`；`langgraph.json:5-10` | `tests/test_r0_baseline.py:test_docker_graph_registry_matches_production_config` | R0 `6 passed`，注册表与生产配置逐项一致 | `implemented-local` | ✅ | 配置变更后必须重新生成；真实容器启动仍需单独验证 |
+| `28-R0-010` | R0 完成后才进入后续阶段 | `28` 阶段顺序；R6 OpenSpec 当前进行中 | `openspec list --json`；本审计 | R6 尚未通过 Durable，计划已改为部分/阻塞口径 | `partial` | ❌ | 计划状态已比归档记录诚实，但 R0 的“完成”仍需带限定词 |
+
+### R0 结论
+
+```text
+R0 capability-local-complete / alignment-partial
+```
+
+可以确认：新包、稳定 Graph、两个最小 Service、fake 执行、本地启动、配置同步门禁和
+R0/R4 测试边界都存在。
+不能确认：当前真实模型 E2E 已在本轮执行、真实容器的启动失败/停止闭环和生产运行证据。
+因此 R0 只能写成 `capability-local-complete / alignment-partial`，不能写成无条件“全部完成”。
+
+## 15. R1 实现对齐目录
+
+> R1 主文档为 14 号文档；完整逐条矩阵见其“实现对齐目录”。本节只保留阶段入口和结论，
+> 不复制第二份 Requirement 明细。`是否实现` 只有 Requirement 整体满足时才填 `✅`；其余状态统一填 `❌`。
+
+| ID | 要求 | 实现/测试位置 | 验证记录 | 状态 | 是否实现 | 结论 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `28-R1-001` | 五类不可变 Runtime 类型、严格 Context 和稳定错误 | `src/runtime_service/runtime/contracts.py`；`resolver.py`；`errors.py` | 快速全套：`77 passed`；`tests/runtime/test_contracts_and_resolver.py` | `implemented-local` | ✅ | 本地合同、边界和错误证据成立 |
+| `28-R1-002` | 纯 Resolver 完成默认值、Tool Policy 和 hash 决议 | `src/runtime_service/runtime/resolver.py`；`services/reference_agent/agent.py:_TOOL_PERMISSIONS` | 快速全套：`77 passed`；Required/Optional Actor permission、I/O 和输入不变性有断言 | `implemented-local` | ✅ | 不代表真实外部服务调用链 |
+| `28-R1-003` | Delegation JWT 验证 scope、时间、签名和 Context hash | `src/runtime_service/runtime/auth.py`；`auth/platform.py` | `tests/runtime/test_auth.py`；快速全套：`77 passed` | `implemented-local` | ✅ | Platform 签发链和真实 Gateway payload 尚未验证 |
+| `28-R1-004` | 已决议 Model 显式构造且凭据缺失不降级 fake | `src/runtime_service/runtime/modeling.py`；`tests/runtime/test_modeling.py` | `uv run pytest tests/runtime -q`：通过 | `implemented-local` | ✅ | 只证明构造参数和失败映射，不证明真实 Provider |
+| `28-R1-005` | Runtime Config Middleware 可读取已验证 Context 并守住 Model/Tool 边界 | `src/runtime_service/middlewares/runtime_config.py`；`tests/middlewares/test_runtime_middleware.py`；`tests/integration/test_agent_server_auth.py` | 快速全套：`77 passed`；`RUNTIME_E2E=1` Agent Server 集成 `2 passed`；`runtime.server_info.user`、hash mismatch、Tool 边界和真实 Model 有断言 | `implemented-chain` | ✅ | 证明 local Agent Server Model 链；生产 Durable 不在 R1 |
+| `28-R1-006` | R1 完成后才能进入后续阶段 | `openspec/changes/runtime-service-r1-contract-closure/verification.md`；14 号对齐目录 | 快速全套 `77 passed`；真实模型 Agent Server Auth integration `2 passed`；OpenSpec strict 通过 | `implemented-chain` | ✅ | R1 local Agent Server chain 已完成；Platform 正式 Gateway 和 R6 Durable 仍按阶段后置 |
+
+### R1 结论
+
+```text
+R1 capability-chain-complete-local-agent-server / platform-durable-deferred
+```
+
+R1 的 Contracts、Resolver、JWT scope/context_hash、Actor 权限交集、Modeling 和 Agent Server
+Auth 接线已具备本地与真实模型 HTTP 证据，`temperature=0` Context 也已穿过 Resolver 到
+DeepSeek Model。Platform 正式签发链、生产部署和 R6 Durable 仍后置，因此不能把整个 Runtime
+写成无条件生产 `complete`。
+
+## 16. R2 实现对齐目录
+
+> R2 主文档为 11 号目录架构设计；这里保留阶段索引，完整逐条矩阵见 11 号文档的“R2
+> 归档 R2 OpenSpec 与 11 号 Draft 对 `workflow_demo` 范围、`get_agent({})` 默认入口存在冲突；
+> 详见 11 号矩阵的 `11-R2-REF-003`、`11-R2-SCOPE-001`。当前范围已获 owner 批准，代码实现
+> 已开始；active spec 在完成验证后 sync。
+
+| ID | 要求 | 实现/测试位置 | 验证记录 | 状态 | 是否实现 | 结论 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `28-R2-001` | Service 组合根、稳定 Graph 导出和显式依赖装配 | `src/runtime_service/services/*/agent.py`；`src/runtime_service/graphs/*.py` | `uv run pytest tests/test_r0_baseline.py tests/services/reference_agent -q`：`16 passed` | `implemented-local` | ✅ | reference/workflow 基础组合根已成立 |
+| `28-R2-002` | `reference_agent` 使用 `create_agent`、RuntimeContext、Resolver、显式 Middleware 和 Tool | `services/reference_agent/agent.py`；`prompts.py`；`tools.py` | reference 专项 `16 passed`；真实模型 E2E `1 passed` | `implemented-chain` | ✅ | local Agent Server 真实模型链已在 R1 验证 |
+| `28-R2-003` | `workflow_demo` 使用 Typed StateGraph 并实现条件边、人工确认或恢复点 | `services/workflow_demo/workflow.py`；`workflow_demo/agent.py` | `tests/services/workflow_demo/test_agent.py` | 条件分支、Interrupt/Resume 和不重复执行测试通过 | `implemented-local` | ✅ | R2 本地证据；真实 Durable 仍由 R6 验证 |
+| `28-R2-004` | 静态 Graph 重复调用拓扑一致；动态构图只用于 Thread/Run 资源 | `workflow_demo/agent.py:_AGENT`；`reference_agent/agent.py:get_agent` | workflow 两次入口调用为同一实例；reference 每次按 Auth/模型配置重建，当前无 Thread 资源 | `partial` | ❌ | 需要收敛 reference 生命周期，或记录经批准的 factory 例外 |
+| `28-R2-005` | 两个 R2 Demo 均有独立 README、fake/确定性测试和标准 demo 配置 | `services/*/README.md`；`langgraph.demo.json` | `tests/test_r0_baseline.py`；`tests/services/workflow_demo/test_agent.py` | README、demo 配置和 Workflow 专属测试通过 | `implemented-local` | ✅ | R6 运行手册仍单独维护 |
+| `28-R2-006` | introspection 不创建 Sandbox/MCP/数据库等外部资源，入口无外部副作用 | `graphs/*.py`；两个 Service `agent.py` | R0 基线、Workflow Server `/info` 和加载执行测试 | local Agent Server 加载/执行通过；无外部资源初始化 | `implemented-local` | ✅ | 仍缺独立静态依赖方向门禁 |
+| `28-R2-007` | R2 两个 Demo 的 Agent Server 标准加载/执行链成立 | `langgraph.demo.json`；`tests/integration/test_agent_server_auth.py`；`test_workflow_demo_agent_server.py` | reference Auth/Model `2 passed`；workflow demo chain `1 passed` | 两个 Demo 的 local Agent Server chain 已通过 | `implemented-chain` | ✅ | R6 再验证真实 Durable |
+| `28-R2-008` | R2 目标设计与 active spec 的能力范围一致，并为归档冲突保留迁移记录 | 11 号文档；`openspec/specs/runtime-agent-service-integration/spec.md`；归档 R2 文件 | OpenSpec strict；`openspec spec validate runtime-agent-service-integration` | owner 已批准；active spec 已 sync；归档文件保留历史并有迁移记录 | `implemented-local` | ✅ | 后续以 active spec 为准 |
+
+### R2 结论
+
+```text
+R2 capability-local-complete-local-agent-server / reference-lifecycle-incomplete
+```
+
+可以确认：Service 目录、组合根、稳定 Graph 导出、reference_agent 的 `create_agent` 组合、
+真实模型链、workflow 条件分支/Interrupt/Resume、专属文档测试和两个 Demo 的 local Agent
+Server chain 已成立。不能确认：reference 的静态/动态生命周期规则，以及 active spec sync；
+因此 R2 仍不能标记为无条件完成。

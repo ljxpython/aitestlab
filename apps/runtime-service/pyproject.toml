@@ -40,4 +40,6 @@ where = ["src"]
 [tool.pytest.ini_options]
 markers = [
     "e2e: real-model or real-service end-to-end tests",
+    "integration: requires a running Agent Server",
+    "durable: requires PostgreSQL/Redis and Agent Server",
 ]

@@ -11,6 +11,7 @@ Canonical rules:
 Buckets:
 
 - `templates/`: lightweight B1/B2 helpers
+- `templates/design-implementation-alignment.md`: design -> implementation -> test -> verification matrix
 - `context/`: optional historical context snapshots
 - `plans/`: historical or explicitly archived plans; not a default active-change host
 - `reports/`: repo-level or cross-change evidence

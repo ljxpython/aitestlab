@@ -1,12 +1,12 @@
 ## 1. Version and environment baseline
 
-- [ ] 1.1 Lock LangGraph Agent Server/CLI/SDK versions used by R6 and record them in the test report.
-- [ ] 1.2 Choose the existing CI-supported PostgreSQL/Redis service-container or Compose path without changing production Runtime code.
-- [ ] 1.3 Add a local smoke command that starts the isolated services and uses a test-only Delegation Token signer.
+- [x] 1.1 Lock LangGraph Agent Server/CLI/SDK versions used by R6 and record them in the test report.
+- [x] 1.2 Choose the existing CI-supported PostgreSQL/Redis service-container or Compose path without changing production Runtime code.
+- [x] 1.3 Add a local smoke command that starts the isolated services and uses a test-only Delegation Token signer.
 
 ## 2. Durable lifecycle tests
 
-- [ ] 2.1 Add integration coverage for `durability="sync"`, Thread reuse, Run completion and checkpoint inspection.
+- [x] 2.1 Add integration coverage for `durability="sync"`, Thread reuse, Run completion and checkpoint inspection.
 - [ ] 2.2 Add interrupt/resume coverage, including two sequential interrupts and invalid checkpoint rejection.
 - [ ] 2.3 Add Worker termination/restart coverage proving recovery from the latest persisted checkpoint.
 - [ ] 2.4 Add cancel, timeout and unrecoverable Tool failure coverage with exactly one terminal state.
@@ -27,6 +27,6 @@
 ## 5. Evidence and handoff
 
 - [ ] 5.1 Run fast Unit/Composition/Contract tests and the isolated R6 durable job.
-- [ ] 5.2 Record commands, versions, infrastructure inputs, results and uncovered boundaries in `verification.md`.
-- [ ] 5.3 Update Runtime knowledge docs only for confirmed version-specific behavior; do not add speculative APIs.
+- [x] 5.2 Record commands, versions, infrastructure inputs, results and uncovered boundaries in `verification.md`.
+- [x] 5.3 Update Runtime knowledge docs only for confirmed version-specific behavior; do not add speculative APIs.
 - [ ] 5.4 Obtain owner review before `/opsx:apply`; after implementation, sync accepted specs and archive the change.

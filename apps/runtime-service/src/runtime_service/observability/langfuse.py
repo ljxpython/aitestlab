@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import logging
 import os
 import threading
@@ -18,16 +19,19 @@ from langgraph.pregel import Pregel
 logger = logging.getLogger(__name__)
 
 _REQUIRED_SETTINGS = ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_BASE_URL")
-_ALLOWED_METADATA = frozenset(
+_CALLER_METADATA = frozenset(
     {
         "request_id",
         "platform_trace_id",
         "run_id",
         "thread_id",
-        "graph_id",
         "assistant_id",
         "assistant_version",
         "deployment_version",
+    }
+)
+_TRUSTED_METADATA = frozenset(
+    {
         "tenant_id",
         "project_id",
         "user_id",
@@ -38,6 +42,7 @@ _ALLOWED_METADATA = frozenset(
         "policy_version",
     }
 )
+_ALLOWED_TAGS = frozenset({"environment", "service", "graph_id", "source", "release"})
 _SENSITIVE_KEYS = frozenset(
     {
         "authorization",
@@ -61,6 +66,48 @@ _metrics: Counter[str] = Counter()
 
 class LangfuseConfigurationError(RuntimeError):
     """Raised when Langfuse was explicitly enabled with invalid settings."""
+
+
+def _record_export_error(error: BaseException) -> None:
+    _metrics["export_error"] += 1
+    logger.warning(
+        "runtime_langfuse_export_error",
+        extra={"error_category": type(error).__name__},
+    )
+
+
+class _FailSoftCallback(BaseCallbackHandler):
+    """Keep SDK callback failures outside the Agent result path."""
+
+    def __init__(self, delegate: BaseCallbackHandler) -> None:
+        self._delegate = delegate
+        self.raise_error = False
+
+    def __getattribute__(self, name: str) -> Any:
+        if name.startswith("on_"):
+            delegate = object.__getattribute__(self, "_delegate")
+            method = getattr(delegate, name)
+
+            def call(*args: Any, **kwargs: Any) -> Any:
+                try:
+                    result = method(*args, **kwargs)
+                except Exception as error:
+                    _record_export_error(error)
+                    return None
+                if not inspect.isawaitable(result):
+                    return result
+
+                async def wait() -> Any:
+                    try:
+                        return await result
+                    except Exception as error:
+                        _record_export_error(error)
+                        return None
+
+                return wait()
+
+            return call
+        return super().__getattribute__(name)
 
 
 def _enabled(env: Mapping[str, str]) -> bool:
@@ -111,8 +158,12 @@ def _mask(*, data: Any, **_: Any) -> Any:
 class _RuntimeDiagnosticsCallback(BaseCallbackHandler):
     """Bounded Run/Tool diagnostics independent of Langfuse export."""
 
-    def __init__(self, graph_id: str) -> None:
+    def __init__(self, graph_id: str, metadata: Mapping[str, Any]) -> None:
         self._graph_id = graph_id
+        self._metadata = {
+            key: metadata.get(key)
+            for key in ("run_id", "thread_id", "request_id")
+        }
         self._starts: dict[Any, float] = {}
 
     def on_chain_start(
@@ -162,7 +213,9 @@ class _RuntimeDiagnosticsCallback(BaseCallbackHandler):
             "runtime_tool_error",
             extra={
                 "graph_id": self._graph_id,
+                **self._metadata,
                 "tool_name": str(kwargs.get("name", "unknown"))[:_MAX_VALUE_LENGTH],
+                "error_category": type(error).__name__,
             },
         )
 
@@ -179,7 +232,13 @@ class _RuntimeDiagnosticsCallback(BaseCallbackHandler):
         _metrics[f"run_{status}"] += 1
         logger.info(
             "runtime_run_completed",
-            extra={"graph_id": self._graph_id, "status": status, "duration_ms": duration_ms},
+            extra={
+                "graph_id": self._graph_id,
+                **self._metadata,
+                "callback_run_id": str(run_id),
+                "status": status,
+                "duration_ms": duration_ms,
+            },
         )
 
 
@@ -207,7 +266,7 @@ def _new_callback() -> Any:
     initialize_langfuse()
     from langfuse.langchain import CallbackHandler
 
-    return CallbackHandler(public_key=settings["public_key"])
+    return _FailSoftCallback(CallbackHandler(public_key=settings["public_key"]))
 
 
 def _values(value: Any) -> list[Any]:
@@ -228,7 +287,7 @@ def _approved_metadata(config: RunnableConfig, graph_id: str) -> dict[str, Any]:
     result = {
         str(key): _redact(value, key=str(key))
         for key, value in (metadata.items() if isinstance(metadata, Mapping) else ())
-        if str(key) in _ALLOWED_METADATA
+        if str(key) in _CALLER_METADATA
     }
     configurable = _configurable(config)
     for key in ("thread_id", "run_id", "assistant_id"):
@@ -239,18 +298,23 @@ def _approved_metadata(config: RunnableConfig, graph_id: str) -> dict[str, Any]:
     return result
 
 
+def _trusted_metadata(metadata: Mapping[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(metadata, Mapping):
+        return {}
+    return {
+        str(key): _redact(value, key=str(key))
+        for key, value in metadata.items()
+        if str(key) in _TRUSTED_METADATA
+    }
+
+
 def _merge_config(config: RunnableConfig, callback: Any, graph_id: str) -> RunnableConfig:
     bound = dict(config)
-    metadata = (
-        dict(config.get("metadata") or {})
-        if isinstance(config.get("metadata"), Mapping)
-        else {}
-    )
-    metadata.update(_approved_metadata(config, graph_id))
+    metadata = _approved_metadata(config, graph_id)
     tags = [
         tag
         for tag in _values(config.get("tags"))
-        if isinstance(tag, str) and len(tag) <= _MAX_VALUE_LENGTH
+        if isinstance(tag, str) and tag in _ALLOWED_TAGS
     ]
     tags.extend(tag for tag in ("runtime-service", graph_id) if tag not in tags)
     callbacks = _values(config.get("callbacks"))
@@ -276,17 +340,11 @@ def with_langfuse_tracing(
             return graph
         bound = _merge_config(config, callback, graph_id)
         callbacks = list(bound["callbacks"])
-        callbacks.append(_RuntimeDiagnosticsCallback(graph_id))
-        bound["callbacks"] = callbacks
         bound_metadata = dict(bound.get("metadata") or {})
         if trusted_metadata:
-            bound_metadata.update(
-                {
-                    str(key): _redact(value, key=str(key))
-                    for key, value in trusted_metadata.items()
-                    if str(key) in _ALLOWED_METADATA
-                }
-            )
+            bound_metadata.update(_trusted_metadata(trusted_metadata))
+        callbacks.append(_RuntimeDiagnosticsCallback(graph_id, bound_metadata))
+        bound["callbacks"] = callbacks
         bound_metadata["langfuse_trace_name"] = graph_id
         if isinstance(bound_metadata.get("thread_id"), (str, int)):
             bound_metadata["langfuse_session_id"] = str(bound_metadata["thread_id"])
@@ -300,6 +358,7 @@ def with_langfuse_tracing(
         raise
     except Exception:
         _metrics["callback_error"] += 1
+        _metrics["export_error"] += 1
         logger.exception("runtime_langfuse_callback_error", extra={"graph_id": graph_id})
         return graph
 
@@ -319,6 +378,7 @@ def close_langfuse(*, timeout_seconds: float = 5.0) -> None:
             client.flush()
         except Exception:
             _metrics["flush_error"] += 1
+            _metrics["export_error"] += 1
             logger.exception("runtime_langfuse_flush_error")
         finally:
             done.set()

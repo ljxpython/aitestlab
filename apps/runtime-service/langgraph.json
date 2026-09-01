@@ -2,11 +2,31 @@
   "$schema": "https://langgra.ph/schema.json",
   "python_version": "3.13",
   "dependencies": ["."],
+  "http": {
+    "app": "./src/runtime_service/webapp.py:app"
+  },
   "graphs": {
     "reference_agent": {
       "path": "./src/runtime_service/graphs/reference_agent.py:get_agent",
       "description": "R2 Runtime-aware create_agent reference service with explicit model resolution."
     }
   },
-  "env": ".env"
+  "env": ".env",
+  "auth": {
+    "path": "./src/runtime_service/auth/platform.py:auth",
+    "openapi": {
+      "securitySchemes": {
+        "RuntimeBearer": {
+          "type": "http",
+          "scheme": "bearer",
+          "bearerFormat": "JWT"
+        }
+      },
+      "security": [
+        {
+          "RuntimeBearer": []
+        }
+      ]
+    }
+  }
 }

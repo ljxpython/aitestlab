@@ -3,7 +3,6 @@ name: openspec-archive-change
 description: Archive a completed change in the experimental workflow. Use when the user wants to finalize and archive a change after implementation is complete.
 allowed-tools: Bash(openspec:*)
 license: MIT
-compatibility: Requires openspec CLI.
 metadata:
   author: openspec
   version: "1.0"
@@ -41,6 +40,9 @@ Archive a completed change in the experimental workflow.
    - Use **AskUserQuestion tool** to confirm user wants to proceed
    - Proceed if user confirms
 
+   Also check whether the artifacts are only "done" on paper. If verification is still partial, skipped, or blocked on a required boundary, call that out before archiving.
+   Use `$openspec-completion-gate` for the meaning of done / partial / blocked / deferred.
+
 3. **Check task completion status**
 
    Read the tasks file (typically `tasks.md`) to check for incomplete tasks.
@@ -51,6 +53,8 @@ Archive a completed change in the experimental workflow.
    - Display warning showing count of incomplete tasks
    - Use **AskUserQuestion tool** to confirm user wants to proceed
    - Proceed if user confirms
+
+   Treat skipped required evidence as incomplete. Archive only when the remaining risk is explicitly accepted, not when the task list merely looks green.
 
    **If no tasks file exists:** Proceed without task-related warning.
 
@@ -116,3 +120,4 @@ All artifacts complete. All tasks complete.
 - Show clear summary of what happened
 - If sync is requested, use openspec-sync-specs approach (agent-driven)
 - If delta specs exist, always run the sync assessment and show the combined summary before prompting
+- If planning artifacts claim completion but verification does not, prefer "blocked" or "partial" over archive.

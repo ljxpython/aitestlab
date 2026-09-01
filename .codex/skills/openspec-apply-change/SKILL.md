@@ -3,7 +3,6 @@ name: openspec-apply-change
 description: Implement tasks from an OpenSpec change. Use when the user wants to start implementing, continue implementation, or work through tasks.
 allowed-tools: Bash(openspec:*)
 license: MIT
-compatibility: Requires openspec CLI.
 metadata:
   author: openspec
   version: "1.0"
@@ -83,6 +82,13 @@ Implement tasks from an OpenSpec change.
    - Error or blocker encountered → report and wait for guidance
    - User interrupts
 
+   **Completion gate**
+   - Mark a task `done` only when the implementation and the required verification for that task both exist.
+   - If a task depends on real external services, production-like deployment, or cross-service behavior, local-only evidence is partial, not done.
+   - If a required check is skipped, write down why and keep the task open unless the task explicitly allows blocked evidence.
+   - If the change's plan and verification disagree, stop and reconcile the artifacts before continuing.
+   - Use `$openspec-completion-gate` for the official meaning of done, partial, blocked, and deferred.
+
 7. **On completion or pause, show status**
 
    Display:
@@ -151,6 +157,7 @@ What would you like to do?
 - Update task checkbox immediately after completing each task
 - Pause on errors, blockers, or unclear requirements - don't guess
 - Use contextFiles from CLI output, don't assume specific file names
+- Keep the status words narrow: local-complete, chain-complete, blocked, or deferred. Do not collapse a partial boundary into "done".
 
 **Fluid Workflow Integration**
 

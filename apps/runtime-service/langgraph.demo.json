@@ -2,6 +2,9 @@
   "$schema": "https://langgra.ph/schema.json",
   "python_version": "3.13",
   "dependencies": ["."],
+  "http": {
+    "app": "./src/runtime_service/webapp.py:app"
+  },
   "graphs": {
     "reference_agent": {
       "path": "./src/runtime_service/graphs/reference_agent.py:get_agent",
@@ -9,7 +12,7 @@
     },
     "workflow_demo": {
       "path": "./src/runtime_service/graphs/workflow_demo.py:get_agent",
-      "description": "R0 deterministic StateGraph workflow with typed state."
+      "description": "R2 deterministic Typed StateGraph with conditional routing and local interrupt/resume."
     },
     "deep_agent_demo": {
       "path": "./src/runtime_service/graphs/deep_agent_demo.py:get_agent",
@@ -21,8 +24,25 @@
     },
     "backend_demo": {
       "path": "./src/runtime_service/graphs/backend_demo.py:get_agent",
-      "description": "R4 StateBackend demo for thread-scoped workspace isolation."
+      "description": "R4 in-process StateBackend demo; durable workspace isolation is not claimed."
     }
   },
-  "env": ".env"
+  "env": ".env",
+  "auth": {
+    "path": "./src/runtime_service/auth/platform.py:auth",
+    "openapi": {
+      "securitySchemes": {
+        "RuntimeBearer": {
+          "type": "http",
+          "scheme": "bearer",
+          "bearerFormat": "JWT"
+        }
+      },
+      "security": [
+        {
+          "RuntimeBearer": []
+        }
+      ]
+    }
+  }
 }

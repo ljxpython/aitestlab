@@ -720,3 +720,52 @@ Open SWE 的 `graphs/agent.py`、`graphs/reviewer.py`、`graphs/analyzer.py`、`
 - Deep Agents Docs：`/oss/python/deepagents/streaming`、`/oss/python/deepagents/event-streaming`
 - LangSmith Docs：`/langsmith/graph-rebuild`、`/langsmith/cli`
 - 本仓库：`docs/knowledge/10-production-agent-platform-roadmap.md`
+
+## 14. 实现对齐目录
+
+> 本目录只核对本文的 R0 相关要求，不替代 Current Standard。跨文档汇总见
+> [31 号审计](./31-runtime-refactor-alignment-audit.md)。状态定义使用
+> `.harness/templates/design-implementation-alignment.md`。
+
+| ID | 要求 | 阶段 | 实现位置 | 测试位置 | 验证记录 | 状态 | 是否实现 | 缺口/后续 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `11-R0-SVC-001` | Service 位于 `src/runtime_service/services/<name>/`，含组合根和 README | R0 | `src/runtime_service/services/reference_agent/agent.py:54`；`reference_agent/README.md`；`workflow_demo/agent.py`；`workflow_demo/README.md` | `tests/test_r0_baseline.py:test_service_entrypoints_return_pregel` | `uv run pytest tests/test_r0_baseline.py -q`：`6 passed` | `implemented-local` | ✅ | 当前只证明两个 R0 Service |
+| `11-R0-SVC-002` | `graphs/<graph_id>.py` 只作为稳定导出层 | R0 | `src/runtime_service/graphs/reference_agent.py:3`；`workflow_demo.py:3` | `tests/test_r0_baseline.py` 的入口加载断言 | 同上；两个 Graph 均可导入 | `implemented-local` | ✅ | 需持续防止在 `graphs/` 放装配逻辑 |
+| `11-R0-SVC-003` | 每个 Service 暴露异步 `get_agent(config) -> Pregel` | R0 | `services/reference_agent/agent.py:54`；`services/workflow_demo/agent.py:11` | `tests/test_r0_baseline.py:52-61` | 同上；两个入口返回 `Pregel` | `implemented-local` | ✅ | 不证明真实 Agent Server Durable |
+| `11-R0-SVC-004` | 生产注册只暴露 Top-level `reference_agent` | R0 | `langgraph.json:5-10`；生成的 `deploy/Dockerfile:20` | `tests/test_r0_baseline.py:test_production_config_registers_only_reference_agent`；`test_docker_graph_registry_matches_production_config` | R0 `6 passed`，生产配置与容器注册表一致 | `implemented-local` | ✅ | 修改生产配置后必须重新生成 Dockerfile |
+| `11-R0-SVC-005` | `workflow_demo` 作为确定性 StateGraph 示例 | R0 | `services/workflow_demo/workflow.py:8-15` | `tests/test_r0_baseline.py:77-81` | 确定性输入 `message=hello` 返回预期响应 | `implemented-local` | ✅ | 条件分支、Checkpoint、Interrupt/Resume 属于 R2，当前未实现 |
+| `11-R0-SVC-006` | 注册前应有 Service README、入口测试和无外部副作用的 fake 验证 | R0 | `services/*/README.md`；`services/*/agent.py` | `tests/test_r0_baseline.py`；`tests/services/reference_agent/test_agent.py` | R0 pytest 通过；真实 E2E 需按显式开关单独记录 | `partial` | ❌ | workflow README 和专属 Service 测试仍不完整 |
+| `11-R0-SVC-007` | Service 之间不互相导入，组合根依赖服务私有模块和公共 Runtime | R0 | `src/runtime_service/services/*` 导入链 | `tests/` 当前无专门依赖方向测试 | `rg` 静态检查未发现 Service-to-Service 私有导入 | `partial` | ❌ | 增加最小静态依赖检查后才能闭环 |
+
+## 15. R2 实现对齐目录
+
+> R2 以本文的 Service 组合根、目录所有权、Graph 入口和两种官方 Graph 形态为验收范围；
+> `workflow_demo` 的条件分支与 Interrupt/Resume 是本文明确写入 R2 的 mandatory 能力。
+> 注意：本文是 Draft；归档的 R2 OpenSpec 将 `workflow_demo` 视为保持原有静态图的非目标，
+> 并要求 `reference_agent.get_agent({})` 可在无 Platform API 时使用默认配置。当前审计按本文目标
+> 设计记录缺口，但在范围冻结前不能据此直接补实现。
+> `是否实现` 只有整条 Requirement 有源码、可失败测试和对应验证证据时才填 `✅`。
+
+| ID | Requirement | 实现位置 | 测试位置 | 验证记录 | 状态 | 是否实现 | 缺口/后续 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `11-R2-ROOT-001` | 每个 Service 以自己的 `agent.py` 作为唯一组合根，`graphs/` 只做稳定导出 | `services/reference_agent/agent.py`；`services/workflow_demo/agent.py`；`graphs/*.py` | `tests/test_r0_baseline.py`；`tests/services/reference_agent/test_middleware_order.py` | `tests/test_r0_baseline.py tests/services/reference_agent`：`16 passed`；Graph 文件只重导出 `get_agent` | `implemented-local` | ✅ | 还缺少自动静态依赖方向门禁 |
+| `11-R2-REF-001` | `reference_agent` 显式装配 `AgentDefaults`、Prompt、Tool、Context、Middleware，并先 Resolver 再创建 Model/Agent | `services/reference_agent/agent.py:31-151`；`prompts.py`；`tools.py` | `tests/services/reference_agent/test_agent.py`；`test_middleware_order.py` | reference agent 专项测试：`16 passed`；真实模型 E2E：`1 passed` | `implemented-chain` | ✅ | Platform 正式签发链不属于 R2 |
+| `11-R2-REF-002` | `create_agent(..., context_schema=RuntimeContext)` 接收 invoke Context，业务 Context 不写入 configurable/Prompt | `services/reference_agent/agent.py:110-121`；`runtime/resolver.py` | `tests/services/reference_agent/test_agent.py:test_context_override_is_resolved_before_model_creation`；R1 Auth/Context tests | `77 passed`；真实 Agent Server 集成 `2 passed`，`temperature=0` 进入真实 DeepSeek | `implemented-chain` | ✅ | 继续由 R1/R5 矩阵维护跨边界契约 |
+| `11-R2-REF-003` | 当前 R2 合同要求缺少 Auth 时 fail-closed；本地测试必须显式提供 test-only adapter | `services/reference_agent/agent.py:57-75`；`agent.py:77-87` | `tests/services/reference_agent/test_agent.py:test_agent_requires_authenticated_server_facts`；显式 fake model 测试 | 空配置返回 `runtime.auth.missing_principal`；显式 fake model + Auth fixture 通过；归档 R2 的空配置成功场景由新 active delta supersede | `implemented-local` | ✅ | active spec sync 完成后关闭旧合同冲突记录 |
+| `11-R2-WF-001` | `workflow_demo` 使用 Typed StateGraph，拥有确定节点、边和至少一个条件分支 | `services/workflow_demo/schemas.py`；`workflow.py` | `tests/services/workflow_demo/test_agent.py:test_workflow_demo_routes_to_one_conditional_branch` | 两条分支测试通过；默认 R0 响应也保持通过 | `implemented-local` | ✅ | R2 本地证据，不代表生产 Durable |
+| `11-R2-WF-002` | `workflow_demo` 提供人工确认或可恢复 Interrupt/Resume，并证明恢复不重复已完成步骤 | `services/workflow_demo/workflow.py:confirm`；`agent.py:_AGENT` | `tests/services/workflow_demo/test_agent.py:test_workflow_demo_interrupt_resume_does_not_repeat_completed_step`；`test_workflow_demo_rejects_invalid_resume_without_completing_run` | `InMemorySaver` 同 Thread 暂停/恢复通过；`prepared_count == 1`；非法 Resume 返回稳定错误 interrupt | `implemented-local` | ✅ | R6 仍需验证 PostgreSQL/Redis、Worker 重启和跨进程恢复 |
+| `11-R2-LIFE-001` | 无 Thread 资源的静态 Graph 重复调用拓扑一致；只有 Thread/Run 资源才动态构图 | `workflow_demo/agent.py:9-19`；`reference_agent/agent.py:77-151` | 现有 R0 入口测试；缺少 topology/lifecycle 专项测试 | workflow 两次入口调用返回同一实例，拓扑为 `START -> respond -> END`；reference 每次按 Auth/模型配置重建 graph，当前无 Thread 资源 | `partial` | ❌ | reference 需要收敛静态图/运行时模型绑定策略，或记录经批准的 factory 例外；现有测试给不存在的 `_STATIC_AGENT` 赋值，不会控制真实缓存行为；补 topology test |
+| `11-R2-DOC-001` | 两个 R2 Service 均有独立 README、标准 demo 配置和最小 Service 测试 | `reference_agent/README.md`；`workflow_demo/README.md`；`langgraph.demo.json` | `tests/test_r0_baseline.py`；`tests/services/workflow_demo/test_agent.py` | README、demo config、workflow 专属测试均存在并通过 | `implemented-local` | ✅ | R6 运行手册仍单独维护 |
+| `11-R2-CHAIN-001` | 两个 R2 Graph 均可被标准 Agent Server 配置加载、查询并执行，且不触发外部副作用 | `langgraph.demo.json`；`graphs/*.py`；两个 Service `agent.py` | `tests/integration/test_agent_server_auth.py`；`tests/integration/test_workflow_demo_agent_server.py` | reference Auth/Model 链已有 `2 passed`；workflow demo Server 搜索、`/info` 和执行 `1 passed` | `implemented-chain` | ✅ | 当前是 local Agent Server chain；R6 再验证真实 Durable |
+| `11-R2-SCOPE-001` | R2 目标设计与 active spec 对同一能力范围保持一致，并为归档冲突保留迁移记录 | `11-agent-service-directory-architecture.md:130`；`openspec/specs/runtime-agent-service-integration/spec.md`；归档 R2 文件 | `openspec validate runtime-service-r2-workflow-contract --strict --no-interactive`；`openspec spec validate runtime-agent-service-integration` | owner 已批准目标范围；active spec 已 sync；归档文件保留历史且由当前 delta 记录迁移原因 | `implemented-local` | ✅ | 归档 R2 历史不修改；后续以 active spec 为准 |
+
+### R2 结论
+
+```text
+R2 capability-local-complete-local-agent-server / reference-lifecycle-incomplete
+```
+
+可以确认：Service 目录、`agent.py` 组合根、稳定 Graph 导出、reference_agent 的
+`create_agent`/Context/Resolver/真实模型链、workflow 条件分支、Interrupt/Resume、专属测试
+和两个 Demo 的 local Agent Server chain 已成立。不能确认：reference 的静态/动态生命周期
+完全符合 11 号文档。因此 R2 仍不能标记为无条件完成。
