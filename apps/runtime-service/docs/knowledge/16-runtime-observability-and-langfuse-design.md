@@ -19,6 +19,12 @@
 > R5 实施边界：以 `openspec/changes/archive/2026-08-30-runtime-service-r5-observability/` 为准。
 > 当前审核结论为 adapter/local-contract 部分完成；正文采集、多模式 exporter 与 Platform 查询不在本阶段。
 
+> Owner 范围决策（2026-09-02）：Langfuse/OTLP 生产化暂不实施。当前不新增 Langfuse 或通用
+> OTLP 后端部署、生产 exporter/服务故障矩阵、跨服务 parent/child Trace 传播、服务端查询和
+> 生产 SLO 验收。R5 已有的本地 Callback、metadata allowlist、fail-soft 单元测试和真实 smoke
+> 仅作为局部能力证据保留，不得升级为本阶段的生产完成结论；恢复时需单独建立 owner、环境、
+> 输入和验收命令。
+
 ## 1. 本轮结论
 
 Runtime Service 使用 Langfuse 作为 Agent 工程 Trace Backend，但 Langfuse 不是整个平台的

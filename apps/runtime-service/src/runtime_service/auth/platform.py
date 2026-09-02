@@ -37,7 +37,7 @@ async def authenticate(authorization: str | None = None) -> Auth.types.MinimalUs
             _bearer_token(authorization),
             secret=_setting("PLATFORM_RUNTIME_DELEGATION_SECRET"),
             issuer=_setting("PLATFORM_RUNTIME_DELEGATION_ISSUER"),
-            audience=_setting("PLATFORM_RUNTIME_DELEGATION_AUDIENCE", required=False) or None,
+            audience=_setting("PLATFORM_RUNTIME_DELEGATION_AUDIENCE"),
         )
     except Auth.exceptions.HTTPException:
         raise

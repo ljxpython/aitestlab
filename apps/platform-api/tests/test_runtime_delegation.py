@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -19,7 +20,7 @@ from app.core.runtime_contract import (
     normalize_protocol_v2_command,
     normalize_protocol_v2_event_request,
 )
-from app.core.security import create_runtime_delegation_token
+from app.core.security import create_runtime_delegation_token, empty_runtime_context_hash
 from app.modules.runtime_gateway.presentation.http import get_runtime_gateway_service
 
 
@@ -36,6 +37,11 @@ class RuntimeDelegationTokenTest(unittest.TestCase):
             project_id="project-1",
             role="project_editor",
             permissions=["project.runtime.write", "project.runtime.read"],
+            policy_version="policy-1",
+            allowed_model_ids=["model-1"],
+            allowed_tool_names=["tool-1"],
+            scope={"tenant_id": "__default", "project_id": "project-1"},
+            context_hash=empty_runtime_context_hash(),
             settings=settings,
         )
 
@@ -59,6 +65,11 @@ class RuntimeDelegationTokenTest(unittest.TestCase):
                     "exp",
                     "jti",
                     "type",
+                    "policy_version",
+                    "allowed_model_ids",
+                    "allowed_tool_names",
+                    "scope",
+                    "context_hash",
                 ]
             },
         )
@@ -71,6 +82,14 @@ class RuntimeDelegationTokenTest(unittest.TestCase):
             ["project.runtime.read", "project.runtime.write"],
         )
         self.assertEqual(claims["type"], "runtime_delegation")
+        self.assertEqual(claims["policy_version"], "policy-1")
+        self.assertEqual(claims["allowed_model_ids"], ["model-1"])
+        self.assertEqual(claims["allowed_tool_names"], ["tool-1"])
+        self.assertEqual(
+            claims["scope"],
+            {"tenant_id": "__default", "project_id": "project-1"},
+        )
+        self.assertTrue(claims["context_hash"].startswith("sha256:"))
         self.assertEqual(jwt.get_unverified_header(token)["kid"], "runtime-delegation-v1")
 
     def test_rejects_unconfigured_secret(self) -> None:
@@ -81,6 +100,11 @@ class RuntimeDelegationTokenTest(unittest.TestCase):
                 project_id="project-1",
                 role="project_editor",
                 permissions=[],
+                policy_version="policy-1",
+                allowed_model_ids=["model-1"],
+                allowed_tool_names=[],
+                scope={"tenant_id": "__default", "project_id": "project-1"},
+                context_hash=empty_runtime_context_hash(),
                 settings=Settings(runtime_delegation_secret=""),
             )
 
@@ -128,8 +152,15 @@ class RuntimeDelegationTokenTest(unittest.TestCase):
         with patch(
             "app.modules.runtime_gateway.presentation.http.LangGraphRuntimeGatewayUpstream",
             return_value=SimpleNamespace(),
-        ) as upstream_factory:
-            get_runtime_gateway_service(request, actor)
+        ) as upstream_factory, patch(
+            "app.modules.runtime_gateway.presentation.http.RuntimePolicyOverlayService",
+        ) as policy_factory:
+            policy_factory.return_value.build_delegation_policy.return_value = {
+                "version": "policy-1",
+                "allowed_model_ids": ["model-1"],
+                "allowed_tool_names": [],
+            }
+            asyncio.run(get_runtime_gateway_service(request, actor))
 
         forwarded = upstream_factory.call_args.kwargs["forwarded_headers"]
         self.assertEqual(set(forwarded), {"authorization", "x-request-id"})
@@ -144,6 +175,7 @@ class RuntimeDelegationTokenTest(unittest.TestCase):
         )
         self.assertEqual(claims["sub"], "user-1")
         self.assertEqual(claims["project_id"], project_id)
+        self.assertEqual(claims["policy_version"], "policy-1")
 
 
 class ProtocolV2RuntimeNormalizationTest(unittest.TestCase):

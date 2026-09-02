@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from decimal import Decimal
 from uuid import UUID
 
@@ -50,6 +52,62 @@ class RuntimePolicyOverlayService:
                 message="Platform database is not enabled",
             )
         return self._session_factory
+
+    def build_delegation_policy(self, *, project_id: str) -> dict[str, object]:
+        session_factory = self._require_session_factory()
+        project_uuid = parse_uuid(project_id, code="invalid_project_id")
+        with session_factory() as session:
+            catalog_repository = SqlAlchemyRuntimeCatalogRepository(session)
+            policy_repository = SqlAlchemyRuntimePolicyRepository(session)
+            models = catalog_repository.list_models(runtime_id=self._runtime_id)
+            tools = catalog_repository.list_tools(runtime_id=self._runtime_id)
+            model_policies = {
+                str(item.model_catalog_id): item
+                for item in policy_repository.list_model_policies(project_id=project_uuid)
+            }
+            tool_policies = {
+                str(item.tool_catalog_id): item
+                for item in policy_repository.list_tool_policies(project_id=project_uuid)
+            }
+
+            allowed_model_ids = sorted(
+                item.model_key
+                for item in models
+                if item.sync_status == "ready"
+                and (
+                    str(item.id) not in model_policies
+                    or model_policies[str(item.id)].is_enabled
+                )
+            )
+            allowed_tool_names = sorted(
+                item.tool_key
+                for item in tools
+                if item.sync_status == "ready"
+                and (
+                    str(item.id) not in tool_policies
+                    or tool_policies[str(item.id)].is_enabled
+                )
+            )
+
+        if not allowed_model_ids:
+            raise ServiceUnavailableError(
+                code="runtime_policy_not_configured",
+                message="No enabled runtime model is available for this project",
+            )
+
+        revision_payload = {
+            "runtime_id": self._runtime_id,
+            "models": allowed_model_ids,
+            "tools": allowed_tool_names,
+        }
+        revision = "platform-policy-" + hashlib.sha256(
+            json.dumps(revision_payload, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()[:32]
+        return {
+            "version": revision,
+            "allowed_model_ids": allowed_model_ids,
+            "allowed_tool_names": allowed_tool_names,
+        }
 
     def _require_project_access(
         self,

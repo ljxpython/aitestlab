@@ -86,3 +86,14 @@ def test_platform_auth_preserves_signed_trace_correlation(monkeypatch: pytest.Mo
 
     assert user["request_id"] == "request-1"
     assert user["platform_trace_id"] == "platform-trace-1"
+
+
+def test_platform_auth_requires_audience_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PLATFORM_RUNTIME_DELEGATION_SECRET", SECRET)
+    monkeypatch.setenv("PLATFORM_RUNTIME_DELEGATION_ISSUER", "runtime-test")
+    monkeypatch.delenv("PLATFORM_RUNTIME_DELEGATION_AUDIENCE", raising=False)
+
+    with pytest.raises(Auth.exceptions.HTTPException) as error:
+        asyncio.run(authenticate(authorization=f"Bearer {_token()}"))
+
+    assert error.value.status_code == 500

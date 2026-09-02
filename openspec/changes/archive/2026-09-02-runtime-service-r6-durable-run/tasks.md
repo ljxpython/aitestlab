@@ -30,7 +30,7 @@
 - [x] 5.1 Run fast Unit/Composition/Contract tests and the isolated R6 durable job.
 - [x] 5.2 Record commands, versions, infrastructure inputs, results and uncovered boundaries in `verification.md`.
 - [x] 5.3 Update Runtime knowledge docs only for confirmed version-specific behavior; do not add speculative APIs.
-- [ ] 5.4 Obtain owner review before `/opsx:apply`; after implementation, sync accepted specs and archive the change.
+- [x] 5.4 Obtain owner review before `/opsx:apply`; after implementation, owner accepts the verified Durable Core scope, syncs accepted specs and archives the change.
 
 ## 6. Approved R6 closure gates
 
@@ -39,4 +39,4 @@
 - [x] 6.3 Fix explicit-port API SIGTERM/restart behavior and add a same-port process-level probe without random-port fallback.
 - [x] 6.4 Verify generic correlation fields across API/queue/Worker and exporter fail-soft behavior with focused tests.
 - [x] 6.5 Run one formal R6 acceptance after all closure gates pass, record cleanup and residue evidence, and leave unsupported external Sandbox Provider evidence blocked.
-- [ ] 6.6 Sync accepted specs and archive the change only after verification and owner acceptance are complete.
+- [x] 6.6 Sync accepted specs and archive the change only after verification and owner acceptance are complete.

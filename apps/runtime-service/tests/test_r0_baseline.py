@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import ast
 import asyncio
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
+import yaml
 from langchain_core.runnables import RunnableConfig
 from langgraph.pregel import Pregel
-import yaml
 from support import BindableFakeChatModel
 
 from runtime_service.graphs.reference_agent import get_agent as get_reference_agent
@@ -17,6 +21,29 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 def _load_config(name: str) -> dict[str, object]:
     return json.loads((PROJECT_ROOT / name).read_text(encoding="utf-8"))
+
+
+def test_installed_package_imports_without_test_path(tmp_path: Path) -> None:
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import runtime_service; print(runtime_service.__file__)",
+        ],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    module_path = Path(result.stdout.strip())
+    assert module_path.name == "__init__.py"
+    assert module_path.parent.name == "runtime_service"
+    assert not module_path.is_relative_to(PROJECT_ROOT / "runtime_service")
 
 
 def test_new_package_is_loaded_from_src() -> None:
@@ -61,7 +88,9 @@ def test_graph_configs_use_the_runtime_lifespan_app() -> None:
 def test_docker_uses_graphharbor_production_config() -> None:
     config = _load_config("langgraph.json")
     dockerfile = (PROJECT_ROOT / "deploy/Dockerfile").read_text(encoding="utf-8")
-    compose = (PROJECT_ROOT / "deploy/docker-compose.runtime-service.yml").read_text(encoding="utf-8")
+    compose = (PROJECT_ROOT / "deploy/docker-compose.runtime-service.yml").read_text(
+        encoding="utf-8"
+    )
 
     assert 'ENTRYPOINT ["graphharbor"]' in dockerfile
     assert '"--config", "${RUNTIME_GRAPH_CONFIG:-/app/langgraph.json}"' in compose
@@ -77,7 +106,9 @@ def test_docker_does_not_embed_stale_langgraph_api_registries() -> None:
 
 
 def test_deploy_env_requires_internal_runtime_context_signing() -> None:
-    template = (PROJECT_ROOT / "deploy/.env.runtime-service.example").read_text(encoding="utf-8")
+    template = (PROJECT_ROOT / "deploy/.env.runtime-service.example").read_text(
+        encoding="utf-8"
+    )
 
     assert "GRAPHHARBOR_RUNTIME_CONTEXT_SECRET=" in template
     assert "GRAPHHARBOR_RUNTIME_CONTEXT_ISSUER=" in template
@@ -103,16 +134,79 @@ def test_host_infra_compose_uses_external_postgres_and_redis() -> None:
     assert compose["volumes"] == {
         "runtime-service-host-infra-workspace-data": {"driver": "local"}
     }
-    template = (PROJECT_ROOT / "deploy/.env.runtime-service.host-infra.example").read_text(
-        encoding="utf-8"
-    )
+    template = (
+        PROJECT_ROOT / "deploy/.env.runtime-service.host-infra.example"
+    ).read_text(encoding="utf-8")
     assert "host.docker.internal" in template
     assert "DATABASE_URI=" in template and "REDIS_URI=" in template
 
 
+def test_r0_services_have_readme_and_dedicated_tests() -> None:
+    for service_name in ("reference_agent", "workflow_demo"):
+        service_root = PROJECT_ROOT / "src/runtime_service/services" / service_name
+        test_root = PROJECT_ROOT / "tests/services" / service_name
+
+        assert (service_root / "README.md").is_file()
+        assert any(test_root.glob("test_*.py"))
+
+
+def test_services_do_not_import_each_other() -> None:
+    services_root = PROJECT_ROOT / "src/runtime_service/services"
+    service_names = {
+        path.name
+        for path in services_root.iterdir()
+        if path.is_dir() and (path / "__init__.py").is_file()
+    }
+    violations: list[str] = []
+
+    for service_root in sorted(services_root.iterdir()):
+        if service_root.name not in service_names:
+            continue
+        for source_path in sorted(service_root.rglob("*.py")):
+            tree = ast.parse(source_path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    modules = [alias.name for alias in node.names]
+                elif isinstance(node, ast.ImportFrom):
+                    if node.level:
+                        base = ["runtime_service", "services", service_root.name]
+                        if node.level > 1:
+                            base = base[: -(node.level - 1)]
+                        imported = node.module or ""
+                        modules = [".".join([*base, *imported.split(".")])]
+                        if not node.module:
+                            modules.extend(
+                                ".".join([*base, alias.name]) for alias in node.names
+                            )
+                    elif node.module:
+                        modules = [node.module]
+                    else:
+                        modules = []
+                else:
+                    continue
+
+                for module in modules:
+                    parts = module.split(".")
+                    if (
+                        len(parts) >= 4
+                        and parts[:3] == ["runtime_service", "services"]
+                        and parts[3] in service_names
+                        and parts[3] != service_root.name
+                    ):
+                        violations.append(
+                            f"{source_path.relative_to(PROJECT_ROOT)} imports {module}"
+                        )
+
+    assert violations == []
+
+
 def test_service_entrypoints_return_pregel() -> None:
     config: RunnableConfig = {
-        "configurable": {"_runtime_model": BindableFakeChatModel(responses=["reference agent response"])}
+        "configurable": {
+            "_runtime_model": BindableFakeChatModel(
+                responses=["reference agent response"]
+            )
+        }
     }
 
     reference = asyncio.run(get_reference_agent(config))
@@ -125,7 +219,13 @@ def test_service_entrypoints_return_pregel() -> None:
 def test_reference_agent_uses_deterministic_fake_model() -> None:
     graph = asyncio.run(
         get_reference_agent(
-            {"configurable": {"_runtime_model": BindableFakeChatModel(responses=["reference agent response"])} }
+            {
+                "configurable": {
+                    "_runtime_model": BindableFakeChatModel(
+                        responses=["reference agent response"]
+                    )
+                }
+            }
         )
     )
     result = asyncio.run(

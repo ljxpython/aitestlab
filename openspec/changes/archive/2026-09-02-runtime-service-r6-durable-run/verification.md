@@ -2,13 +2,24 @@
 
 ## Pre-apply review
 
-- Status: post20 formal acceptance passed; the change remains open for owner acceptance, spec sync and archive.
+- Status: post20 formal acceptance passed; owner acceptance is recorded, accepted specs are synchronized, and the change was archived on 2026-09-02.
 - Owner review: completed before `/opsx:apply`.
 - Scope: `apps/runtime-service` Durable Run validation; Platform API is out of scope.
 - Agent Server decision: GraphHarbor selected as the R6 candidate; its repository remains generic and
   Runtime-specific Principal/Policy structures stay in this repository.
 - Owner approval: foundational cross-repository implementation and an isolated PostgreSQL 16.9 /
   Redis 7.4.2 environment were explicitly approved on 2026-09-01.
+- Scope decision (2026-09-02): the owner explicitly deferred production Sandbox/remote MCP Provider
+  acceptance, Langfuse/OTLP service-failure coverage, real rollback rehearsal, Platform canary/route
+  ownership, and performance SLO/queue-lag/PG-Redis watermark gates. These remain `❌/deferred` and are
+  not failures of the completed Durable Core formal acceptance.
+- Owner acceptance (2026-09-02): the owner accepts the verified R6 Durable Core scope only: API/Worker
+  lifecycle, PostgreSQL/Redis durability, checkpoint recovery, terminal-event uniqueness, Thread Workspace
+  isolation and bridge SSE replay. The deferred production-hardening items remain out of scope and must not
+  be represented as implemented by this change.
+- Spec sync (2026-09-02): the accepted delta was synchronized to
+  `openspec/specs/runtime-durable-run/spec.md`; no Runtime-specific Langfuse/OTLP, Provider or Platform
+  implementation was added to the generic GraphHarbor contract.
 
 ## Planned checks
 
@@ -258,8 +269,27 @@ release gate. Any post17/post18/post19 result must be re-established against pos
 - Cleanup completed with `project_containers=0`, `project_networks=0`, `port_18135_listeners=0` and
   `retained_volumes=3`; the prior `post19` environment was not touched.
 - This closes `30-R6-008` and OpenSpec `6.5`. `6.6` remains unchecked because owner acceptance, spec sync
-  and archive are separate gates. Production cutover remains blocked by the external Sandbox/remote MCP
-  matrix, exporter service-failure coverage, rollback rehearsal and Platform route ownership.
+  and archive are separate gates. Production cutover remains `not_ready` by owner decision: the external
+  Sandbox/remote MCP matrix, exporter service-failure coverage, rollback rehearsal, Platform route
+  ownership and performance SLO gates are explicitly `deferred`.
+
+## Accepted scope and deferred follow-ups
+
+The post20 formal acceptance closes the current R6 Durable Core scope: API/Worker readiness, PostgreSQL/
+Redis durability, checkpoint recovery, terminal-event uniqueness, Thread Workspace isolation, and bridge
+SSE replay. It does not claim production cutover readiness.
+
+| Follow-up | Status | Owner boundary | Resume condition |
+| --- | --- | --- | --- |
+| Real Sandbox Provider and arbitrary remote MCP recovery/cleanup/quota matrix | `deferred` | Runtime/Deep Agents plus the selected Provider; GraphHarbor remains generic | A real Provider, credentials, network and cleanup contract are selected |
+| Langfuse/OTLP service failure and cross-service propagation matrix | `deferred` | Runtime observability and Platform propagation; GraphHarbor only carries generic correlation | A target exporter/OTLP environment and field contract are fixed |
+| Runtime rollback rehearsal | `deferred` | Runtime deployment and database owner | A known-good image, migration compatibility and owner approval exist |
+| Platform canary, route ownership and rollback | `deferred` | `platform-api` / Platform | A separate governed Platform change is approved |
+| Performance SLO, queue lag and PG/Redis watermarks | `deferred` | GraphHarbor generic metrics plus deployment observability | Metrics are exposed and an owner-approved SLO is defined |
+
+These follow-ups must not be closed by reusing local MCP, Langfuse smoke, rollback dry-run or performance
+baseline evidence. When one is resumed, create a separate verification batch with explicit environment,
+inputs, owner and acceptance command.
 
 ## Remaining R6 boundaries
 
@@ -272,12 +302,12 @@ release gate. Any post17/post18/post19 result must be re-established against pos
   mutation is serialized per Thread, and a real LangSmith Sandbox `403` is normalized to the stable
   recovery error. Local Streamable HTTP MCP
   discovery, call, Worker replacement and provider restart are covered by a real-process acceptance;
-  arbitrary remote MCP and LangSmith Sandbox reconnect/cleanup across Worker replacement are not executed,
-  so provider-level production readiness remains unproven. Thread Workspace has separate real-process evidence.
+  arbitrary remote MCP and LangSmith Sandbox reconnect/cleanup across Worker replacement are explicitly
+  `deferred` by owner. Thread Workspace has separate real-process evidence.
 - Runtime pins the published GraphHarbor release and removes the official in-memory server from direct
   production dependencies. The Docker build installs both GraphHarbor distributions from PyPI without
   a development-machine path override. The released `post20` Runtime image passed the same-port restart
-  probe; production rollout and rollback rehearsal remain open.
+  probe; production rollout and rollback rehearsal are explicitly `deferred`.
 - Platform gateway routing, rollout and rollback remain outside R6 and production readiness stays
   `not_ready`.
 

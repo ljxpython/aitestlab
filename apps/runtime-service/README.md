@@ -78,18 +78,19 @@ RUNTIME_R5=1 uv run pytest tests/e2e/test_langfuse_real.py -m e2e -q
 目标镜像已能加载该 custom app 并连接 PostgreSQL/Redis，但当前 Agent Server entitlement 检查返回
 `403`，容器在 application startup 完成前以退出码 `3` 退出。生产 SIGTERM 与 bounded flush 因此仍未验证。
 
-## 本地启动
+## GraphHarbor 启动
 
 从本目录执行：
 
 ```bash
-uv run langgraph dev --config ./langgraph.json --port 8123 --no-browser
+uv run --frozen graphharbor migrate upgrade
+uv run --frozen graphharbor serve --host 127.0.0.1 --port 8123 --config ./langgraph.json
 ```
 
-学习两个 Demo 时使用：
+学习 Demo 时，使用已配置 PostgreSQL/Redis 且注册 Demo graph 的配置：
 
 ```bash
-uv run langgraph dev --config ./langgraph.demo.json --port 8124 --no-browser
+uv run --frozen graphharbor serve --host 127.0.0.1 --port 8124 --config ./langgraph.demo.json
 ```
 
 启动后检查：
@@ -98,9 +99,9 @@ uv run langgraph dev --config ./langgraph.demo.json --port 8124 --no-browser
 curl http://127.0.0.1:8123/info
 ```
 
-R0 使用 fake model，不需要 Platform API 或 Provider 凭据即可启动。当前 R3 已接入 Runtime
-配置、调用上限、Tool Error/Retry 和单次 Model timeout；生产 Provider fallback/retry、Durable
-Checkpoint 和 Platform Gateway 仍按 28 号计划单独验收。
+R0 的 fake model 只说明 Service 可以脱离 Provider 执行；GraphHarbor 仍需要隔离 PostgreSQL 和
+Redis。当前 R3 已接入 Runtime 配置、调用上限、Tool Error/Retry 和单次 Model timeout；生产
+Provider fallback/retry 和 Platform Gateway 仍按 28 号计划单独验收。
 
 ## R4 能力 Demo（已完成）
 
@@ -124,7 +125,7 @@ Platform Run Explorer 仍留到 Runtime 验证完成后的 P1 阶段。
 本地运行能力 Demo：
 
 ```bash
-uv run langgraph dev --config ./langgraph.demo.json --port 8124 --no-browser
+uv run --frozen graphharbor serve --host 127.0.0.1 --port 8124 --config ./langgraph.demo.json
 ```
 
 ## R1 Runtime 合同
@@ -210,7 +211,7 @@ project 的 Worker 收敛为唯一运行实例，再用 `recovery_demo` 执行�
 才启动 bridge 客户端执行 SSE cursor/replay 验收。默认退出会执行带 `--remove-orphans` 的项目清理，
 不删除 volume；仅调试时显式设置 `R6_KEEP_SERVICES=1`。
 
-跨网络、备份恢复和性能基线的当前证据会写入 `openspec/changes/runtime-service-r6-durable-run/verification.md`；
+跨网络、备份恢复和性能基线的当前证据会写入 `openspec/changes/archive/2026-09-02-runtime-service-r6-durable-run/verification.md`；
 远程 MCP/Sandbox、Langfuse 服务端故障矩阵和 Platform 灰度回滚未通过前，R6 仍保持 `not_ready`。Runtime 镜像回滚
 使用 `scripts/r6_runtime_rollback.sh`，默认 dry-run，生产执行必须显式 `--apply` 并设置 `R6_ROLLBACK_CONFIRM=1`。
 

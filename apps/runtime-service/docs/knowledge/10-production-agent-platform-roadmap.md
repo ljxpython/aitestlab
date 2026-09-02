@@ -301,19 +301,35 @@ factory 的理由。
 
 | 阶段 | 目标 | 覆盖主线 | 当前状态 |
 | --- | --- | --- | --- |
-| R0 | Runtime Service 基座与启动 | Runtime 基座 | 局部实现完成，架构对齐部分缺口 |
-| R1 | Runtime Contracts、Auth、Resolver、Modeling | 运行时契约 | Contracts/Resolver 局部完成，Agent Server Auth 未接线 |
+| R0 | Runtime Service 基座与启动 | Runtime 基座 | `local-complete`；R0 基线的源码、独立安装、最小 Service、真实模型 E2E、本地启动和配置同步门禁已闭合；生产容器、Platform 和 Durable 不属于 R0 |
+| R1 | Runtime Contracts、Auth、Resolver、Modeling | 运行时契约 | Contracts/Resolver/Auth 已接线并经 GraphHarbor Durable 验证；Platform 正式签发链后置 |
 | R2 | Agent Service 组合根和 Demo | Agent Service | `reference_agent` 完成，Workflow 恢复 Demo 不完整 |
 | R3 | Middleware 可靠性栈 | Middleware 生命周期 | 最小栈完成，完整可靠性语义未完成 |
 | R4 | Tool、MCP、Backend、Workspace、Skills、Subagents | 能力和资源隔离 | Demo 完成，生产资源隔离未证明 |
-| R5 | Trace、日志、指标和 Langfuse | 观测与排查 | 本地 Adapter 完成，完整传播/部署证据不足 |
-| R6 | Durable Run 真实部署验证 | 恢复、重连、重启和终态 | 实施中，当前被真实 Agent Server entitlement 阻塞 |
+| R5 | Trace、日志、指标和 Langfuse | 观测与排查 | Runtime 本地 Adapter 完成；Langfuse/OTLP 生产化暂缓 |
+| R6 | Durable Run 真实部署验证 | 恢复、重连、重启和终态 | Durable Core 已完成；生产 hardening 暂缓，切流保持 `not_ready` |
 | P1 | Platform 控制面整合 | 配置快照、Gateway、权限和跨服务契约 | R6 通过后再开始 |
 
 R0～R6/P1 不是多套 Agent 架构，而是同一个 Runtime Service 内核的依赖顺序。所有 Agent
 最终都使用同一套 Context、Middleware、Capability 和观测契约。可运行 Demo 的覆盖矩阵和实现
 时点统一维护在 28 号开发计划的“可运行 Demo 计划”章节。逐文档对齐以
 [31 号审计](./31-runtime-refactor-alignment-audit.md) 为准。
+
+### 6.1 R6 范围冻结（2026-09-02）
+
+当前 R6 只收口 Durable Core、API/Worker 生命周期、PostgreSQL/Redis 持久化、Thread Workspace、
+事件 replay 和唯一终态。以下能力由 owner 明确暂不实施，统一标记为 `deferred`，不计入本轮
+acceptance，也不能被表述为已完成：
+
+- Langfuse/OTLP 生产化，包括后端部署、生产 exporter/服务故障矩阵、跨服务 Trace 传播、服务端
+  查询和生产 SLO；R5 已有本地 Callback、脱敏、fail-soft 和 smoke 仅保留为局部证据；
+- 真实 Sandbox Provider 和任意远程 MCP 的生产恢复、cleanup、配额与 Provider SLA；
+- Runtime 真实 rollback rehearsal；
+- Platform 灰度、route ownership 和 Platform rollback；
+- 性能 SLO、queue lag 以及 PostgreSQL/Redis watermark 门槛。
+
+延期项恢复时必须单独建立 owner、真实环境、输入、可失败测试和验收命令。GraphHarbor 只承担
+通用 Agent Server/Durable 执行面，不承载上述项目特有的 Provider、观测或 Platform 业务逻辑。
 
 ### 阶段 0：Runtime Service 基座、运行契约与配置快照
 

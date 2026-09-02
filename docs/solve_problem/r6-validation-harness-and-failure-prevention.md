@@ -103,6 +103,22 @@ GraphHarbor 仓库已有的 `scripts/test.sh` 是生产测试的 Harness：它�
 `postgres:postgres@localhost:5432/langgraph`，而本机没有 `postgres` 角色。正确结论应是“Harness 环境
 未对齐，基础设施测试未执行”，而不是“18 项生产能力通过、33 项代码失败”。
 
+### 1.6 本轮 R6 的明确延期
+
+本轮只验收 Durable Core、API/Worker 生命周期、Thread Workspace、事件 replay 和唯一终态。以下项目
+由 owner 明确标记为 `deferred`，不在本轮追加测试：
+
+| 项目 | 状态 | 责任边界 |
+| --- | --- | --- |
+| 真实 Sandbox Provider、任意远程 MCP 的生产恢复/cleanup/配额 | `deferred` | Runtime/Deep Agents 与外部 Provider；GraphHarbor 不实现具体 Provider |
+| Langfuse/OTLP 生产服务故障矩阵和跨服务传播 | `deferred` | Runtime 观测适配与 Platform；GraphHarbor 只提供通用 correlation 传递 |
+| Runtime 真实 rollback rehearsal | `deferred` | Runtime 部署与数据库 owner |
+| Platform 灰度、route ownership 和 rollback | `deferred` | `platform-api` / Platform |
+| 性能 SLO、queue lag、PG/Redis watermark | `deferred` | GraphHarbor 通用指标与部署观测 |
+
+延期项仍是未实现能力，不能填 `✅`；但不应当成当前 R6 Durable Core 的失败。恢复某项时必须建立
+独立批次、明确输入和 owner，再执行一次对应验收。
+
 ## 2. 配置契约：为什么宿主 `.env` 不会进入容器
 
 本次反复失败的根因不是“没有配置模型凭据”，而是配置链路混用了两个职责不同的文件：
@@ -240,8 +256,8 @@ Demo 是验收夹具，不是生产 Agent 数量。生产 `langgraph.json` 只�
 | `workspace_demo` | 必须 | Thread Workspace 恢复、隔离、fail-closed | R6 `30-R6-010` |
 | `backend_demo` | R4 必须，R6 可复用 | Backend/Thread checkpoint 隔离 | 不是新增 R6 生产 Agent |
 | `mcp_demo` | R4 必须 | 本地 MCP loader、冲突和 Tool Policy | 本地能力 Demo，不等于远程 provider |
-| `mcp_probe` | 远程 MCP hard gate 必须 | Streamable HTTP MCP 恢复 | 与 `mcp_demo` 语义不同 |
-| `sandbox_demo` | 当前可选 | Sandbox binding 和拒绝语义 | 没有真实 provider 时不得宣称生产通过 |
+| `mcp_probe` | 后续 hardening deferred | Streamable HTTP MCP 恢复 | 本地 provider 可复用；任意远程 provider 不在本轮门槛 |
+| `sandbox_demo` | 后续 hardening deferred | Sandbox binding 和拒绝语义 | 没有真实 provider 时不得宣称生产通过 |
 
 `failure_demo`、`timeout_demo`、`disconnect_demo`、`recovery_demo` 已共用一个模块中的确定性
 graph factory，不是四套重复 Runtime。为了保持每个验收项单一职责和故障证据清晰，不建议合并成
@@ -353,6 +369,10 @@ index 是否同时可见，再进行 Runtime 变更。
 
 结果只能写成 `passed`、`failed` 或 `blocked`。`blocked` 不允许被改写成 `passed`，也不允许用
 另一次相同环境重试替代根因修复。
+
+本轮 owner 明确延期的生产 hardening 项目使用 `deferred` 单独记录，不纳入上述一次性 acceptance：
+真实 Sandbox/远程 MCP Provider、Langfuse/OTLP 服务故障、真实 rollback、Platform 灰度和性能 SLO。
+本地 MCP、Langfuse smoke、rollback dry-run 和性能 baseline 只能证明局部能力，不能替代未来验收。
 
 ## 6. 历史 R6 状态（post18 验证批次）
 
@@ -552,8 +572,8 @@ API `/ready`、唯一 Compose Worker 和真实 `recovery_demo` 功能探针，�
 ```
 
 清理结果为 `project_containers=0`、`project_networks=0`、`port_18135_listeners=0`，保留 3 个验收
-数据卷，旧 `post19` 环境未触碰。此次结果闭合 `30-R6-008` 和 OpenSpec `6.5`；OpenSpec `6.6` 仍未完成，
-因为 owner acceptance、spec sync 和 archive 尚未执行。
+数据卷，旧 `post19` 环境未触碰。此次结果闭合 `30-R6-008` 和 OpenSpec `6.5`；随后 owner acceptance、
+spec sync 和 archive 已完成，OpenSpec `6.6` 已闭合。
 
 这不改变生产状态：外部 Sandbox/远程 MCP、观测服务端故障、真实发布回滚和 Platform route ownership
 仍未通过，生产切流继续保持 `not_ready`。后续不得再次执行同一 bridge SSE 验收；只有新的根因和新的

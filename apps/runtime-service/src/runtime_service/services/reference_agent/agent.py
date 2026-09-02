@@ -30,6 +30,7 @@ from runtime_service.runtime import (
     RuntimeScope,
     build_model,
     parse_runtime_context,
+    reject_untrusted_configurable,
     resolve_runtime_config,
     runtime_context_hash,
     verified_delegation_from_user,
@@ -91,6 +92,7 @@ def _runtime_facts(config: RunnableConfig) -> VerifiedDelegation:
     configurable = config.get("configurable") or {}
     if not isinstance(configurable, Mapping):
         raise RuntimeAuthError("runtime.auth.missing_principal")
+    reject_untrusted_configurable(configurable)
     auth_user = configurable.get("langgraph_auth_user")
     if auth_user is not None:
         return verified_delegation_from_user(auth_user)

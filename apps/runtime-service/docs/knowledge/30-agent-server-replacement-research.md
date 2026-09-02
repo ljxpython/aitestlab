@@ -3,7 +3,7 @@
 - 文档类型：`Supporting / Research`
 - 调研日期：2026-08-30；复核日期：2026-09-02
 - 适用范围：`apps/runtime-service` 的 Durable Agent Server 选型
-- 结论状态：GraphHarbor R6 Durable Core 与正式 acceptance 验证通过；生产替代仍为 `not_ready`
+- 结论状态：GraphHarbor R6 Durable Core 与正式 acceptance 验证通过；生产 hardening 按 owner 决策 `deferred`，生产替代保持 `not_ready`
 
 本文回答一个问题：在不购买官方 `langgraph-api` Durable Server 许可的前提下，
 是否可以使用 Aegra 或 GraphHarbor 承担 Runtime 的 Agent Server / Durable 执行面。
@@ -58,9 +58,9 @@ lease/heartbeat/reaper、终态条件写入、SSE replay/cursor、HITL、Princip
 标准 stream modes 和五类固定 P0 fixture。
 
 因此，GraphHarbor **可以作为通用 Agent Server 的 Core profile 用于本地和受控集成环境**，
-但尚不能据此宣布已经完成 `runtime-service` 的生产 drop-in 替代。剩余问题主要是实际
-`runtime-service` 生产依赖切换、Workspace 之外的资源恢复、真实 Langfuse/OTLP、跨网络 SSE、
-迁移备份恢复、性能和发布回滚验收，不是异步 factory 缺失。
+但尚不能据此宣布已经完成 `runtime-service` 的生产 drop-in 替代。本轮 owner 已明确将
+Sandbox/远程 MCP Provider、Langfuse/OTLP 生产故障、真实 rollback、Platform 灰度和性能 SLO
+列为 `deferred`；这些不是 GraphHarbor Core 缺陷，也不是本轮 formal acceptance 的失败。
 
 ### 1.3 LangSmith 与官方 `langgraph-api` 不能混为一谈
 
@@ -105,8 +105,22 @@ API + Worker + PostgreSQL + Redis
   单独完成 Runtime 的权限、数据、恢复、性能和发布验收。
 
 该架构已经确定，但“采用 GraphHarbor”不等于“无条件生产完成”。GraphHarbor R6 Durable
-Core 已有真实 API/Worker/PostgreSQL/Redis 证据；生产切流的剩余卡点单独记录在本文件第
-12 节和 R6 验证 Harness 中，不通过改变容器拓扑规避。
+Core 已有真实 API/Worker/PostgreSQL/Redis 证据；生产 hardening 的剩余项目按本轮决策记录为
+`deferred`，单独记录在本文件第 12 节和 R6 验证 Harness 中，不通过改变容器拓扑规避。
+
+### 1.5 Platform API -> GraphHarbor 最短真实链路（2026-09-02）
+
+`platform-api` 已通过真实 HTTP 集成验证访问 GraphHarbor：未认证请求被 Platform API 拒绝；
+认证请求经过 Platform access token、项目权限和 Runtime delegation JWT 后，成功返回
+GraphHarbor `/info`、graph search，并创建带 `metadata.project_id` 的 Thread。验证使用
+GraphHarbor `0.13.0.post20` API 和独立 API/Worker/PostgreSQL/Redis 环境，测试位置为
+`apps/platform-api/tests/integration/test_runtime_graphharbor_http.py`。
+
+本次验证同时修正了 Platform delegation 与 Runtime Auth 的合同缺口：Platform 现在从已同步
+的 Runtime Catalog/项目 Policy 签发 `policy_version`、允许模型/工具、scope 和空 Context hash；
+secret、issuer、audience 或 catalog 不匹配时必须 fail-closed。该证据只覆盖 info/search/thread
+最短链路，不等于真实 Run/stream 已完成，也不改变 Sandbox、远程 MCP、Langfuse/OTLP、灰度、
+回滚和性能 SLO 的 `deferred` 状态。
 
 ## 2. Aegra 调研事实
 
@@ -313,6 +327,19 @@ Trace 丢失不影响 Run 终态
   和可复现证据；
 - 不因为能去掉 `LANGGRAPH_CLOUD_LICENSE_KEY` 就跳过权限、恢复、事件和数据保留评审。
 
+### 5.1 本轮明确延期的能力
+
+以下项目由 owner 在 2026-09-02 明确标记为 `deferred`，本轮不实施、不追加验收，也不把缺少的
+生产证据写成 GraphHarbor 或 Runtime Core 失败：
+
+| 项目 | 责任边界 | 恢复条件 |
+| --- | --- | --- |
+| 真实 Sandbox Provider 与任意远程 MCP 的生产恢复、cleanup、配额 | Runtime/Deep Agents 与外部 Provider；GraphHarbor 只保存通用 opaque binding | 选定真实 Provider、凭据和网络环境后，建立独立 R6.x acceptance |
+| Langfuse/OTLP 生产故障矩阵和跨服务 propagation | Runtime 观测适配与 Platform 传播；GraphHarbor 只提供通用 correlation 透传 | 明确目标 exporter/OTLP 环境和字段契约后重新验收 |
+| Runtime 真实 rollback rehearsal | Runtime 部署与数据库 owner；Platform route rollback 另属 Platform | 提供已验证旧镜像、迁移兼容矩阵和 owner 批准 |
+| Platform 灰度、route ownership 和回滚 | `platform-api` / Platform | 另建 governed Platform change |
+| 性能 SLO、queue lag、PG/Redis watermark | GraphHarbor 通用指标与部署观测 | 先确定固定负载、指标来源和 owner 批准的 SLO |
+
 ## 6. 参考来源
 
 - Aegra：<https://github.com/aegra/aegra>
@@ -386,6 +413,21 @@ Worker、模型和 Langfuse 环境中提供可复现证据；只启动成功、S
 5. 发布前必须有 lockfile、migration、健康检查、优雅退出、容量上限、回滚开关和数据保留策略。
 6. 灰度必须能按 Agent、tenant、project 或百分比切换，并支持无丢 Run 回退 R6。
 
+### 7.7 本轮 R6 的范围裁剪
+
+7.6 是完整生产替代的目标基线，不是本轮所有工作的强制范围。当前 R6 只收口 Durable Core、
+API/Worker 生命周期、Workspace 链路、事件 replay 和唯一终态。以下项目明确 `deferred`：
+
+| 项目 | Status | 本轮结论 |
+| --- | --- | --- |
+| 真实 Sandbox Provider、任意远程 MCP 的生产恢复/cleanup/配额 | `deferred` | 不在本轮验收；具体 Provider 由 Runtime/Deep Agents 负责 |
+| Langfuse/OTLP 生产故障矩阵和跨服务传播 | `deferred` | 不在本轮验收；Runtime 保留已有本地 callback/smoke 能力 |
+| Runtime 真实 rollback rehearsal | `deferred` | 只保留现有 dry-run/apply 入口，不执行真实演练 |
+| Platform 灰度、route ownership 和回滚 | `deferred` | 不属于 GraphHarbor；由后续 Platform governed change 负责 |
+| 性能 SLO、queue lag、PG/Redis watermark | `deferred` | 只保留 baseline，不设生产 SLO 门槛 |
+
+`deferred` 项仍是未实现能力（`是否实现` 为 `❌`），但不应再标为本轮产品 `blocked`。
+
 ## 8. GraphHarbor 达到 R6 要求所需的修改（复核更新）
 
 以下内容保留原始改造基线，并补充 2026-08-31 的实现状态。代码完成不等于生产门槛
@@ -396,10 +438,10 @@ Worker、模型和 Langfuse 环境中提供可复现证据；只启动成功、S
 | 8.1 Graph Loader / per-Run Factory | `GraphRegistry` 已支持异步一参数 factory、config 传递、启动预检和资源关闭 | 主要开发已完成 |
 | 8.2 Durable 状态、租约、终态幂等 | PostgreSQL durable record、lease/reaper、retry、条件终态、迟到 finalize 防护已实现；本地故障验收通过 | Core 已完成；完整生产故障矩阵未完成 |
 | 8.3 SSE Replay、事件契约、HITL | v2/v3、标准 stream modes、seq/event、cursor/replay、interrupt/resume 已实现并通过本地 SDK/REST 验收 | Core 已完成；独立 Docker bridge network 的断线重连也通过；多主机丢包和全部故障组合未完成 |
-| 8.4 DeepAgent、Workspace、Subagent | workspace 根目录、绝对路径/`..`/符号链接校验、文件大小/数量/总字节数 policy 和显式 Subagent 委派已实现 | Runtime Workspace acceptance 已通过真实 API、独立 Worker、PostgreSQL/Redis 的写入、Worker replacement、双 Thread 隔离、跨 tenant `404` 和不可用根 fail-closed；同端口 API restart 复跑未恢复监听；Subagent 真实委派与缩权测试通过；生产 Sandbox、真实 cleanup 调度和 provider 原子配额仍未完成 |
+| 8.4 DeepAgent、Workspace、Subagent | workspace 根目录、绝对路径/`..`/符号链接校验、文件大小/数量/总字节数 policy 和显式 Subagent 委派已实现 | Runtime Workspace acceptance 已通过真实 API、独立 Worker、PostgreSQL/Redis 的写入、Worker replacement、双 Thread 隔离、跨 tenant `404` 和不可用根 fail-closed；同端口 API restart 复跑未恢复监听；Subagent 真实委派与缩权测试通过；生产 Sandbox、真实 cleanup 调度和 provider 原子配额按 owner 决策 `deferred` |
 | 8.5 RuntimeContext、认证、权限 | 签名 Context、Principal、issuer/audience、模型/工具 policy 校验已实现 | 代码基本完成；真实 platform JWT 跨 Worker/租户仍未完成 |
-| 8.6 Langfuse/OTLP 观测、脱敏 | metadata allowlist、摘要/hash、trace context、稳定 `event_dropped` Counter 和 fail-soft 基础逻辑已实现 | 本地 401/429/5xx/timeout/flush failure 矩阵和真实 smoke 已通过；真实服务端最终查询、SDK queue saturation、OTLP 和跨服务传播仍未完成 |
-| 8.7 部署、升级、性能、回滚 | lockfile、migration、health/readiness、runbook、graceful shutdown、backup/restore、性能基线和 rollback dry-run 已有 | 三版本隔离安装、隔离 backup/restore、4 并发性能基线和不触碰数据卷的 rollback dry-run 已通过；真实发布回滚演练未完成 |
+| 8.6 Langfuse/OTLP 观测、脱敏 | metadata allowlist、摘要/hash、trace context、稳定 `event_dropped` Counter 和 fail-soft 基础逻辑已实现 | 本地 401/429/5xx/timeout/flush failure 矩阵和真实 smoke 已通过；真实服务端最终查询、SDK queue saturation、OTLP 和跨服务传播按 owner 决策 `deferred` |
+| 8.7 部署、升级、性能、回滚 | lockfile、migration、health/readiness、runbook、graceful shutdown、backup/restore、性能基线和 rollback dry-run 已有 | 三版本隔离安装、隔离 backup/restore、4 并发性能基线和不触碰数据卷的 rollback dry-run 已通过；真实发布回滚演练、性能 SLO 和灰度按 owner 决策 `deferred` |
 
 其中 `platform-api` 的 runtime route、灰度比例、legacy/GraphHarbor 选择和 rollback
 属于 `ai-agent-platform` 控制面适配，不属于 GraphHarbor 通用项目。GraphHarbor 不应
@@ -421,7 +463,7 @@ Runtime 新增了 R6 专用 `mcp_probe`、独立 Streamable HTTP FastMCP provide
 
 这条证据证明本项目的 MCP adapter 与 GraphHarbor Thread metadata binding 在本地真实跨进程链路
 上成立，不等于任意远程 MCP provider 的凭据、网络、租约和 SLA 已验收；生产远程 provider
-故障矩阵仍保持未完成。
+故障矩阵按 owner 决策保持 `deferred`。
 
 ### 8.9 Durable Core 历史复核（post17，2026-09-02）
 
@@ -530,18 +572,17 @@ GraphHarbor 的 per-Run async factory、终态条件写入、SSE replay、Contex
 `langgraph dev` 对照证据。当前可将 GraphHarbor 定位为“Core runtime 已实现、受控环境
 可用”的候选，不应再描述为“因不支持 `get_agent(config)` 而不兼容”。
 
-但正式替代仍保持 `not_ready`。在以下证据完成前，不得替换正式 R6：
+但正式替代仍保持 `not_ready`。这是本轮主动暂缓生产 hardening 的结果，不是 GraphHarbor Durable
+Core formal acceptance 失败。当前不执行、并按 `deferred` 记录的项目是：
 
-1. 对外部 `runtime-service/langgraph.json` 及其真实模型、MCP、skills、custom routes
-   完成 HTTP/SDK E2E；固定 acceptance fixture 不能替代业务 graph 验收。
-2. 完成 platform-issued JWT、RuntimeContext 的正式跨 Worker/tenant/project 验收。
-3. 完成 DeepAgent Backend/Sandbox/Subagent 的跨 Worker 恢复、越界拒绝和资源清理；Thread
-   Workspace 的 marker 恢复和隔离已有真实验收，不重复建设。
-4. 完成生产 Langfuse/OTLP 查询、字段脱敏及 exporter 401/429/5xx/timeout/队列满故障矩阵。
-5. 通过第二主机或受控故障代理补充跨网络丢包、多主机重连、无丢失和无重复验收；当前独立
-   Docker bridge network 的 SSE 断线、重连和 cursor 已通过。
-6. 完成真实发布回滚演练；migration、隔离 backup/restore、性能基线和 Python
-   3.11/3.12/3.13 wheel 隔离安装与启动已经通过。
+1. 真实 Sandbox Provider、任意远程 MCP 的跨 Worker 恢复、cleanup、配额和完整故障矩阵。
+2. 生产 Langfuse/OTLP 查询、服务端故障矩阵和跨服务 propagation。
+3. Runtime 真实发布 rollback rehearsal。
+4. Platform 灰度、route ownership 和 rollback；该项由后续 Platform governed change 负责。
+5. 性能 SLO、queue lag 和 PG/Redis watermark；现有性能数据只作为 baseline。
+
+恢复这些项目时，必须重新确认目标 Provider/服务、凭据、数据边界、owner 和一次性验收命令；不能
+用本地 fixture、dry-run 或已有 baseline 直接升级为生产通过。
 
 `ai-agent-platform` 另行负责 platform-api 的 route ownership、灰度和 rollback；这些不
 应回写为 GraphHarbor 的通用实现任务。只有 GraphHarbor 自身硬门槛与平台集成门槛全部
@@ -609,13 +650,13 @@ Agent、Tool、MCP 和 Workspace 装配继续由 `apps/runtime-service` 负责�
 | `30-R6-008` | SSE cursor 单调、可 replay、去重、过期明确、断线不取消 | `redis_stream.py`；`core_api.py` | `apps/runtime-service/tests/durable/test_agent_server_durable.py`；`scripts/r6_network_sse_acceptance.sh`；`scripts/r6_network_sse_acceptance.py`；GraphHarbor protocol tests | Durable suite 已验证单调 cursor、`since` replay、去重、`cursor_expired` + `run_snapshot` 和 observer disconnect；修复后的 bridge Harness 已在发布 `post20` 镜像中通过 API/Worker readiness、唯一 Worker、cursor `4`、后续事件 `2` 和最终 `success` | `implemented-chain` | ✅ | 未覆盖第二主机/受控故障代理的跨网络丢包；不影响本地 formal acceptance 结论 |
 | `30-R6-009` | cancel、timeout、Tool failure 收敛到唯一终态 | GraphHarbor `production_worker.py`、Run state；Runtime `failure_demo`/`timeout_demo` | cancel durable test；`test_unrecoverable_input_is_reported_as_run_failure`；`test_run_timeout_is_reported_once`；GraphHarbor timeout contract | 真实 API/独立 Worker/PG/Redis 下 failure 与 timeout `2 passed`；PG 分别为 `error/business_error`、`timeout/timeout`，terminal event 均为 1；cancel 幂等证据已通过 | `implemented-chain` | ✅ | 无 |
 | `30-R6-010` | Thread Workspace 跨 Worker 恢复且跨 Thread/tenant 隔离 | `apps/runtime-service/src/runtime_service/services/workspace_demo/agent.py`；`graphs/workspace_demo.py` | `apps/runtime-service/scripts/r6_workspace_acceptance.py`；`tests/services/test_workspace_demo.py`；`scripts/r6_api_restart_probe.py` | 已发布 PyPI `post20` 下 Workspace 写入、Worker replacement、API `SIGTERM -> restart`、Thread/tenant 隔离和不可用根 fail-closed 均通过；业务 Run 各只有一个 terminal event | `implemented-chain` | ✅ | 不扩展为具体 Sandbox provider |
-| `30-R6-016` | Backend/MCP/Sandbox 在 Worker 重启后可恢复并失败闭合 | Runtime `backend_demo`、MCP loader 和 Sandbox adapter；失败在资源恢复边界闭合 | `tests/services/test_resource_reconnect.py`；`tests/durable/test_backend_isolation.py` | Workspace 配额检查与写入已按 Thread 锁串行；MCP 本地 provider 有跨 Worker/provider 重启证据；Sandbox 403 已稳定 fail-closed；真实 provider 跨 Worker 恢复/cleanup 未执行 | `partial` | ❌ | 需要真实 Sandbox/远程 MCP provider、cleanup、配额和各资源失败矩阵 |
+| `30-R6-016` | Backend/MCP/Sandbox 在 Worker 重启后可恢复并失败闭合 | Runtime `backend_demo`、MCP loader 和 Sandbox adapter；失败在资源恢复边界闭合 | `tests/services/test_resource_reconnect.py`；`tests/durable/test_backend_isolation.py` | Workspace 配额检查与写入已按 Thread 锁串行；MCP 本地 provider 有跨 Worker/provider 重启证据；Sandbox 403 已稳定 fail-closed；真实 provider 跨 Worker 恢复/cleanup 按 owner 决策暂缓 | `deferred` | ❌ | 后续选定真实 Sandbox/远程 MCP provider 后补 cleanup、配额和各资源失败矩阵 |
 | `30-R6-011` | migration 幂等、并发串行、三套 schema readiness | `database.py`；`migrate.py`；Alembic `env.py` | GraphHarbor persistence/full suite；隔离数据库重复 migration；`scripts/r6_postgres_backup_restore.sh` | PostgreSQL 16.9 非 superuser role 下通过，无 Alembic drift；只读 dump 在临时 `pgvector/pg16` 实例恢复并可查询 | `implemented-chain` | ✅ | downgrade 和生产灾备演练未完成 |
 | `30-R6-012` | 锁定可安装发布物并验证支持的 Python 版本 | `apps/runtime-service/pyproject.toml`；`uv.lock`；`deploy/Dockerfile` | PyPI install/startup matrix；Runtime package smoke | `0.13.0.post20` 双包已从 PyPI 安装，锁文件 source 为 registry，Docker build 确认 API/Worker 镜像内双包版本一致 | `implemented-chain` | ✅ | Runtime 生产 rollout 仍未执行 |
-| `30-R6-013` | Langfuse/OTLP 字段、脱敏及 exporter 故障不影响 Run | `apps/runtime-service/src/runtime_service/observability/langfuse.py` | `tests/observability/test_langfuse.py`；`tests/observability/test_graph_tracing.py`；真实 Langfuse smoke | 本地 callback/flush 故障矩阵、正式 SDK queue-full 非阻塞测试和稳定 `event_dropped` Counter 已接入；真实 smoke 已查询最终 Trace/Observation，原始 Run 语义保持 | `partial` | ❌ | 真实服务端故障响应矩阵、独立 generic OTLP destination 和跨服务 propagation 尚未验收 |
-| `30-R6-017` | 固定并发下记录 Run、首事件、完成和 checkpoint 延迟 | `scripts/r6_performance_baseline.py` | `scripts/r6_performance_baseline.py --runs 4` | 4 并发真实 API/Worker `disconnect_demo` 全部 success；首事件 p50/p95 `508.63/535.72 ms`，完成 p50/p95 `15648.47/15664.91 ms`，checkpoint p50/p95 `27.39/42.80 ms` | `implemented-chain` | ✅ | 未定义 SLO；queue lag 和 DB/Redis watermark 未由公共 API 暴露 |
+| `30-R6-013` | Langfuse/OTLP 生产故障矩阵及跨服务传播不影响 Run | `apps/runtime-service/src/runtime_service/observability/langfuse.py` | `tests/observability/test_langfuse.py`；`tests/observability/test_graph_tracing.py`；真实 Langfuse smoke | 本地 callback/flush、queue-full 非阻塞和稳定 `event_dropped` Counter 已有证据；生产 exporter/service-failure 验收按 owner 决策暂缓 | `deferred` | ❌ | 后续明确 exporter/OTLP 环境、服务端故障矩阵和跨服务 propagation 后重新验收 |
+| `30-R6-017` | 固定并发下记录 Run、首事件、完成和 checkpoint 延迟 baseline | `scripts/r6_performance_baseline.py` | `scripts/r6_performance_baseline.py --runs 4` | 4 并发真实 API/Worker `disconnect_demo` 全部 success；首事件 p50/p95 `508.63/535.72 ms`，完成 p50/p95 `15648.47/15664.91 ms`，checkpoint p50/p95 `27.39/42.80 ms` | `implemented-chain` | ✅ | 仅证明 baseline；性能 SLO、queue lag 和 DB/Redis watermark 按 owner 决策 `deferred` |
 | `30-R6-014` | Platform gateway 灰度、route ownership 和立即回滚 | `platform-api` 后续 governed change | 未执行 | R6 明确不修改 Platform；默认流量未切换 | `deferred` | ❌ | 由 P1/正式 cutover change 承担 |
-| `30-R6-015` | 所有 hard gate 通过后才允许生产切流 | GraphHarbor `artifacts/cutover-gates.json`；OpenSpec verification | readiness 检查 | 当前保持 `not_ready`、`owner_approved=false` | `blocked` | ❌ | 完成所有剩余硬门槛并再次获得 owner 批准 |
+| `30-R6-015` | 所有 hard gate 通过后才允许生产切流 | GraphHarbor `artifacts/cutover-gates.json`；OpenSpec verification | readiness 检查 | 本轮不执行生产切流，按 owner 决策保持 `not_ready`、`owner_approved=false` | `deferred` | ❌ | 后续恢复生产 hardening、获得 owner 批准后再执行切流 gate |
 
 ### 12.1 Closure gate 对齐结果（2026-09-02）
 
@@ -663,9 +704,9 @@ acceptance。API 与 Worker readiness、唯一 Worker 和真实 `recovery_demo` 
 ```
 
 清理后 `project_containers=0`、`project_networks=0`、`port_18135_listeners=0`，保留 3 个验收数据卷，
-旧 `post19` 环境未触碰。由此 `30-R6-008` 和 `6.5` 均已完成；`6.6` 仍需 owner acceptance、spec sync
-和 archive。外部 Sandbox/远程 MCP、观测服务端故障、真实 rollback 和 Platform 灰度仍使生产替代保持
-`not_ready`。
+旧 `post19` 环境未触碰。由此 `30-R6-008`、`6.5` 和 `6.6` 均已完成；外部 Sandbox/远程 MCP、
+观测服务端故障、真实 rollback 和 Platform 灰度按 owner 决策
+保持 `deferred`，生产替代仍保持 `not_ready`。
 
 ## 13. 本轮讨论的边界结论（2026-09-02）
 
@@ -687,8 +728,8 @@ GraphHarbor 的职责如下：
 因此，`runtime-service` **需要与 GraphHarbor 对齐通用的关联字段、Context 和生命周期指标，
 但不需要把 Runtime 专属的 Langfuse 业务实现改进 GraphHarbor**。当前 GraphHarbor 已有
 `langgraph_runtime_pg/observability.py` 和 `metrics.py`，Runtime 已有 Langfuse Callback 和
-脱敏；`30-R6-013` 仍为 `partial`，原因是生产 exporter 故障矩阵、generic OTLP destination
-和跨服务传播尚未完成。只有在这些契约的最小复现证明 GraphHarbor 丢字段、无法恢复或无法
+脱敏；`30-R6-013` 按 owner 决策为 `deferred`，生产 exporter 故障矩阵、generic OTLP destination
+和跨服务传播暂不验收。只有在这些契约的最小复现证明 GraphHarbor 丢字段、无法恢复或无法
 暴露通用指标时，才在 GraphHarbor 仓库创建独立的 B3 change；不能因为观测还不够生产化就
 增加 `LangfuseProvider`、Model Catalog 或 Runtime 专用字段。
 

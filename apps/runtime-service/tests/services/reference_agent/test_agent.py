@@ -136,6 +136,25 @@ def test_context_override_is_resolved_before_model_creation(
     assert result["messages"][-1].content == "override-ok"
 
 
+def test_reference_agent_topology_is_stable_across_runtime_bindings() -> None:
+    first = asyncio.run(
+        agent.get_agent(_config(BindableFakeChatModel(responses=["first"])))
+    )
+    second = asyncio.run(
+        agent.get_agent(_config(BindableFakeChatModel(responses=["second"])))
+    )
+
+    first_graph = first.get_graph()
+    second_graph = second.get_graph()
+    assert first is not second
+    assert set(first_graph.nodes) == set(second_graph.nodes)
+    assert {(edge.source, edge.target) for edge in first_graph.edges} == {
+        (edge.source, edge.target) for edge in second_graph.edges
+    }
+    assert first.input_schema.model_json_schema() == second.input_schema.model_json_schema()
+    assert first.output_schema.model_json_schema() == second.output_schema.model_json_schema()
+
+
 def test_context_policy_violation_fails_before_fake_model_use() -> None:
     with pytest.raises(RuntimeResolutionError) as error:
         asyncio.run(
@@ -168,6 +187,20 @@ def test_agent_requires_authenticated_server_facts() -> None:
     with pytest.raises(RuntimeAuthError) as error:
         asyncio.run(agent.get_agent({}))
     assert error.value.code == "runtime.auth.missing_principal"
+
+
+def test_agent_rejects_untrusted_resource_injection() -> None:
+    with pytest.raises(RuntimeResolutionError, match="runtime.configurable.forbidden"):
+        asyncio.run(
+            agent.get_agent(
+                {
+                    "configurable": {
+                        "langgraph_auth_user": _auth_user(),
+                        "backend": object(),
+                    }
+                }
+            )
+        )
 
 
 def test_reference_tool_is_explicit_and_read_only() -> None:

@@ -13,10 +13,10 @@
 
 | 层级 | 命令/检查 | 输入 | 结果 |
 | --- | --- | --- | --- |
-| contract | `openspec validate runtime-service-r2-workflow-contract --strict --no-interactive` | 本变更四类 planning artifacts | passed |
-| local | `uv run pytest tests/services/workflow_demo tests/services/reference_agent tests/test_r0_baseline.py -q` | fake workflow、显式 local adapter、Auth denial | `21 passed` |
+| contract | `openspec validate runtime-service-r2-workflow-contract --strict --no-interactive`；`openspec validate runtime-agent-service-integration --strict --no-interactive` | R2 change artifacts 与已同步的 active spec | `Change 'runtime-service-r2-workflow-contract' is valid`；`Specification 'runtime-agent-service-integration' is valid` |
+| local | `uv run --frozen pytest tests/services/workflow_demo tests/services/reference_agent tests/test_r0_baseline.py -q` | fake workflow、显式 local adapter、Auth denial、topology stability | `38 passed` |
 | local-full | `uv run pytest tests -m "not integration and not durable and not e2e" -q` | Runtime 本地测试 | `82 passed, 13 deselected` |
-| chain | `uv run pytest tests/integration -q` | production reference Auth chain + `langgraph.demo.json` workflow chain | `2 passed, 1 skipped`；skip 为未设置 `RUNTIME_E2E=1` 的真实模型测试 |
+| chain | `RUNTIME_DURABLE_URL=... RUNTIME_E2E=1 uv run --frozen pytest tests/integration/test_agent_server_auth.py -q`；workflow 需另设 `RUNTIME_DURABLE_DEMO_URL` | production reference Auth chain；注册 `workflow_demo` 的独立 Durable 服务 | reference Durable chain `3 passed`；workflow Durable 本轮 `not-executed`，当前服务未注册 `workflow_demo` |
 | build | `uv run python -m compileall -q src tests scripts` | Runtime Service Python 源码 | passed |
 | lock | `uv lock --check` | Runtime Service 依赖锁 | passed |
 | hygiene | `git diff --check` | 工作区差异 | passed |
@@ -37,7 +37,7 @@
 - `requires_confirmation=True` 时首次调用返回 `workflow_confirmation` interrupt；同一
   `thread_id` 使用 `Command(resume="approve"|"reject")` 完成恢复。
 - Resume 后 `prepared_count` 保持为 `1`，证明已完成的 `prepare` 节点未重复执行。
-- `langgraph.demo.json` 下的 Workflow Agent Server `/info`、assistant 搜索和执行链均通过。
+- 当前 18123 GraphHarbor 服务使用生产 `langgraph.json`，未注册 `workflow_demo`；workflow Agent Server `/info`、assistant 搜索和执行链没有本轮证据，不能用 reference Durable 结果替代。
 - `reference_agent.get_agent({})` 仍返回 `runtime.auth.missing_principal`；显式 fake model
   和 Auth fixture 测试通过。
 
@@ -49,10 +49,10 @@
 ## Docs / Runbook Impact
 
 - 需要同步 11、28、31 号 R2 对齐记录和 `workflow_demo/README.md`。
-- active spec 只有在 owner 接受并完成实现验证后，才执行 delta sync；不修改归档 R2 历史文件。
+- owner 已接受范围并完成 active spec sync；不修改归档 R2 历史文件。
 
 ## Disposition
 
-- 当前：`accepted-local-agent-server / R6-durable-deferred`
+- 当前：`accepted-local / workflow-durable-not-executed / R6-durable-deferred`
 - active spec delta 已在 owner 批准和本地/Agent Server 验证后 sync；不能使用 R6 skip 作为
   Durable 通过证据。

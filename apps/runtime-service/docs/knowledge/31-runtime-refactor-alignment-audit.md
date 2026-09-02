@@ -15,16 +15,16 @@
 
 | 阶段 | 计划状态 | 审计状态 | 结论 |
 | --- | --- | --- | --- |
-| R0 | 已完成并归档 | **部分完成** | 新包、Graph 入口、本地启动、阶段隔离和配置同步门禁存在；真实模型 E2E、启动失败闭环和生产运行证据仍不完整。 |
-| R1 | 已完成并归档 | **local Agent Server chain 完成，Platform/Durable 后置** | Contracts、Resolver、JWT scope/context_hash、Actor 权限交集、Modeling 和 Agent Server Auth 到真实 DeepSeek Model 的 HTTP 链路已有证据；Platform 正式签发链和 R6 Durable 后置。 |
-| R2 | 已完成并归档 | **local Agent Server chain 基本完成，生命周期仍有缺口** | `reference_agent` 组合根和真实模型链成立；`workflow_demo` 的条件分支、Interrupt/Resume、专属测试和 demo Server chain 已补齐。当前仍需完成 active spec sync，且 `reference_agent` 仍未满足静态/动态生命周期规则。 |
+| R0 | 已完成并归档 | **local-complete / alignment-complete** | 新包、Graph 入口、两个最小 Service、README/专属测试、AST 依赖方向门禁、本地启动、真实模型 E2E 和配置同步门禁均有证据；R0 不要求生产容器、Platform 或 Durable 证据。 |
+| R1 | 已完成并归档 | **GraphHarbor Durable chain 完成，Platform 最短 Gateway chain 已验证，完整切流后置** | Contracts、Resolver、JWT scope/context_hash、Actor 权限交集、Modeling、GraphHarbor Agent Server Auth 和 `platform-api -> GraphHarbor` 的 info/search/thread 真实 HTTP 链路已有证据；真实 Run/stream 与生产切流后置。 |
+| R2 | 已完成并归档 | **local capability 基本完成，workflow Durable chain 未执行，生命周期仍有缺口** | `reference_agent` 组合根和 GraphHarbor Durable 链成立；`workflow_demo` 本地条件分支、Interrupt/Resume 和专属测试成立，但当前没有注册 demo graph 的有效 Durable URL；`reference_agent` 仍未满足静态/动态生命周期规则。 |
 | R3 | 已完成并归档；R3 closure active | **local/组合完成，生产 fallback 未完成** | 限次、Runtime 配置复核、单次模型超时、Tool Error/Retry 已进入 `reference_agent` 真实 graph 并有组合测试；Model fallback/retry 目前仅 test-only adapter，Run deadline、PrepareRun、Finalizer 等按设计后置。 |
 | R4 | 已完成并归档 | **local-complete，生产链阻塞** | R4 定向闭合测试 `44 passed`；Tool Policy、内置 Tool 收缩、MCP required/optional、Skill 只读和同 Thread 本地 Workspace 已有证据。`InMemorySaver`、进程内 `StateBackend`、本地 fake MCP 不能证明 Durable、跨 Worker 重连、清理或真实 Sandbox。 |
-| R5 | closure 已 apply | **Runtime 闭环完成，生产 exporter 部分完成** | Langfuse lifespan、metadata allowlist、可信 Service 接线、真实 Model/Tool/Subagent callback、诊断、稳定 `event_dropped` Counter 和真实 smoke 已有证据；SDK queue saturation、生产容器 SIGTERM/drain 和跨服务传播仍未闭合。 |
-| R6 | 实施中 | **Durable Core 与 closure gates 6.1-6.5 已有 post20 证据，生产切流阻塞** | GraphHarbor PyPI `post20` 已通过真实 PostgreSQL/Redis/API/Worker、真实模型、双中断、SIGTERM/SIGKILL checkpoint 接管、唯一终态、Workspace Worker replacement/Thread/tenant 隔离、同端口 API restart 和修复后 bridge SSE；Backend/Sandbox/MCP 生产资源矩阵、观测服务端故障、真实发布回滚和 Platform 切流仍未完成。 |
+| R5 | closure 已 apply | **Runtime 闭环完成，生产 exporter hardening `deferred`** | Langfuse lifespan、metadata allowlist、可信 Service 接线、真实 Model/Tool/Subagent callback、诊断、稳定 `event_dropped` Counter 和真实 smoke 已有证据；SDK queue saturation、生产容器 SIGTERM/drain 和跨服务传播按 owner 决策暂缓。 |
+| R6 | Durable Core formal complete | **生产 hardening `deferred`，切流保持 `not_ready`** | GraphHarbor PyPI `post20` 已通过真实 PostgreSQL/Redis/API/Worker、真实模型、双中断、SIGTERM/SIGKILL checkpoint 接管、唯一终态、Workspace Worker replacement/Thread/tenant 隔离、同端口 API restart 和修复后 bridge SSE；Backend/Sandbox/MCP 生产资源矩阵、观测服务端故障、真实发布回滚、性能 SLO 和 Platform 灰度按 owner 决策暂缓。 |
 
-因此，P1 Platform 整合不能开始。当前最重要的不是再加抽象，而是把认证接线、
-Workflow 恢复语义和真实 Durable 证据补齐。
+因此，P1 Platform 整合继续后置。当前不再扩展本轮 R6 的生产 hardening；后续恢复 deferred 项时，
+必须为每项单独指定 owner、环境、证据和接受标准，不能把主动暂缓写成当前产品失败。
 
 R2 的范围已由 owner 批准为：Workflow 条件分支和本地 Interrupt/Resume 纳入 R2；
 `get_agent({})` 在缺少 Auth facts 时保持 fail-closed，仅允许显式 local test adapter。
@@ -91,10 +91,10 @@ R2 的范围已由 owner 批准为：Workflow 条件分支和本地 Interrupt/Re
 
 | 检查 | 结果 |
 | --- | --- |
-| `uv run --frozen pytest tests -m "not integration and not durable and not e2e" -q` | `182 passed, 20 deselected in 47.41s`；GraphHarbor `0.13.0.post17` 正式包安装后复验 |
+| `uv run --frozen pytest tests -m "not integration and not durable and not e2e" -q` | 历史基线 `182 passed, 20 deselected`；当时为 GraphHarbor `0.13.0.post17`，不作为本次 R1 修复后的回归结果 |
 | `uv run pytest tests/services/test_r4_capability_demos.py -q` | `10 passed`；覆盖三类 R4 graph 构图、fake MCP、名称冲突和 Backend 初始化失败传播 |
 | `RUNTIME_E2E=1 uv run pytest tests/e2e/test_reference_agent_real_model.py -m e2e -q` | `1 passed`，真实 DeepSeek E2E |
-| `RUNTIME_E2E=1 uv run pytest tests/integration/test_agent_server_auth.py -q` | `2 passed`，local Agent Server Auth -> Context -> Resolver -> Model |
+| `RUNTIME_DURABLE_URL=... RUNTIME_E2E=1 uv run --frozen pytest tests/integration/test_agent_server_auth.py -q` | GraphHarbor Durable Auth -> Context -> Resolver -> Model；无 Durable URL 时测试明确跳过，不启动旧 `langgraph dev` |
 | `uv run pytest tests/e2e -m e2e -q` | `1 skipped`，未设置真实 E2E 条件 |
 | 发布版 GraphHarbor + `pytest tests/durable -m durable -k "not worker_restart and not sigterm" -q -rs` | `13 passed, 2 deselected`；覆盖 sync/async/exit、Thread/Checkpoint、HITL、SSE、cancel、Tool failure、timeout、Backend checkpoint 隔离和 Thread Workspace 恢复/隔离；不再把 deselected 当作通过 |
 | 发布版 GraphHarbor + `pytest tests/durable/test_worker_lifecycle.py -m durable -q -rs` | `2 passed`；真实 Compose `worker` restart 与 SIGTERM replacement；独立 fault harness 的 SIGTERM/SIGKILL 均恢复 checkpoint 并保持唯一 terminal event |
@@ -108,16 +108,16 @@ R2 的范围已由 owner 批准为：Workflow 条件分支和本地 Interrupt/Re
 
 | 文档 | 设计要求 | 当前证据 | 判定 | 是否实现 |
 | --- | --- | --- | --- | --- |
-| `10-production-agent-platform-roadmap.md` | R0 -> R6 分阶段；Runtime 不复制 Platform 状态机；真实边界需要真实证据。 | 阶段表把 R0-R5 全标为完成，但 R1 Auth、R2 Workflow、R3 完整边界、R4 真实资源和 R6 Durable 证据都不完整。职责边界本身基本保持。 | **部分实现，状态过度乐观** | ❌ |
-| `11-agent-service-directory-architecture.md` | `graphs/` 只做稳定导出；Service 以 `agent.py` 为组合根；五个 Demo 分别覆盖 workflow、Deep Agent、MCP、Backend。 | `graphs/` 入口确实只重导出；五个 Service 和 README 存在。R2 的 `reference_agent` 真实模型链成立；`workflow_demo` 不含条件分支/Interrupt/Resume，workflow 专属 README/测试和静态/动态生命周期门禁不完整。 | **部分实现** | ❌ |
+| `10-production-agent-platform-roadmap.md` | R0 -> R6 分阶段；Runtime 不复制 Platform 状态机；真实边界需要真实证据。 | R0 行已与 28 号计划和本次 Harness 对齐为 `local-complete`；其余阶段仍按各自审计状态保留未完成或 `deferred`，职责边界没有复制 Platform 状态机。 | **R0 对齐完成；全路线仍有后置阶段** | ❌ |
+| `11-agent-service-directory-architecture.md` | `graphs/` 只做稳定导出；Service 以 `agent.py` 为组合根；五个 Demo 分别覆盖 workflow、Deep Agent、MCP、Backend。 | `graphs/` 入口只重导出；五个 Service、README 和对应测试均存在。R0 的两个 Service、fake 执行和 AST 依赖门禁已通过；Workflow 的条件分支/Interrupt/Resume 属于已单独记录的 R2，本地生产资源边界仍按 R4/R6 审计。 | **R0 子范围完成；全文能力按阶段拆分** | ❌ |
 | `12-runtime-context-and-local-debug-architecture.md` | Server Auth -> Principal/Policy -> Context -> Resolver；Context 严格拒绝未知字段；本地调试复用正式链路。 | `parse_runtime_context`、Resolver、Auth adapter 和 `RuntimeConfigMiddleware` 已闭合；真实 local Agent Server 测试验证合法 JWT、`temperature=0` Context 和 DeepSeek Model 链。Platform 正式签发链后置。 | **local Agent Server chain 完成，Platform 后置** | ❌ |
-| `13-runtime-service-target-code-layout.md` | 新代码位于 `src/runtime_service`；需要 `auth/platform.py`；Graph 注册单一真源；Legacy 不再进入导入链。 | `src/runtime_service`、`graphs/`、`services/` 结构已落地；`auth/` 目录不存在，JWT 代码放在 `runtime/auth.py`；`docs/standards/` 为空；Dockerfile 注册表已与生产配置建立同步门禁。 | **部分实现，目录目标与实际边界仍有漂移** | ❌ |
+| `13-runtime-service-target-code-layout.md` | 新代码位于 `src/runtime_service`；需要 `auth/platform.py`；Graph 注册单一真源；Legacy 不再进入导入链。 | `src/runtime_service`、`auth/platform.py`、`graphs/`、`services/` 结构和 Dockerfile 同步门禁均已存在；13 号文档的 R0 对齐表已补齐 `是否实现` 和独立 wheel import 证据。`docs/standards/` 仍为空，按仓库路由规则不能将 Draft 直接升级为 Current Standard。 | **R0 目录与导入链完成；Current Standard 仍待生成** | ❌ |
 
 ### 3.2 Contracts、Middleware 和观测
 
 | 文档 | 设计要求 | 当前证据 | 判定 | 是否实现 |
 | --- | --- | --- | --- | --- |
-| `14-runtime-contracts-and-resolution-design.md` | 五类不可变类型、严格 Context/Auth 校验、纯 Resolver、稳定 hash、已授权配置才能建模。 | 14 号文档逐条目录显示：类型、Context/Resolver、JWT scope/context_hash、Actor Tool 权限交集、snapshot 和 Modeling 均有本地证据；Agent Server Auth 到真实 DeepSeek Model 的 local HTTP 链路也已通过。 | **local Agent Server chain 完成，Platform/Durable 后置** | ❌ |
+| `14-runtime-contracts-and-resolution-design.md` | 五类不可变类型、严格 Context/Auth 校验、纯 Resolver、稳定 hash、已授权配置才能建模。 | 14 号文档逐条目录显示：类型、Context/Resolver、JWT scope/context_hash、Actor Tool 权限交集、snapshot 和 Modeling 均有本地证据；GraphHarbor Durable Auth 到真实 DeepSeek Model 的 HTTP 链路、未知 Context 失败也已通过。 | **GraphHarbor Durable chain 完成，Platform 切流后置** | ✅ |
 | `15-runtime-middleware-lifecycle-and-failure-semantics.md` | 显式 Middleware 顺序；Runtime 配置在 Model/Tool 边界复核；按需使用官方限次、Tool Error/Retry；明确取消和错误传播。 | `RuntimeConfigMiddleware`、`ModelCallLimitMiddleware`、`ToolCallLimitMiddleware`、`ToolErrorMiddleware`、`ToolRetryMiddleware`、`ModelCallTimeoutMiddleware` 已接入 `reference_agent`；组合测试覆盖 Tool 重试成功、预算耗尽后脱敏错误、未知异常传播、test-only fallback/retry。生产 fallback/retry 策略、Run deadline、PrepareRun、Finalizer 仍未完成或后置。 | **local/组合完成，生产可靠性部分完成** | ❌ |
 | `16-runtime-observability-and-langfuse-design.md` | Langfuse fail-soft；metadata allowlist；敏感数据脱敏；诊断日志/指标；Trace 与 Run 状态分层。 | `observability/langfuse.py` 有 lazy client、allowlist、脱敏、诊断 callback、bounded flush；单元测试覆盖隔离和失败降级，归档记录声称有真实 smoke。当前缺少所有 Demo 的完整 Trace 证据、可信 Resolver metadata 自动传播、队列丢弃/延迟等部署指标。 | **部分实现，有条件成立** | ❌ |
 
@@ -129,8 +129,8 @@ R2 的范围已由 owner 批准为：Workflow 条件分支和本地 Interrupt/Re
 | `19-runtime-tool-capability-mcp-and-side-effect-design.md` | Tool 显式装配；模型可见与实际执行同时受 Policy 约束；MCP 构图前加载；副作用需要幂等、审批和审计。 | 本地 fake MCP 的显式加载、allowlist 和名称冲突有测试；19 号文档 R4 Harness 已细分。R4 Demo 尚未接入统一 Runtime Policy，缺少写 Tool、审批、幂等、超时、未知结果和 Deep Agents 内置 Tool 复核。 | **部分实现** | ❌ |
 | `20-runtime-backend-workspace-skills-and-subagents-design.md` | Thread-scoped Workspace/Sandbox；Skills 只读；Subagent 显式缩权；重启后按持久化 ID 重建资源；不同 Thread/tenant 隔离。 | `workspace_demo` 使用 GraphHarbor 通用 Workspace；`post20` 真实 acceptance 覆盖同 Thread 跨 Worker/API restart 文件恢复、双 Thread 隔离、跨 tenant `404` 和不可用根 fail-closed。Skills 只读、Subagent 缩权、Sandbox/MCP cleanup 仍无生产证据。 | **Workspace chain 部分实现，其他资源能力未闭合** | ❌ |
 | `22-platform-runtime-contract-design.md` | Platform 生成快照和 Delegation Token；Runtime 验签；命令、事件、幂等、取消和权限边界一致。 | Platform/Runtime 新契约没有在当前 Runtime 链路实现；R6 明确不修改 Platform，P1 才做。 | **明确后置，当前未实现** | ❌ |
-| `23-graph-thread-backend-checkpoint-lifecycle-design.md` | Agent Server 持有 Thread/Run/Checkpoint；真实 PostgreSQL/Redis 验证恢复；Backend 不能静默换线程或宿主机目录。 | GraphHarbor 已通过真实 sync checkpoint、双中断、SIGTERM/SIGKILL checkpoint 接管；post20 Workspace 已证明 Worker replacement、API restart、Thread/tenant 隔离和不可用根 fail-closed。生产 Sandbox/MCP/Backend cleanup 仍未完成。 | **Durable Core 和 Workspace chain 部分实现，资源矩阵缺失** | ❌ |
-| `24-package-langgraph-startup-shutdown-design.md` | `langgraph.json` 是 Graph 真源；启动失败闭合；Agent Server 管 Queue/Run/Checkpoint/shutdown；动态资源明确释放。 | 最终 wheel 已加载 Runtime 配置，API readiness、Worker shutdown requeue、lease recovery 和唯一终态通过；MCP/Backend 全生命周期与生产部署切换未完成。 | **通用启停链部分实现** | ❌ |
+| `23-graph-thread-backend-checkpoint-lifecycle-design.md` | Agent Server 持有 Thread/Run/Checkpoint；真实 PostgreSQL/Redis 验证恢复；Backend 不能静默换线程或宿主机目录。 | GraphHarbor 已通过真实 sync checkpoint、双中断、SIGTERM/SIGKILL checkpoint 接管；post20 Workspace 已证明 Worker replacement、API restart、Thread/tenant 隔离和不可用根 fail-closed。生产 Sandbox/MCP/Backend cleanup 按 owner 决策 `deferred`。 | **Durable Core 和 Workspace chain 已完成，生产资源 hardening deferred** | ❌ |
+| `24-package-langgraph-startup-shutdown-design.md` | `langgraph.json` 是 Graph 真源；启动失败闭合；Agent Server 管 Queue/Run/Checkpoint/shutdown；动态资源明确释放。 | 最终 wheel 已加载 Runtime 配置，API readiness、Worker shutdown requeue、lease recovery 和唯一终态通过；MCP/Backend 全生命周期与生产部署切换按 owner 决策 `deferred`。 | **通用启停链已完成，生产资源 hardening deferred** | ❌ |
 
 ### 3.4 测试、模型路由、整合和研究
 
@@ -139,9 +139,9 @@ R2 的范围已由 owner 批准为：Workflow 条件分支和本地 Interrupt/Re
 | `25-runtime-testing-and-cross-service-contract-design.md` | Unit/Composition/Integration/Durable/E2E 分层；真实模型 E2E 不静默降级；Durable 不能用内存替代。 | 快速套件 `182 passed`；真实 GraphHarbor durable 套件 `14 passed, 1 skipped`；另有 Backend checkpoint 隔离真实测试 `1 passed`。skip 明确保留为缺口，没有用内存结果替代。跨服务 Platform fixture 仍后置。 | **测试分层成立，R6 覆盖未完整** | ❌ |
 | `26-runtime-custom-routes-and-model-config-design.md` | 不建设 Custom Route；Platform 管模型目录和快照，Runtime 只做本地能力校验与 Model 构造。 | 没有 Custom Route，符合“不建设”；Runtime 本地 Modeling 已实现。Platform 管理、快照绑定和正式 Gateway 尚未开始，属于 P1 前置缺口。 | **按设计不建设 Custom Route；整条配置链未完成** | ❌ |
 | `27-platform-runtime-integration-phased-design.md` | 先完成独立 Runtime，再通过 Gateway/Token/快照进入 Platform 阶段。 | Runtime 尚未通过 R6；没有进入 Platform Gateway 实施。文档的分阶段方向正确，但前置条件未满足。 | **未完成，按计划后置** | ❌ |
-| `28-runtime-refactor-development-plan.md` | 每阶段有最小门槛；只有真实证据通过才能进入下一阶段；R0-R5 已归档、R6 实施中。 | R6 已记录 GraphHarbor `post20` Durable Core、Worker、Workspace、MCP、API restart 和修复后 bridge SSE 真实证据；生产切流 hard gate 仍保留。 | **R6 formal acceptance 通过，生产切流未完成** | ❌ |
+| `28-runtime-refactor-development-plan.md` | 每阶段有最小门槛；只有真实证据通过才能进入下一阶段；R0-R5 已归档、R6 收口后再进入后续阶段。 | R6 已记录 GraphHarbor `post20` Durable Core、Worker、Workspace、MCP、API restart 和修复后 bridge SSE 真实证据；生产 hardening 按 owner 决策 `deferred`，切流保持 `not_ready`。 | **R6 formal acceptance 通过，生产 hardening deferred** | ❌ |
 | `29-runtime-service-demo-examples-design.md` | 内容并入 28 号文档，不再产生第二份规范。 | 已明确只保留跳转说明，没有产生额外实现要求。 | **已正确收口** | ✅ |
-| `30-agent-server-replacement-research.md` | 替换 Agent Server 只能按完整 R6 硬门槛验证；候选替换不能用 SDK 连接或 mock 冒充 Durable。 | GraphHarbor 已选定并新增第 12 节原子 Harness；`post20` 通用 Durable Core、Runtime Thread Workspace chain 和修复后 bridge SSE 有真实进程证据，但 Runtime 其他资源、观测、发布和灰度仍未全部通过。 | **R6 formal acceptance 通过，生产替代未完成** | ❌ |
+| `30-agent-server-replacement-research.md` | 替换 Agent Server 只能按完整 R6 硬门槛验证；候选替换不能用 SDK 连接或 mock 冒充 Durable。 | GraphHarbor 已选定并新增第 12 节原子 Harness；`post20` 通用 Durable Core、Runtime Thread Workspace chain 和修复后 bridge SSE 有真实进程证据；Runtime 其他资源、观测、发布、性能和灰度按 owner 决策 `deferred`。 | **R6 formal acceptance 通过，生产 hardening deferred** | ❌ |
 
 ## 4. 当前真正已经实现的能力
 
@@ -166,19 +166,19 @@ R2 的范围已由 owner 批准为：Workflow 条件分支和本地 Interrupt/Re
 
 ## 5. 未实现或没有证据的关键能力
 
-### P0：必须先修，否则不能进入 P1
+### P0/后续门槛：本轮明确 deferred
 
-1. **生产依赖切换**：GraphHarbor 已锁定为已发布的 `0.13.0.post20`，并从 PyPI 安装到 Runtime
-   `.venv`；临时 source override 和本地 wheel 依赖已移除，Docker 使用同一正式版本。post20
-   的端口修复已进入正式 artifact，但生产切流仍未完成，`langgraph.json` 仍保持生产真源不变。
-2. **剩余资源恢复**：Thread Workspace 和本地 Streamable HTTP MCP provider 已有真实 API/Worker
-   验收；远程 MCP、Sandbox 的跨 Worker 重连、失败闭合、cleanup 和配额仍没有生产 provider 证据，
-   Workspace/MCP 本地 fixture 不能替代这些资源。
-3. **生产故障矩阵**：隔离 PostgreSQL backup/restore 和性能基线已有本地证据；历史 bridge network SSE
-   有证据，但本次 `post20` 正式 acceptance 因 Worker-ready 编排未形成有效结果；Langfuse/OTLP exporter
-   queue saturation/服务端故障、生产发布回滚仍未完成。
-4. **测试语义保持**：缺环境或 provider 的 Durable 检查必须继续标记 blocked/not executed；
-   不能因为 Workspace 链通过就把剩余 skip 记为 pass。
+1. **已完成的发布物基线**：GraphHarbor 已锁定为已发布的 `0.13.0.post20`，并从 PyPI 安装到 Runtime
+   `.venv`；临时 source override 和本地 wheel 依赖已移除，Docker 使用同一正式版本。生产切流本身按 owner
+   决策 `deferred`，`langgraph.json` 仍保持生产真源不变。
+2. **真实资源 Provider 矩阵**：Thread Workspace 和本地 Streamable HTTP MCP provider 已有真实 API/Worker
+   验收；远程 MCP、Sandbox 的跨 Worker 重连、失败闭合、cleanup 和配额按 owner 决策 `deferred`，本地
+   fixture 不能替代未来的 Provider 验收。
+3. **生产观测、回滚、灰度和性能门槛**：Langfuse/OTLP 服务端故障、真实发布回滚、Platform 灰度和
+   性能 SLO/queue lag/PG/Redis watermark 均按 owner 决策 `deferred`；现有 smoke、dry-run 和 baseline
+   只作为局部证据。
+4. **测试语义保持**：缺环境或 provider 的 Durable 检查必须继续标记 `blocked`/`not-executed`；
+   `deferred` 只表示主动不做，不能因为 Workspace 链通过就把剩余 skip 记为 pass。
 
 ### P1：进入 Platform 整合前必须冻结
 
@@ -202,11 +202,10 @@ R2 的范围已由 owner 批准为：Workflow 条件分支和本地 Interrupt/Re
    Graph 注册来源，不能两边各写一份。
 2. **补 Workflow 最小能力**：只改 `workflow_demo`，增加一个真实条件分支和一个可恢复
    Interrupt/Resume 节点，配一条失败测试。不要借此创建通用 workflow framework。
-4. **补齐 R6 剩余 hard gate**：GraphHarbor 已获批准，Durable Core、timeout/Tool failure、
-   cursor-expired、Thread Workspace、bridge network SSE、backup/restore 和性能基线已有真实/隔离验收；
-   下一步只补 Backend/MCP/Sandbox、观测服务端故障和发布切换，不重复实现通用 lease/checkpoint 状态机。
-5. **R6 通过后再做 P1**：Platform Gateway、配置快照、Run Event 投影、Run Explorer 和跨服务
-   契约另起 governed change，不把 Platform 代码提前塞进 Runtime。
+4. **暂缓 R6 生产 hardening**：Backend/MCP/Sandbox Provider、观测服务端故障、真实 rollback、Platform
+   灰度和性能 SLO 均保持 `deferred`；不重复实现已经通过验收的通用 lease/checkpoint 状态机。
+5. **恢复后再做 P1**：Platform Gateway、配置快照、Run Event 投影、Run Explorer 和跨服务契约另起
+   governed change，不把 Platform 代码提前塞进 Runtime。
 
 ## 7. 接受标准
 
@@ -222,18 +221,18 @@ R2 的范围已由 owner 批准为：Workflow 条件分支和本地 Interrupt/Re
 按这个定义，当前建议状态为：
 
 ```text
-R0 capability-local-complete / alignment-partial
-R1 capability-chain-complete-local-agent-server / platform-durable-deferred
-R2 capability-local-complete-local-agent-server / reference-lifecycle-incomplete
+R0 capability-local-complete / alignment-complete
+R1 capability-chain-complete-graphharbor-durable / platform-cutover-deferred
+R2 capability-local-complete-reference-durable / workflow-durable-not-executed / reference-lifecycle-incomplete
 R3 reliability-core-local-complete / provider-fallback-production-incomplete
 R4 demo-local-complete / production-resources-deferred
 R5 adapter-local-complete / full-propagation-incomplete
-R6 durable-core-partial / production-cutover-blocked
+R6 durable-core-formal-complete / production-hardening-deferred
 P1 deferred
 ```
 
-在 R6 全部 hard gate 通过前，任何 README、路线图或 OpenSpec 归档记录都不应使用无限定的
-“R0-R5 全部完成，因此 Runtime 可作为 Platform 执行面”的表述。
+在 R6 的 deferred production hardening 恢复并完成前，任何 README、路线图或 OpenSpec 归档记录都不应
+使用无限定的“生产切流已完成”表述；也不能把当前已通过的 Durable Core 说成所有生产能力已实现。
 
 ## 8. R4 Apply 对齐目录（2026-09-01）
 
@@ -249,8 +248,8 @@ P1 deferred
 | Subagent 实际缩权委派 | ✅ | `deep_agent_demo/agent.py` 显式 `tools=[]`、`permissions` 和 `summarizer` | `tests/services/test_r4_capability_demos.py::test_deep_agent_performs_explicit_subagent_delegation`：`1 passed` | 官方 `task` 调用返回子 Agent 结果；父 Agent 仍仅暴露显式工具集合 |
 | Backend scope mismatch、资源清理、跨 Worker Durable | ❌ | 尚无生产资源 binding/cleanup 实现 | OpenSpec `5.4/5.5/5.6` 未执行 | Agent Server entitlement、PostgreSQL/Redis、Sandbox 前置条件缺失，状态为 `blocked/not-executed` |
 
-结论：R4 为 `local-complete / production-chain-blocked`；R6 已有 Durable Core 真实证据但 hard gate 未全过，
-P1 Platform 整合仍以后置为准。
+结论：R4 为 `local-complete / production-resource-hardening-deferred`；R6 已有 Durable Core formal evidence，
+deferred 项按 owner 决策后置，P1 Platform 整合仍以后置为准。
 
 ## 9. R5 Harness 对齐目录（2026-09-01）
 
@@ -268,7 +267,7 @@ P1 Platform 整合仍以后置为准。
 | Model/Tool/Subagent Trace 层级和真实 Langfuse smoke | ✅ | 统一 callback；`tests/e2e/test_langfuse_real.py` | `test_graph_tracing.py`；真实 Langfuse smoke `1 passed`；真实 DeepSeek `1 passed` | 已证明本地传播和真实 client/flush，未查询服务端最终 observation 树 |
 | Cross-service trace propagation | ❌ | 仅消费调用方传入 metadata | Platform/Gateway 传播按设计后置 |
 
-R5 当前状态：`runtime complete-local / production-exporter partial`。本地生命周期、callback 传播和
+R5 当前状态：`runtime complete-local / production-exporter deferred`。本地生命周期、callback 传播和
 Langfuse smoke 已成立；目标镜像只证明 custom app import 和 PostgreSQL/Redis 连接，entitlement `403`
-阻止了 application startup 与 SIGTERM 验证。queue saturation、目标生产容器生命周期和跨服务传播仍保持
-未完成，不能因为 R6 已在实施就跳过这些缺口。
+阻止了 application startup 与 SIGTERM 验证。queue saturation、目标生产容器生命周期和跨服务传播本轮
+按 owner 决策暂缓，不能因为已有局部证据就升级为生产完成。

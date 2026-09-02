@@ -15,6 +15,9 @@
 >
 > 暂不展开：具体 Sandbox Provider、用户/组织 Skill 管理 API、独立 Subagent Run、代码实现
 
+> R6 范围决策（2026-09-02）：Sandbox/远程 MCP 的真实 Provider 验收、Langfuse/OTLP 生产故障矩阵、
+> 真实回滚演练、Platform 灰度和性能 SLO 均明确 `deferred`。这些延期项不改变本文对职责边界的定义。
+
 ## 1. 本轮结论
 
 Runtime Service 不建设公共 `BackendManager`、`WorkspaceRegistry`、`SkillProvider`、
@@ -47,6 +50,18 @@ Deep Agents 原生能力
    Deep Agents 内置 Tool 另行显式审计和收缩。
 7. Service 声明最大能力，Runtime Policy 和 Middleware 只能继续收缩，不能扩权。
 8. 两个以上 Service 出现相同、稳定的 Sandbox 生命周期代码后，才提取具体公共 helper。
+
+### 1.1 R6 中四类资源的责任边界
+
+Sandbox 和远程 MCP 是 Deep Agents/Runtime Service 的资源能力，不是 GraphHarbor 的业务能力。
+Runtime Service 负责 Provider/client 的创建、Thread binding、重连、Tool Policy、配额、清理和
+Provider-specific failure handling；GraphHarbor 只负责通用 Run、Thread、Checkpoint、事件、队列、
+Worker lease，以及保存和恢复不透明的 resource binding。
+
+本轮只验收了本地 Workspace 和本地 Streamable HTTP MCP 的真实链路。真实 Sandbox Provider、任意
+远程 MCP、Langfuse/OTLP 生产故障、真实 rollback、Platform 灰度和性能 SLO 均为 `deferred`，不能
+因为 GraphHarbor 已通过 Durable Core 验收就提前扩展为生产承诺。只有后续最小契约证明 GraphHarbor
+丢失通用 binding、context 或生命周期语义时，才在 GraphHarbor 创建独立变更。
 
 ## 2. Open SWE 的真实设计
 
@@ -672,12 +687,12 @@ Cross-worker resource recovery and cleanup = deferred/blocked by missing provide
 | `20-R6-001` Thread Workspace 按 tenant/project/thread 隔离并跨 Worker 恢复 | ✅ | `services/workspace_demo/agent.py`；`runtime/resource_bindings.py`；GraphHarbor workspace binding | `scripts/r6_workspace_acceptance.py`；`tests/services/test_workspace_demo.py` | 真实 API、替代 Worker、PostgreSQL/Redis 下同 Thread 读回成功，双 Thread/tenant 隔离和不可用根 fail-closed 通过 |
 | `20-R6-002` Workspace 单文件、文件数量、总字节数、路径和符号链接边界 | ✅ | `services/workspace_policy.py`；部署 env/Compose | `tests/services/test_workspace_policy.py`：大小、数量、总配额、越界、符号链接、并发写入 | Runtime 侧策略和同一 Thread 共享卷上的锁内配额 mutation 通过；跨主机 provider 原子配额记账仍依赖 Backend 能力 |
 | `20-R6-003` Workspace TTL/cleanup 只清理过期非活跃 Thread | ✅ | `services/workspace_policy.py`；`scripts/r6_workspace_cleanup.py` | `test_cleanup_removes_only_expired_inactive_threads`；cleanup CLI dry-run/apply | 只接受持久化 Thread 事实源提供的 active IDs，默认 dry-run；生产任务的调度、租约和 provider 删除仍属部署层 |
-| `20-R6-004` MCP binding 跨 Worker/provider 重启恢复并失败闭合 | ✅ | `services/mcp_demo/loader.py`；`graphs/mcp_probe.py` | `scripts/r6_mcp_acceptance.py`；`tests/services/test_resource_reconnect.py` | 独立 Streamable HTTP provider 的 discovery、调用、Worker 替换、provider 重启及缺 binding/不可达失败通过；任意远程 provider SLA/凭据矩阵未验收 |
+| `20-R6-004` MCP binding 跨 Worker/provider 重启恢复并失败闭合 | ✅ | `services/mcp_demo/loader.py`；`graphs/mcp_probe.py` | `scripts/r6_mcp_acceptance.py`；`tests/services/test_resource_reconnect.py` | 独立 Streamable HTTP provider 的 discovery、调用、Worker 替换、provider 重启及缺 binding/不可达失败通过；任意远程 provider SLA/凭据矩阵按 owner 决策 `deferred` |
 | `20-R6-005` Deep Agent Subagent 实际委派且能力不扩大 | ✅ | `services/deep_agent_demo/agent.py`；`summarizer` SubAgent | `test_deep_agent_performs_explicit_subagent_delegation`；`test_deep_agent_streams_subagent_namespace_and_projection`；观测 callback 测试 | 官方 `task` 真实返回子 Agent 结果，子 Agent 使用显式缩权配置；v2 stream 暴露非空 namespace 和 `summarizer` 事件；跨进程 detached Subagent 未实现 |
-| `20-R6-006` Sandbox 按 Thread binding 恢复并失败闭合 | ❌ | `services/sandbox.py` | `tests/services/test_resource_reconnect.py` 的缺凭据/错误 provider 分支 | Adapter 已 fail-closed，但 LangSmith Sandbox entitlement 返回 `403`，没有真实 Sandbox ID、跨 Worker/cleanup/quota 证据 |
-| `20-R6-007` Backend/MCP/Sandbox 资源成功、异常、取消、超时和 shutdown 后释放 | ❌ | Runtime adapter 与 GraphHarbor 生命周期 | 当前仅本地 MCP provider 和缺资源失败证据 | MCP 本地连接生命周期已有验收；真实远程 MCP/Sandbox provider 的释放、租约和清理仍未执行 |
+| `20-R6-006` Sandbox 按 Thread binding 恢复并失败闭合 | ❌ | `services/sandbox.py` | `tests/services/test_resource_reconnect.py` 的缺凭据/错误 provider 分支 | Adapter 已 fail-closed，但 LangSmith Sandbox entitlement 返回 `403`，没有真实 Sandbox ID、跨 Worker/cleanup/quota 证据；真实 Provider 验收按 owner 决策 `deferred` |
+| `20-R6-007` Backend/MCP/Sandbox 资源成功、异常、取消、超时和 shutdown 后释放 | ❌ | Runtime adapter 与 GraphHarbor 生命周期 | 当前仅本地 MCP provider 和缺资源失败证据 | MCP 本地连接生命周期已有验收；真实远程 MCP/Sandbox provider 的释放、租约和清理按 owner 决策 `deferred` |
 
-当前 R6 结论：`Workspace/MCP/Subagent = chain-evidenced`；`Sandbox/provider-wide cleanup = blocked_external_dependency`。
+当前 R6 结论：`Workspace/MCP/Subagent = chain-evidenced`；`Sandbox/provider-wide cleanup = deferred_external_provider`。
 不能将前述历史表中的 R4 skeleton 缺口继续当成代码不存在，也不能将外部 Provider 未验收写成生产完成。
 
 ## 20. 四类资源与 GraphHarbor 的责任边界（2026-09-02）
@@ -687,7 +702,7 @@ Server 和 Durable 执行面，不是当前项目的资源 Provider、Tool Regis
 
 | 资源 | 定义 | 对 GraphHarbor 的影响 | 应由谁解决 | 当前证据 |
 | --- | --- | --- | --- | --- |
-| Workspace | Thread 可访问的受控文件路径空间，默认边界为 `tenant/project/thread` | 需要保留不透明 binding，保证同 Thread 跨 Worker 恢复且事件不串线 | Runtime Service + Backend/Sandbox Provider | Runtime Workspace chain 已有跨 Worker/隔离证据；生产 cleanup/provider 配额仍未闭合 |
+| Workspace | Thread 可访问的受控文件路径空间，默认边界为 `tenant/project/thread` | 需要保留不透明 binding，保证同 Thread 跨 Worker 恢复且事件不串线 | Runtime Service + Backend/Sandbox Provider | Runtime Workspace chain 已有跨 Worker/隔离证据；生产 cleanup/provider 配额按 owner 决策 `deferred` |
 | Backend | Agent 进行 `ls/read/write/edit/glob/grep/execute` 的文件操作适配器 | 需要按 Run 调用 graph factory、保留 `RunnableConfig`、释放 graph 级资源 | Service `agent.py` 组合根 + Deep Agents 官方 Backend | `StateBackend`、Bundled Skills 和 Tool surface 已有本地/链路证据；不建设公共 Registry |
 | Sandbox | 带隔离文件系统、Shell、网络和资源限制的外部执行环境 | 只需让 Worker 替换后重连同一 binding，并把 provider 不可用映射成唯一失败 | Runtime adapter + 外部 Sandbox Provider | 目前只有 adapter fail-closed；真实 provider、cleanup、quota 和跨 Worker 恢复未通过 |
 | MCP | Agent 连接外部 Tool Server 的协议和 session 生命周期 | 需要支持 per-Run factory、binding 恢复和 Tool/MCP 失败事件 | Runtime MCP loader + Provider | 独立 Streamable HTTP provider 的 discovery、Worker/provider 重启和失败闭合已通过；任意远程 SLA 未验收 |

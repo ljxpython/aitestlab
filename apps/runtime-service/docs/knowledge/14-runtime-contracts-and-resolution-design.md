@@ -71,7 +71,7 @@ Profile 覆盖、每次 Run override 和 `PrepareRunMiddleware` 提供了有价�
 - 生成稳定的 `config_hash`，支持审计、去重和问题复现。
 - 让 `stream_event`、checkpoint、trace 和 audit 只暴露必要的决议摘要，不泄漏 secret 或
   完整 Prompt。
-- 让本地 `langgraph dev` 和生产 Agent Server 使用同一个 Resolver 和 Auth 语义。
+- 让 GraphHarbor Agent Server 与本地 Runtime 调用使用同一个 Resolver 和 Auth 语义。
 
 ### 2.2 非目标
 
@@ -842,7 +842,7 @@ Runtime Service 不查询 Platform API 以“补齐”缺失 Policy。缺 Policy
 ```text
 local Token Signer
   -> local short-lived Delegation JWT with policy snapshot
-  -> langgraph dev Auth
+  -> GraphHarbor Agent Server Auth
   -> same RuntimePrincipal / RuntimePolicy / RuntimeContext / Resolver
 ```
 
@@ -855,9 +855,10 @@ local Token Signer
 - 签发器位于应用根 `scripts/`，不进入生产包；
 - 不能通过请求字段打开 `platform_local_debug=true` 信任旁路。
 
-Resolver 单元测试直接构造五类不可变对象；Agent Server 集成测试使用本地 JWT，覆盖 Auth、
-Context、Middleware、stream、checkpoint、interrupt 和 Subagent event。两者共享同一组 fixture
-语义，但 fixture 不进入生产 Resolver fallback。
+Resolver 单元测试直接构造五类不可变对象；GraphHarbor Durable 集成测试使用本地 JWT，覆盖
+Auth、Context、Middleware、stream 和 checkpoint。两者共享同一组 fixture 语义，但 fixture
+不进入生产 Resolver fallback。没有 `RUNTIME_DURABLE_URL` 时，集成测试必须跳过并明确说明
+环境缺失，不能启动旧的 `langgraph dev` 或把 skip 记成通过。
 
 ## 15. 验收测试
 
@@ -886,7 +887,8 @@ Context、Middleware、stream、checkpoint、interrupt 和 Subagent event。两�
 - Runtime Context 传播到 Deep Agents Subagent，子调用仍执行 Tool allowlist 检查；
 - 重放/恢复 Run 在 Policy 变化后不会绕过二次校验；
 - stream/checkpoint/trace 只输出审计投影，不输出 secret 或完整 Prompt；
-- 本地 JWT + `langgraph dev` 不依赖 Platform API 即可完成真实调试。
+- 本地 JWT + GraphHarbor Agent Server 不依赖 Platform API 即可完成 Durable 调试；服务端仍必须
+  使用隔离的 PostgreSQL、Redis 和内部 Runtime Context secret。
 
 ## 16. 明确禁止事项
 
@@ -949,28 +951,28 @@ Harness 验证规则，不迁移或兼容 Legacy。
 
 | ID | 要求 | 实现位置 | 测试/检查 | 验证记录 | 状态 | 是否实现 | 缺口/后续 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `14-R1-CON-001` | 五类 Runtime 类型不可变并公开导出 | `src/runtime_service/runtime/contracts.py:6-55`；`runtime/__init__.py:3-38` | `tests/runtime/test_contracts_and_resolver.py:test_contracts_are_frozen` | 快速全套：`77 passed`；五类实例均尝试字段修改并失败 | `implemented-local` | ✅ | 只证明本地类型边界，不证明跨进程序列化后的不可变性 |
-| `14-R1-CON-002` | Context 严格拒绝未知字段、身份字段、旧字段，保留 None/空 tuple 语义 | `runtime/resolver.py:75-104,147-157`；`runtime/runtime_config.py:12-21` | `tests/runtime/test_contracts_and_resolver.py:43-70` | R1 单测通过；未知字段、身份字段、legacy 字段和空 Tools 有证据 | `implemented-local` | ✅ | 真实 Agent Server 是否在 Middleware 前丢弃未知字段仍由 R2 集成验证 |
-| `14-R1-CON-003` | 类型、范围、bool、NaN、无穷和边界值严格校验 | `runtime/resolver.py:54-72,150-156` | `tests/runtime/test_contracts_and_resolver.py:test_context_parser_rejects_invalid_generation_values` | 快速全套：`77 passed`；bool、NaN、inf、负值、零值和超范围输入均失败 | `implemented-local` | ✅ | 合法边界的语义由当前 dataclass/Provider 组合继续覆盖 |
-| `14-R1-RES-001` | Resolver 是无 I/O、输入不变的纯函数，完成默认值合并和稳定 hash | `runtime/resolver.py:204-279` | `tests/runtime/test_contracts_and_resolver.py:test_resolver_does_not_mutate_inputs_or_perform_io`；hash/merge tests | 快速全套：`77 passed`；输入保持不变，`open` 被替换为失败门禁，等价输入 hash 稳定 | `implemented-local` | ✅ | 只证明本地调用无 I/O，不替代真实服务链路检查 |
-| `14-R1-RES-002` | Required/Optional Tool 按 Agent、Project、Actor Policy 交集 fail-closed | `runtime/resolver.py:253-263`；`services/reference_agent/agent.py:_TOOL_PERMISSIONS` | `tests/runtime/test_contracts_and_resolver.py:test_resolver_enforces_actor_tool_permissions`；`tests/services/reference_agent/test_agent.py` | 快速全套：`77 passed`；Required/Optional 缺 Actor permission 均失败，reference tool 使用私有映射 | `implemented-local` | ✅ | 只覆盖当前 Service 的显式映射，不创建公共 Capability Registry |
-| `14-R1-AUTH-001` | JWT 签名、issuer、audience、时间、type 和已知 claim 校验 | `runtime/auth.py:14-104` | `tests/runtime/test_auth.py:44-80` | 合法 token、签名、过期、type、tenant/project 一致性和未知 claim 通过 | `implemented-local` | ✅ | 仅是本地 HS256 函数验证，不是 Agent Server Auth 接线证据 |
-| `14-R1-AUTH-002` | Delegation claims 包含并验证 scope 与 Context hash | `runtime/auth.py:18-223`；`runtime/resolver.py:230-255` | `tests/runtime/test_auth.py:test_scope_and_context_hash_claims_fail_closed`；`test_scope_and_context_are_checked_against_execution_inputs` | 快速全套：`77 passed`；缺失/篡改 hash、scope 结构、tenant/project/assistant/thread 不一致均失败 | `implemented-local` | ✅ | Platform 签发链和真实 Gateway payload 不在本 change |
-| `14-R1-POL-001` | RuntimePolicy 来自已验证 snapshot，且与 Principal scope/权限一致 | `runtime/auth.py:130-169`；`runtime/resolver.py:253-263` | `tests/runtime/test_auth.py`；`tests/runtime/test_contracts_and_resolver.py:test_resolver_enforces_actor_tool_permissions` | 快速全套：`77 passed`；policy allowlist、Principal scope 和 Actor permission 均参与决议 | `implemented-local` | ✅ | policy snapshot 的上游 Platform 产生与轮换属于后续整合 |
+| `14-R1-CON-001` | 五类 Runtime 类型不可变并公开导出 | `src/runtime_service/runtime/contracts.py:6-55`；`runtime/__init__.py:3-38` | `tests/runtime/test_contracts_and_resolver.py:test_contracts_are_frozen` | 修复前本地 R1 基线 `59 passed`；本次 GraphHarbor 集成 `3 passed` | `implemented-local` | ✅ | 受影响本地回归未在本次唯一命令中重复执行 |
+| `14-R1-CON-002` | Context 严格拒绝未知字段、身份字段、旧字段，保留 None/空 tuple 语义 | `runtime/resolver.py:75-104,147-157`；`runtime/runtime_config.py:12-21` | `tests/runtime/test_contracts_and_resolver.py:43-70`；`tests/integration/test_agent_server_auth.py:test_graphharbor_runtime_context_unknown_field_fails_closed` | 本地边界测试和 GraphHarbor Durable Run 失败测试均覆盖未知字段、身份字段、legacy 字段和空 Tools | `implemented-chain` | ✅ | 仅覆盖 reference_agent 的 RuntimeContext；其他 graph 的私有 schema 由其阶段验收负责 |
+| `14-R1-CON-003` | 类型、范围、bool、NaN、无穷和边界值严格校验 | `runtime/resolver.py:54-72,150-156` | `tests/runtime/test_contracts_and_resolver.py:test_context_parser_rejects_invalid_generation_values` | 修复前本地 R1 基线 `59 passed`；GraphHarbor 集成的非法 Context Run 失败 | `implemented-local` | ✅ | 受影响本地回归未在本次唯一命令中重复执行 |
+| `14-R1-RES-001` | Resolver 是无 I/O、输入不变的纯函数，完成默认值合并和稳定 hash | `runtime/resolver.py:204-279` | `tests/runtime/test_contracts_and_resolver.py:test_resolver_does_not_mutate_inputs_or_perform_io`；hash/merge tests | 修复前本地 R1 基线 `59 passed`；GraphHarbor 集成的 Context 失败路径通过 | `implemented-local` | ✅ | 受影响本地回归未在本次唯一命令中重复执行 |
+| `14-R1-RES-002` | Required/Optional Tool 按 Agent、Project、Actor Policy 交集 fail-closed | `runtime/resolver.py:253-263`；`services/reference_agent/agent.py:_TOOL_PERMISSIONS` | `tests/runtime/test_contracts_and_resolver.py:test_resolver_enforces_actor_tool_permissions`；`tests/services/reference_agent/test_agent.py` | 修复前本地 R1 基线 `59 passed`；本次 GraphHarbor 合法 delegation Run 通过 | `implemented-local` | ✅ | 受影响本地回归未在本次唯一命令中重复执行 |
+| `14-R1-AUTH-001` | JWT 签名、issuer、audience、时间、type 和已知 claim 校验 | `runtime/auth.py:14-104`；`auth/platform.py` | `tests/runtime/test_auth.py:44-80`；`tests/runtime/test_platform_auth.py:test_platform_auth_requires_audience_configuration` | 合法 token、签名、过期、type、tenant/project 一致性、未知 claim 和缺 audience 配置均有失败证据 | `implemented-local` | ✅ | Agent Server HTTP 认证链由 `14-R1-CHAIN-001` 验收 |
+| `14-R1-AUTH-002` | Delegation claims 包含并验证 scope 与 Context hash | `runtime/auth.py:18-223`；`runtime/resolver.py:230-255` | `tests/runtime/test_auth.py:test_scope_and_context_hash_claims_fail_closed`；`test_scope_and_context_are_checked_against_execution_inputs` | 修复前本地 R1 基线 `59 passed`；本次 GraphHarbor 3 项集成均使用签名 scope/context_hash | `implemented-local` | ✅ | 受影响本地回归未在本次唯一命令中重复执行 |
+| `14-R1-POL-001` | RuntimePolicy 来自已验证 snapshot，且与 Principal scope/权限一致 | `runtime/auth.py:130-169`；`runtime/resolver.py:253-263` | `tests/runtime/test_auth.py`；`tests/runtime/test_contracts_and_resolver.py:test_resolver_enforces_actor_tool_permissions` | 修复前本地 R1 基线 `59 passed`；本次 GraphHarbor 合法 policy snapshot Run 通过 | `implemented-local` | ✅ | 受影响本地回归未在本次唯一命令中重复执行 |
 | `14-R1-MOD-001` | 只接受 ResolvedRuntimeConfig，显式构造 DeepSeek/GPT/标准 Provider Model | `runtime/modeling.py:36-72` | `tests/runtime/test_modeling.py:31-90` | `uv run pytest tests/runtime -q`：Provider 参数和缺凭据失败映射通过 | `implemented-local` | ✅ | 真实 Provider 不属于 R1 本地单测门槛；生产凭据和模型目录属于后续链路 |
 | `14-R1-ERR-001` | 错误码稳定，字符串摘要不泄漏 token/secret/claims | `runtime/errors.py:4-18`；`runtime/auth.py:40-41` | `tests/runtime/test_auth.py:66-75`；`test_modeling.py:69-72` | 错误只暴露 code/field，错误测试通过 | `implemented-local` | ✅ | 需要在真实 HTTP 错误映射中继续验证 401/403/400/500 语义 |
-| `14-R1-SNAP-001` | ResolvedRuntimeConfig 只包含可序列化执行事实并形成 config_hash | `runtime/contracts.py:43-55`；`runtime/resolver.py:308-382` | `tests/runtime/test_contracts_and_resolver.py:test_runtime_context_hash_and_snapshot_are_safe_and_stable` | 快速全套：`77 passed`；JSON round-trip、hash 篡改失败，snapshot 不含完整 Prompt/JWT/secret/model/callback | `implemented-local` | ✅ | snapshot 不是 Durable checkpoint；跨 Worker 持久化仍由 R6 验证 |
-| `14-R1-BOUND-001` | model_id 位于 Context，不从 configurable 读取业务模型/身份/权限 | `runtime/resolver.py:21-24,75-104`；`services/reference_agent/agent.py:53-70` | `tests/runtime/test_contracts_and_resolver.py`；`tests/services/reference_agent/test_agent.py:test_context_override_is_resolved_before_model_creation` | 快速全套：`77 passed`；旧字段和身份字段拒绝，`_runtime_model` 仅作为显式测试注入并从生产 bound config 移除 | `implemented-local` | ✅ | `_runtime_model` 仍是测试边界；真实 Server execution info 的最终字段形状需链路测试确认 |
-| `14-R1-CHAIN-001` | Agent Server Auth 构造 Principal/Policy，RuntimeContext 进入同一 Resolver 链 | `auth/platform.py`；`langgraph.json`；`middlewares/runtime_config.py`；`reference_agent/agent.py` | `tests/integration/test_agent_server_auth.py`；`tests/e2e/test_reference_agent_real_model.py`；Middleware tests | `RUNTIME_E2E=1` 集成测试：`2 passed`；匿名 `401`、无效 JWT `401`、合法 JWT `200`，并以 `temperature=0` 真实调用 DeepSeek 返回 `e2e-ok` | `implemented-chain` | ✅ | 证明 local Agent Server shortest chain；Platform 正式签发链和 R6 Durable 不在本 change |
+| `14-R1-SNAP-001` | ResolvedRuntimeConfig 只包含可序列化执行事实并形成 config_hash | `runtime/contracts.py:43-55`；`runtime/resolver.py:308-382` | `tests/runtime/test_contracts_and_resolver.py:test_runtime_context_hash_and_snapshot_are_safe_and_stable` | 修复前本地 R1 基线 `59 passed`；GraphHarbor Run 使用非敏感签名事实 | `implemented-local` | ✅ | 受影响本地回归未在本次唯一命令中重复执行 |
+| `14-R1-BOUND-001` | model_id 位于 Context，不从 configurable 读取业务模型/身份/权限 | `runtime/resolver.py:21-24,75-104`；`services/reference_agent/agent.py:53-70` | `tests/runtime/test_contracts_and_resolver.py`；`tests/services/reference_agent/test_agent.py:test_context_override_is_resolved_before_model_creation`；`test_agent_rejects_untrusted_resource_injection` | 本地测试确认 Context 覆盖、旧字段/身份字段拒绝、资源注入拒绝；`_runtime_model` 仅为显式 test-only adapter 且会从 bound config 移除 | `implemented-local` | ✅ | 生产 Durable 的最终配置形状由 GraphHarbor 链路继续约束 |
+| `14-R1-CHAIN-001` | Agent Server Auth 构造 Principal/Policy，RuntimeContext 进入同一 Resolver 链 | `auth/platform.py`；`langgraph.json`；`middlewares/runtime_config.py`；`reference_agent/agent.py` | `tests/integration/test_agent_server_auth.py`；`tests/e2e/test_reference_agent_real_model.py`；Middleware tests | `RUNTIME_DURABLE_URL=... RUNTIME_E2E=1 uv run --frozen pytest tests/integration/test_agent_server_auth.py -q`：GraphHarbor Durable Auth、未知 Context 失败和真实 DeepSeek 均通过 | `implemented-chain` | ✅ | 证明当前 GraphHarbor Durable shortest chain；Platform 正式签发链和生产切流仍由后续阶段管理 |
 
 ### R1 结论
 
 ```text
-R1 capability-chain-complete-local-agent-server / platform-durable-deferred
+R1 capability-chain-complete-graphharbor-durable / platform-cutover-deferred
 ```
 
 可以确认：五类类型、严格解析、纯 Resolver、JWT scope/context_hash、Actor Tool 权限交集、
-安全 snapshot、Modeling 和稳定错误类型已经存在并有本地测试；Auth path 到 RuntimeContext、
-Resolver、真实 DeepSeek Model 的 local Agent Server shortest chain 也已通过。未覆盖的是
-Platform 正式签发链、生产部署和 Durable 恢复，因此 R1 结论是
-`capability-chain-complete-local-agent-server / platform-durable-deferred`。
+安全 snapshot、Modeling 和稳定错误类型已经存在并有本地测试；GraphHarbor Durable Auth path
+到 RuntimeContext、Resolver、真实 DeepSeek Model 的链路也已通过。未覆盖的是 Platform 正式
+签发链和生产切流，因此 R1 结论是 `capability-chain-complete-graphharbor-durable /
+platform-cutover-deferred`。

@@ -50,6 +50,7 @@
 - `delivery/release-template.md`
 - `delivery/runtime-contract-three-wave-checklist.md`
 - `delivery/runtime-contract-manual-integration-checklist.md`
+- `delivery/platform-runtime-graphharbor-integration-checklist.md`
 
 其中：
 

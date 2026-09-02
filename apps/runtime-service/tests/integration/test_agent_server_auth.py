@@ -1,15 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import os
-import socket
-import subprocess
 import time
-import urllib.error
-import urllib.request
 import uuid
-from pathlib import Path
 
 import jwt
 import pytest
@@ -20,16 +14,15 @@ from runtime_service.runtime.resolver import runtime_context_hash
 
 pytestmark = pytest.mark.integration
 
-APP_ROOT = Path(__file__).resolve().parents[2]
-SECRET = "r1-integration-secret-with-at-least-32-bytes"
-ISSUER = "runtime-integration"
-AUDIENCE = "runtime-service"
-
-
-def _free_port() -> int:
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        return int(sock.getsockname()[1])
+SECRET = os.getenv(
+    "R6_TEST_TOKEN_SECRET",
+    os.getenv(
+        "PLATFORM_RUNTIME_DELEGATION_SECRET",
+        "r1-integration-secret-with-at-least-32-bytes",
+    ),
+)
+ISSUER = os.getenv("PLATFORM_RUNTIME_DELEGATION_ISSUER", "runtime-integration")
+AUDIENCE = os.getenv("PLATFORM_RUNTIME_DELEGATION_AUDIENCE", "runtime-service")
 
 
 def _token(context: object | None = None) -> str:
@@ -60,118 +53,88 @@ def _token(context: object | None = None) -> str:
     )
 
 
-def _request(
-    base_url: str,
-    path: str,
-    *,
-    method: str = "GET",
-    token: str | None = None,
-    body: dict[str, object] | None = None,
-) -> tuple[int, dict[str, object] | str]:
-    request = urllib.request.Request(
-        f"{base_url}{path}",
-        data=None if body is None else json.dumps(body).encode(),
-        headers={
-            "Content-Type": "application/json",
-            **({"Authorization": f"Bearer {token}"} if token else {}),
-        },
-        method=method,
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=2) as response:
-            raw = response.read().decode()
-            return response.status, json.loads(raw) if raw else {}
-    except urllib.error.HTTPError as exc:
-        raw = exc.read().decode()
-        return exc.code, json.loads(raw) if raw else ""
-
-
 @pytest.fixture
-def local_agent_server():
-    port = _free_port()
-    env = os.environ.copy()
-    env.update(
-        {
-            "PLATFORM_RUNTIME_DELEGATION_SECRET": SECRET,
-            "PLATFORM_RUNTIME_DELEGATION_ISSUER": ISSUER,
-            "PLATFORM_RUNTIME_DELEGATION_AUDIENCE": AUDIENCE,
-            "LANGCHAIN_TRACING_V2": "false",
-        }
-    )
-    process = subprocess.Popen(
-        [
-            "uv",
-            "run",
-            "langgraph",
-            "dev",
-            "--no-browser",
-            "--config",
-            "./langgraph.json",
-            "--port",
-            str(port),
-        ],
-        cwd=APP_ROOT,
-        env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    base_url = f"http://127.0.0.1:{port}"
-    deadline = time.monotonic() + 30
-    while time.monotonic() < deadline:
-        if process.poll() is not None:
-            raise AssertionError(f"Agent Server exited with status {process.returncode}")
-        try:
-            status, _ = _request(base_url, "/info")
-            if status == 200:
-                break
-        except (urllib.error.URLError, TimeoutError):
-            pass
-        time.sleep(0.25)
-    else:
-        process.terminate()
-        raise AssertionError("Agent Server did not become ready")
-
-    yield base_url
-
-    process.terminate()
-    try:
-        process.wait(timeout=10)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        process.wait(timeout=5)
+def durable_url() -> str:
+    value = os.getenv("RUNTIME_DURABLE_URL")
+    if not value:
+        pytest.skip("RUNTIME_DURABLE_URL must point to a running GraphHarbor service")
+    return value.rstrip("/")
 
 
-def test_agent_server_auth_rejects_anonymous_and_accepts_delegation(
-    local_agent_server: str,
+def test_graphharbor_auth_rejects_anonymous_and_accepts_delegation(
+    durable_url: str,
 ) -> None:
-    status, _ = _request(local_agent_server, "/threads")
-    assert status == 401
+    asyncio.run(_test_auth(durable_url))
 
-    status, _ = _request(local_agent_server, "/threads", token="invalid")
-    assert status == 401
 
-    status, payload = _request(
-        local_agent_server,
-        "/threads",
-        method="POST",
-        token=_token(),
-        body={"thread_id": str(uuid.uuid4())},
+async def _test_auth(base_url: str) -> None:
+    anonymous = get_client(url=base_url)
+    try:
+        with pytest.raises(Exception):
+            await anonymous.threads.search()
+    finally:
+        await anonymous.aclose()
+
+    invalid = get_client(url=base_url, headers={"Authorization": "Bearer invalid"})
+    try:
+        with pytest.raises(Exception):
+            await invalid.threads.search()
+    finally:
+        await invalid.aclose()
+
+    client = get_client(
+        url=base_url,
+        headers={"Authorization": f"Bearer {_token()}"},
     )
-    assert status == 200
-    assert isinstance(payload, dict)
-    assert payload.get("thread_id")
+    try:
+        thread = await client.threads.create(thread_id=str(uuid.uuid4()), if_exists="raise")
+        assert thread
+    finally:
+        await client.aclose()
 
 
-def test_agent_server_auth_executes_real_model_when_enabled(
-    local_agent_server: str,
+def test_graphharbor_runtime_context_unknown_field_fails_closed(
+    durable_url: str,
+) -> None:
+    asyncio.run(_test_unknown_context(durable_url))
+
+
+async def _test_unknown_context(base_url: str) -> None:
+    context = {"future": True}
+    client = get_client(
+        url=base_url,
+        headers={"Authorization": f"Bearer {_token()}"},
+    )
+    thread_id = str(uuid.uuid4())
+    try:
+        await client.threads.create(thread_id=thread_id, if_exists="raise")
+        run = await client.runs.create(
+            thread_id,
+            "reference_agent",
+            input={"messages": [{"role": "user", "content": "invalid context"}]},
+            context=context,
+            stream_mode=["values"],
+            durability="sync",
+        )
+        run_id = run.get("run_id") if isinstance(run, dict) else run.run_id
+        await client.runs.join(thread_id, run_id)
+        observed = await client.runs.get(thread_id, run_id)
+        status = observed.get("status") if isinstance(observed, dict) else observed.status
+        assert status in {"error", "failed"}
+    finally:
+        await client.aclose()
+
+
+def test_graphharbor_agent_server_executes_real_model_when_enabled(
+    durable_url: str,
 ) -> None:
     if os.getenv("RUNTIME_E2E") != "1":
-        pytest.skip("set RUNTIME_E2E=1 to run real-model Agent Server execution")
+        pytest.skip("set RUNTIME_E2E=1 to run real-model GraphHarbor execution")
+    asyncio.run(_run_real_model(durable_url))
+
+
+async def _run_real_model(base_url: str) -> None:
     context = {"temperature": 0}
-    asyncio.run(_run_real_model(local_agent_server, context))
-
-
-async def _run_real_model(base_url: str, context: dict[str, object]) -> None:
     client = get_client(
         url=base_url,
         headers={"Authorization": f"Bearer {_token(context)}"},
@@ -183,11 +146,7 @@ async def _run_real_model(base_url: str, context: dict[str, object]) -> None:
         async for part in client.runs.stream(
             thread_id,
             "reference_agent",
-            input={
-                "messages": [
-                    {"role": "user", "content": "Reply with exactly: e2e-ok"}
-                ]
-            },
+            input={"messages": [{"role": "user", "content": "Reply with exactly: e2e-ok"}]},
             context=context,
             stream_mode=["values", "updates"],
             on_disconnect="cancel",

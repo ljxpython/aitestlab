@@ -17,9 +17,10 @@ from app.core.errors import (
     NotAuthenticatedError,
     ServiceUnavailableError,
 )
-from app.core.security import create_runtime_delegation_token
+from app.core.security import create_runtime_delegation_token, empty_runtime_context_hash
 from app.entrypoints.http.dependencies import get_actor_context
 from app.modules.runtime_gateway.application.service import RuntimeGatewayService
+from app.modules.runtime_policies.application import RuntimePolicyOverlayService
 
 router = APIRouter(prefix="/api/langgraph", tags=["runtime-gateway"])
 
@@ -104,7 +105,7 @@ def _require_project_id(request: Request) -> str:
     return normalized
 
 
-def get_runtime_gateway_service(
+async def get_runtime_gateway_service(
     request: Request,
     actor: ActorContext = Depends(get_actor_context),
 ) -> RuntimeGatewayService:
@@ -122,12 +123,24 @@ def get_runtime_gateway_service(
             message="Project role missing",
         )
     try:
+        policy = RuntimePolicyOverlayService(
+            session_factory=session_factory,
+            runtime_base_url=settings.langgraph_upstream_url,
+        ).build_delegation_policy(project_id=project_id)
         delegation = create_runtime_delegation_token(
             subject=subject,
             tenant_id=context.tenant.tenant_id or "__default",
             project_id=project_id,
             role=project_roles[0],
             permissions=["project.runtime.read", "project.runtime.write"],
+            policy_version=str(policy["version"]),
+            allowed_model_ids=policy["allowed_model_ids"],
+            allowed_tool_names=policy["allowed_tool_names"],
+            scope={
+                "tenant_id": context.tenant.tenant_id or "__default",
+                "project_id": project_id,
+            },
+            context_hash=empty_runtime_context_hash(),
             settings=settings,
         )
     except ValueError as exc:

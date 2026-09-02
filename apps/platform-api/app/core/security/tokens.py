@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import uuid
 from datetime import datetime, timedelta, timezone
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 import jwt
@@ -127,11 +130,46 @@ def create_runtime_delegation_token(
     project_id: str,
     role: str,
     permissions: list[str] | tuple[str, ...],
+    policy_version: str,
+    allowed_model_ids: Sequence[str],
+    allowed_tool_names: Sequence[str],
+    scope: Mapping[str, str | None],
     settings: Settings,
+    context_hash: str | None = None,
 ) -> str:
     secret = settings.runtime_delegation_secret
     if len(secret.encode("utf-8")) < 32:
         raise ValueError("runtime delegation secret must be at least 32 bytes")
+    if not isinstance(policy_version, str) or not policy_version.strip():
+        raise ValueError("runtime delegation policy_version must not be empty")
+    model_ids = _runtime_names(allowed_model_ids, "allowed_model_ids")
+    tool_names = _runtime_names(allowed_tool_names, "allowed_tool_names")
+    if not model_ids:
+        raise ValueError("runtime delegation requires allowed_model_ids")
+    if not isinstance(scope, Mapping):
+        raise ValueError("runtime delegation scope must be an object")
+    scope_keys = {"tenant_id", "project_id", "assistant_id", "thread_id"}
+    if set(scope) - scope_keys or not scope.get("tenant_id") or not scope.get("project_id"):
+        raise ValueError("runtime delegation scope must contain tenant_id and project_id")
+    normalized_scope = {
+        key: value.strip() if isinstance(value, str) else value
+        for key, value in scope.items()
+        if value is not None
+    }
+    if (
+        normalized_scope.get("tenant_id") != tenant_id
+        or normalized_scope.get("project_id") != project_id
+    ):
+        raise ValueError("runtime delegation scope does not match token claims")
+    if context_hash is None:
+        context_hash = empty_runtime_context_hash()
+    if (
+        not isinstance(context_hash, str)
+        or len(context_hash) != 71
+        or not context_hash.startswith("sha256:")
+        or any(char not in "0123456789abcdef" for char in context_hash[7:])
+    ):
+        raise ValueError("runtime delegation context_hash is invalid")
 
     required_values = {
         "subject": subject,
@@ -155,10 +193,15 @@ def create_runtime_delegation_token(
         "project_id": project_id,
         "role": role,
         "permissions": sorted({item.strip() for item in permissions if item.strip()}),
+        "policy_version": policy_version.strip(),
+        "allowed_model_ids": model_ids,
+        "allowed_tool_names": tool_names,
         "type": "runtime_delegation",
         "jti": uuid.uuid4().hex,
         "iss": settings.runtime_delegation_issuer,
         "aud": settings.runtime_delegation_audience,
+        "scope": normalized_scope,
+        "context_hash": context_hash,
         "iat": int(now.timestamp()),
         "nbf": int(now.timestamp()),
         "exp": int(
@@ -171,6 +214,34 @@ def create_runtime_delegation_token(
         algorithm="HS256",
         headers={"kid": settings.runtime_delegation_kid, "typ": "JWT"},
     )
+
+
+def _runtime_names(values: Sequence[str], field: str) -> list[str]:
+    if not isinstance(values, (list, tuple)):
+        raise ValueError(f"runtime delegation {field} must be an array")
+    normalized = []
+    for value in values:
+        if not isinstance(value, str) or not value.strip() or value != value.strip():
+            raise ValueError(f"runtime delegation {field} contains an invalid name")
+        if not value.isascii() or any(char.isspace() or not char.isprintable() for char in value):
+            raise ValueError(f"runtime delegation {field} contains an invalid name")
+        normalized.append(value)
+    if len(normalized) != len(set(normalized)):
+        raise ValueError(f"runtime delegation {field} contains duplicate names")
+    return sorted(normalized)
+
+
+def empty_runtime_context_hash() -> str:
+    payload = {
+        "schema": "runtime-context/v1",
+        "model_id": None,
+        "temperature": None,
+        "max_tokens": None,
+        "top_p": None,
+        "tools": None,
+    }
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return "sha256:" + hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 def decode_access_token(token: str, settings: Settings) -> dict[str, Any]:

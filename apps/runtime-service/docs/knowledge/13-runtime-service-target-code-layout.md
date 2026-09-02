@@ -456,7 +456,7 @@ Legacy 代码不能通过以下方式继续存活：
 6. 配置 `pyproject.toml` 只打包 `src/runtime_service`，在应用根创建唯一 `langgraph.json`。
 7. 实现最小 Runtime、Auth、Middleware、`reference_agent` 和稳定 Graph 入口。
 8. 同步修改 Platform API 的 Runtime Gateway 契约和 Delegation claims。
-9. 验证只有 `src/runtime_service` 可导入，并覆盖本地直调、`langgraph dev`、Platform
+9. 验证只有 `src/runtime_service` 可导入，并覆盖本地直调、GraphHarbor Durable、Platform
    Gateway 和基础可观测链路。
 10. 更新 Current Standards，把 11、12、13 号 Draft 的批准结论转成正式标准。
 
@@ -474,7 +474,7 @@ Legacy 代码不能通过以下方式继续存活：
 - Legacy `services/*`、顶层 `tools/skills/mcp` 不存在；
 - 新代码不出现 `platform_runtime`、`platform_local_debug` 或旧 Runtime API；
 - Runtime Service 与 Platform API 对未知字段、身份字段和 Tool 权限的判断一致；
-- `reference_agent` 可通过 fixture 直接测试，也可通过本地 JWT + `langgraph dev` 运行；
+- `reference_agent` 可通过 fixture 直接测试，也可通过本地 JWT + GraphHarbor Durable 运行；
 - schema/introspection 不创建 Sandbox 或建立外部连接；
 - 公共契约测试、Service 测试和最短跨服务契约测试通过；
 - 文档中不再把 Legacy 文件当作推荐入口。
@@ -503,11 +503,11 @@ Legacy 代码不能通过以下方式继续存活：
 > 本目录只核对本文的 R0 相关要求，不替代 Current Standard。跨文档汇总见
 > [31 号审计](./31-runtime-refactor-alignment-audit.md)。
 
-| ID | 要求 | 阶段 | 实现位置 | 测试位置 | 验证记录 | 状态 | 缺口/后续 |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `13-R0-PKG-001` | 新代码唯一位于 `src/runtime_service/` | R0 | `src/runtime_service/`；应用根不存在 `runtime_service/` | `tests/test_r0_baseline.py:test_new_package_is_loaded_from_src` | `uv run python -c "import runtime_service"` 输出 `src/runtime_service/__init__.py` | `implemented-local` | 当前测试通过 `conftest.py` 把 `src` 放到 `sys.path`，安装后 import 仍需保留 |
-| `13-R0-PKG-002` | 使用标准 src layout，可安装并锁定依赖 | R0 | `pyproject.toml:[tool.setuptools.packages.find]`；`uv.lock` | R0 归档 `verification.md` 的 lock/sync 记录 | `uv lock`、`uv sync` 历史记录通过；本轮 compileall 通过 | `implemented-local` | 需要把 lock/sync 命令纳入当前可复现验证 |
-| `13-R0-PKG-003` | 目标目录包含 Graph、Service、测试和部署边界 | R0 | `src/runtime_service/graphs/`、`services/`、`tests/`、`deploy/` | `tests/test_r0_baseline.py`；各 Service 测试 | 目录和入口加载检查通过 | `implemented-local` | `auth/platform.py` 属于 R1，不能作为 R0 失败；目标目录整体仍未完全对齐 |
-| `13-R0-PKG-004` | Legacy 包不进入新的导入链 | R0 | 应用根无 `runtime_service/`；旧代码仅在仓库归档位置 | `tests/conftest.py`；`test_new_package_is_loaded_from_src` | import 路径断言通过；静态 `rg` 未发现新代码导入 Legacy | `implemented-local` | `conftest.py` 是测试兜底，不应掩盖未来 package 安装错误 |
-| `13-R0-PKG-005` | Graph 配置只指向 `runtime_service.graphs.*` 稳定入口 | R0 | `langgraph.json:5-10`；`langgraph.demo.json:5-25` | `tests/test_r0_baseline.py:test_production_config_registers_only_reference_agent`；`tests/services/test_r4_capability_demos.py:test_demo_config_registers_all_r4_capability_graphs` | R0 `6 passed`；R4 `10 passed` | `implemented-local` | Demo 配置按设计包含 R4 Graph；Dockerfile 注册表由生产配置生成并有同步门禁 |
-| `13-R0-PKG-006` | 旧 Graph、旧 Auth、旧 HTTP 路由不作为新部署入口 | R0 | 两个根配置无 Legacy graph/Auth/http app | `tests/test_r0_baseline.py:37-49` | 未发现旧 graph 路径 | `implemented-local` | R1 Auth 配置尚未接入，按 R0 计划后置 |
+| ID | 要求 | 阶段 | 实现位置 | 测试位置 | 验证记录 | 状态 | 是否实现 | 缺口/后续 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `13-R0-PKG-001` | 新代码唯一位于 `src/runtime_service/` | R0 | `src/runtime_service/`；应用根不存在 `runtime_service/` | `tests/test_r0_baseline.py:test_new_package_is_loaded_from_src`；`test_installed_package_imports_without_test_path` | `uv run --frozen python` 直接 import 和临时 wheel 安装后的独立 venv import 均输出新包路径 | `implemented-local` | ✅ | 已有独立子进程证据，不依赖 `tests/conftest.py` |
+| `13-R0-PKG-002` | 使用标准 src layout，可安装并锁定依赖 | R0 | `pyproject.toml:[tool.setuptools.packages.find]`；`uv.lock` | R0 基线测试；`uv lock --check`；wheel build/install smoke | `uv lock --check` 通过；wheel build 成功；临时 venv 使用 `--no-deps` 安装 wheel 后 import 通过 | `implemented-local` | ✅ | 依赖完整性仍由 lock 和 CI 安装门禁负责 |
+| `13-R0-PKG-003` | 目标目录包含 Graph、Service、测试和部署边界 | R0 | `src/runtime_service/graphs/`、`services/`、`tests/`、`deploy/` | `tests/test_r0_baseline.py`；各 Service 测试 | 目录和入口加载检查通过 | `implemented-local` | ✅ | `auth/platform.py` 属于 R1，不能作为 R0 失败；目标目录整体仍未完全对齐 |
+| `13-R0-PKG-004` | Legacy 包不进入新的导入链 | R0 | 应用根无 `runtime_service/`；旧代码仅在仓库归档位置 | `test_installed_package_imports_without_test_path`；`test_new_package_is_loaded_from_src`；静态 `rg` | 独立安装 import 和静态检查均未命中 Legacy；测试兜底不再是唯一证据 | `implemented-local` | ✅ | `conftest.py` 仍保留用于测试环境兼容，但不能替代安装检查 |
+| `13-R0-PKG-005` | Graph 配置只指向 `runtime_service.graphs.*` 稳定入口 | R0 | `langgraph.json:5-10`；`langgraph.demo.json:5-25` | `tests/test_r0_baseline.py:test_production_config_registers_only_reference_agent`；`tests/services/test_r4_capability_demos.py:test_demo_config_registers_all_r4_capability_graphs` | R0 `14 passed`；R4 `10 passed` | `implemented-local` | ✅ | Demo 配置按设计包含 R4 Graph；Dockerfile 注册表由生产配置生成并有同步门禁 |
+| `13-R0-PKG-006` | 旧 Graph、旧 Auth、旧 HTTP 路由不作为新部署入口 | R0 | 两个根配置无 Legacy graph/Auth/http app | `tests/test_r0_baseline.py:37-49` | 未发现旧 graph 路径 | `implemented-local` | ✅ | R1 Auth 已由 `auth/platform.py` 接入；R0 只验证 Legacy Auth/HTTP 不成为新部署入口 |
