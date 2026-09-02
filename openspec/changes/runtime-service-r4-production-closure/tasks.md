@@ -15,7 +15,7 @@
 - [x] 3.1 为 `deep_agent_demo` 显式配置只读 `FilesystemMiddleware`，仅保留 `ls`、`read_file`、`glob`、`grep`
 - [x] 3.2 为 `backend_demo` 显式配置 `StateBackend` 对应的文件 Tool 集合，禁止无 Sandbox 时暴露 `execute`
 - [x] 3.3 对 Bundled Skills 增加代码级只读 Permission，验证写入和编辑 `/skills/**` 在执行前失败
-- [ ] 3.4 为 Subagent 显式声明 `tools=[]`、自身 FilesystemMiddleware、Skill 和 Permission，验证不能继承父 Agent 未授予能力
+- [x] 3.4 为 Subagent 显式声明 `tools=[]`、自身 FilesystemMiddleware、Skill 和 Permission，验证不能继承父 Agent 未授予能力
 - [x] 3.5 使用真实 `create_deep_agent` graph 测试模型可见 Tool surface、伪造 `execute`/`task` 调用和缺失执行路径
 
 ## 4. MCP 能力边界

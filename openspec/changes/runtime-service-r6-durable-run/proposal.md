@@ -9,14 +9,16 @@ R0～R5 已证明新 Runtime 包、Agent Service 入口、可靠性 Middleware�
 
 ## What Changes
 
-- **BREAKING** 为新 Runtime Service 固定真实 Agent Server 的 Durable Run 验证方式，使用
-  `durability="sync"` 和锁定版本的 PostgreSQL/Redis/Worker 组合。
+- **BREAKING** 为新 Runtime Service 选择 GraphHarbor 作为真实 Agent Server 候选并固定
+  Durable Run 验证方式，使用 `durability="sync"` 和锁定版本的 PostgreSQL/Redis/Worker 组合。
 - 验证 Thread、Run、Graph、Backend、Checkpoint 的生命周期和作用域，确保多次 Run、Interrupt/Resume
   与 Worker 重启不会串线或丢失可恢复状态。
 - 固化可恢复 Stream 的 SSE `since` 游标、补发、去重和断线不等于取消语义。
 - 验证 cancel、timeout、Tool failure、graceful shutdown 和 hard shutdown 后的唯一终态收敛。
 - 使用本地 Delegation Token 完成最短 smoke test，不修改或等待 Platform API。
 - 增加真实部署、故障注入和恢复 E2E 的测试与发布门槛；快速 Unit/Composition 测试继续保留。
+- 增加不启动内置 PostgreSQL/Redis 的 `host-infra` 部署模式，允许 API/Worker 容器连接已登记的外部基础设施。
+- 在正式验收前闭合 RuntimeContext claim 契约、API 同端口重启和通用观测关联字段的硬门禁。
 - 不新增 Runtime Custom Route、第二套 Run Coordinator、公共 Builder/Factory、事件总线或旧代码兼容层。
 
 ## Capabilities
@@ -33,9 +35,12 @@ R0～R5 已证明新 Runtime 包、Agent Service 入口、可靠性 Middleware�
 ## Impact
 
 - 影响范围：`apps/runtime-service` 的部署配置、Agent Server 启动参数、Durable/Integration/E2E 测试和
-  本地 smoke 脚本；必要时补充测试专用容器编排文件。
-- 依赖：锁定 LangGraph Agent Server/CLI 与 SDK 版本，使用隔离的 PostgreSQL、Redis 和 Worker。
+  本地 smoke 脚本；补充不声明 PostgreSQL/Redis 服务的 host-infra 容器编排文件。
+- 依赖：锁定 GraphHarbor、LangGraph、CLI 与 SDK 版本，使用隔离的 PostgreSQL、Redis 和 Worker。
 - 运行契约：沿用 14、22、23、24、25 号文档的 `thread_id`、`run_id`、`checkpoint_id`、
   `durability`、`stream_resumable`、`on_disconnect` 和本地 Delegation Token 约定。
+- 跨进程契约：GraphHarbor 只传递签名或持久化保护的通用 Context、resource binding 和 trace
+  correlation，不解析 Runtime 专属 Model、Tool、Workspace、Sandbox 或 MCP 结构。
 - 不修改旧 `apps/runtime-service/runtime_service/`，不迁移旧数据，不要求 Platform API 改动。
-- 通过 R6 门槛后，才允许创建 P1 Platform API / Runtime Service 整合变更。
+- 通过 R6 门槛后，才允许创建 P1 Platform API / Runtime Service 整合变更；Sandbox Provider
+  没有真实外部证据时保持 blocked，不用伪实现关闭门禁。

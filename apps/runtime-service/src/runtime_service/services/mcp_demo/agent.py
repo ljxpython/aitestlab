@@ -121,6 +121,8 @@ async def get_agent(config: RunnableConfig) -> Pregel:
         await load_mcp_tools(
             allowed_names=resolved.required_tool_names + resolved.optional_tool_names,
             conflict=conflict,
+            config=None if local else config,
+            principal=None if local else facts.principal,
         )
         if resolved.optional_tool_names
         else []
@@ -161,6 +163,8 @@ async def get_agent(config: RunnableConfig) -> Pregel:
             "prompt_version": resolved.prompt_version,
             "prompt_hash": resolved.prompt_hash,
             "policy_version": resolved.policy_version,
+            "request_id": facts.request_id,
+            "platform_trace_id": facts.platform_trace_id,
         },
     )
 

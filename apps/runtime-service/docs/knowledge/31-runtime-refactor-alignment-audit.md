@@ -1,6 +1,6 @@
 # Runtime 重构设计与 R0-R5 实现对齐审计
 
-> 审计日期：2026-08-31
+> 审计日期：2026-09-02
 >
 > 审计范围：`apps/runtime-service/docs/knowledge/10-30`、`apps/runtime-service/src/`、
 > `apps/runtime-service/tests/`、部署配置和 R0-R6 OpenSpec 验证记录。
@@ -20,8 +20,8 @@
 | R2 | 已完成并归档 | **local Agent Server chain 基本完成，生命周期仍有缺口** | `reference_agent` 组合根和真实模型链成立；`workflow_demo` 的条件分支、Interrupt/Resume、专属测试和 demo Server chain 已补齐。当前仍需完成 active spec sync，且 `reference_agent` 仍未满足静态/动态生命周期规则。 |
 | R3 | 已完成并归档；R3 closure active | **local/组合完成，生产 fallback 未完成** | 限次、Runtime 配置复核、单次模型超时、Tool Error/Retry 已进入 `reference_agent` 真实 graph 并有组合测试；Model fallback/retry 目前仅 test-only adapter，Run deadline、PrepareRun、Finalizer 等按设计后置。 |
 | R4 | 已完成并归档 | **local-complete，生产链阻塞** | R4 定向闭合测试 `44 passed`；Tool Policy、内置 Tool 收缩、MCP required/optional、Skill 只读和同 Thread 本地 Workspace 已有证据。`InMemorySaver`、进程内 `StateBackend`、本地 fake MCP 不能证明 Durable、跨 Worker 重连、清理或真实 Sandbox。 |
-| R5 | closure 已 apply | **Runtime 闭环完成，生产 exporter 部分完成** | Langfuse lifespan、metadata allowlist、可信 Service 接线、真实 Model/Tool/Subagent callback、诊断和真实 smoke 已有证据；SDK queue drop 的 Runtime Counter、生产容器 SIGTERM/drain 和跨服务传播仍未闭合。 |
-| R6 | 实施中 | **阻塞** | 默认 Durable 测试全部跳过；本地 `langgraph dev` 不是 Durable 证据，正式 Agent Server 被 LangGraph entitlement 的 403 阻塞。 |
+| R5 | closure 已 apply | **Runtime 闭环完成，生产 exporter 部分完成** | Langfuse lifespan、metadata allowlist、可信 Service 接线、真实 Model/Tool/Subagent callback、诊断、稳定 `event_dropped` Counter 和真实 smoke 已有证据；SDK queue saturation、生产容器 SIGTERM/drain 和跨服务传播仍未闭合。 |
+| R6 | 实施中 | **Durable Core 与 closure gates 6.1-6.5 已有 post20 证据，生产切流阻塞** | GraphHarbor PyPI `post20` 已通过真实 PostgreSQL/Redis/API/Worker、真实模型、双中断、SIGTERM/SIGKILL checkpoint 接管、唯一终态、Workspace Worker replacement/Thread/tenant 隔离、同端口 API restart 和修复后 bridge SSE；Backend/Sandbox/MCP 生产资源矩阵、观测服务端故障、真实发布回滚和 Platform 切流仍未完成。 |
 
 因此，P1 Platform 整合不能开始。当前最重要的不是再加抽象，而是把认证接线、
 Workflow 恢复语义和真实 Durable 证据补齐。
@@ -91,15 +91,16 @@ R2 的范围已由 owner 批准为：Workflow 条件分支和本地 Interrupt/Re
 
 | 检查 | 结果 |
 | --- | --- |
-| `uv run pytest tests -m "not integration and not durable and not e2e" -q` | `90 passed, 13 deselected` |
+| `uv run --frozen pytest tests -m "not integration and not durable and not e2e" -q` | `182 passed, 20 deselected in 47.41s`；GraphHarbor `0.13.0.post17` 正式包安装后复验 |
 | `uv run pytest tests/services/test_r4_capability_demos.py -q` | `10 passed`；覆盖三类 R4 graph 构图、fake MCP、名称冲突和 Backend 初始化失败传播 |
 | `RUNTIME_E2E=1 uv run pytest tests/e2e/test_reference_agent_real_model.py -m e2e -q` | `1 passed`，真实 DeepSeek E2E |
 | `RUNTIME_E2E=1 uv run pytest tests/integration/test_agent_server_auth.py -q` | `2 passed`，local Agent Server Auth -> Context -> Resolver -> Model |
 | `uv run pytest tests/e2e -m e2e -q` | `1 skipped`，未设置真实 E2E 条件 |
-| `uv run pytest tests/durable -m durable -q` | `9 skipped`，未设置 `RUNTIME_DURABLE_URL` |
+| 发布版 GraphHarbor + `pytest tests/durable -m durable -k "not worker_restart and not sigterm" -q -rs` | `13 passed, 2 deselected`；覆盖 sync/async/exit、Thread/Checkpoint、HITL、SSE、cancel、Tool failure、timeout、Backend checkpoint 隔离和 Thread Workspace 恢复/隔离；不再把 deselected 当作通过 |
+| 发布版 GraphHarbor + `pytest tests/durable/test_worker_lifecycle.py -m durable -q -rs` | `2 passed`；真实 Compose `worker` restart 与 SIGTERM replacement；独立 fault harness 的 SIGTERM/SIGKILL 均恢复 checkpoint 并保持唯一 terminal event |
 | `uv lock --check` | 通过 |
 | `uv run python -m compileall -q src tests scripts` | 通过 |
-| R6 真实 Docker Agent Server | 阻塞：LangSmith auth 请求返回 HTTP 403，要求 LangGraph Cloud-accessible key 或 license key |
+| R6 GraphHarbor 隔离 Agent Server | PostgreSQL 16.9、Redis 7.4.2、独立 API/Worker readiness 通过；已发布 `post20` 的 Durable smoke、Worker takeover、Workspace、MCP、同端口 API restart 和修复后 bridge network SSE 均通过；保留外部资源、观测服务端和生产切流缺口 |
 
 ## 3. 逐文档对齐矩阵
 
@@ -126,25 +127,25 @@ R2 的范围已由 owner 批准为：Workflow 条件分支和本地 Interrupt/Re
 | --- | --- | --- | --- | --- |
 | `18-open-swe-to-runtime-event-and-run-explorer-design.md` | 借鉴命令/观察分离、服务端重建可信配置、稳定事件游标；平台事件不能直接等同上游 SSE 或 Trace。 | 当前没有 Runtime Event Store、平台 Run Explorer 或平台 SSE 适配实现。R6 测试调用 Agent Server SDK，但没有自己的 `event_id/sequence` 事件事实源。 | **明确后置，当前未实现** | ❌ |
 | `19-runtime-tool-capability-mcp-and-side-effect-design.md` | Tool 显式装配；模型可见与实际执行同时受 Policy 约束；MCP 构图前加载；副作用需要幂等、审批和审计。 | 本地 fake MCP 的显式加载、allowlist 和名称冲突有测试；19 号文档 R4 Harness 已细分。R4 Demo 尚未接入统一 Runtime Policy，缺少写 Tool、审批、幂等、超时、未知结果和 Deep Agents 内置 Tool 复核。 | **部分实现** | ❌ |
-| `20-runtime-backend-workspace-skills-and-subagents-design.md` | Thread-scoped Workspace/Sandbox；Skills 只读；Subagent 显式缩权；重启后按持久化 ID 重建资源；不同 Thread/tenant 隔离。 | Deep Agent 的 StateBackend、Bundled Skill、`tools=[]` 声明和 Backend graph 骨架存在；20 号文档 R4 Harness 已细分。没有 Skill 只读、真实文件跨 Turn、Thread Workspace、跨 Worker 重连、内置 Tool 收缩、cleanup 或 namespace 证据。 | **部分实现，只有演示级隔离** | ❌ |
+| `20-runtime-backend-workspace-skills-and-subagents-design.md` | Thread-scoped Workspace/Sandbox；Skills 只读；Subagent 显式缩权；重启后按持久化 ID 重建资源；不同 Thread/tenant 隔离。 | `workspace_demo` 使用 GraphHarbor 通用 Workspace；`post20` 真实 acceptance 覆盖同 Thread 跨 Worker/API restart 文件恢复、双 Thread 隔离、跨 tenant `404` 和不可用根 fail-closed。Skills 只读、Subagent 缩权、Sandbox/MCP cleanup 仍无生产证据。 | **Workspace chain 部分实现，其他资源能力未闭合** | ❌ |
 | `22-platform-runtime-contract-design.md` | Platform 生成快照和 Delegation Token；Runtime 验签；命令、事件、幂等、取消和权限边界一致。 | Platform/Runtime 新契约没有在当前 Runtime 链路实现；R6 明确不修改 Platform，P1 才做。 | **明确后置，当前未实现** | ❌ |
-| `23-graph-thread-backend-checkpoint-lifecycle-design.md` | Agent Server 持有 Thread/Run/Checkpoint；真实 PostgreSQL/Redis 验证恢复；Backend 不能静默换线程或宿主机目录。 | 本地 `langgraph dev` 能证明部分 Thread/Run/Checkpoint 协议；真实 PostgreSQL/Redis Agent Server 被 entitlement 阻塞；Backend Demo 不是生产 Backend。 | **部分实现，Durable 边界阻塞** | ❌ |
-| `24-package-langgraph-startup-shutdown-design.md` | `langgraph.json` 是 Graph 真源；启动失败闭合；Agent Server 管 Queue/Run/Checkpoint/shutdown；动态资源明确释放。 | 本地启动、生产配置和 Docker Graph 注册同步门禁存在；没有正式 Agent Server drain/lease/recovery 证据；启动失败闭环和 MCP client 生命周期也没有明确验证。 | **部分实现** | ❌ |
+| `23-graph-thread-backend-checkpoint-lifecycle-design.md` | Agent Server 持有 Thread/Run/Checkpoint；真实 PostgreSQL/Redis 验证恢复；Backend 不能静默换线程或宿主机目录。 | GraphHarbor 已通过真实 sync checkpoint、双中断、SIGTERM/SIGKILL checkpoint 接管；post20 Workspace 已证明 Worker replacement、API restart、Thread/tenant 隔离和不可用根 fail-closed。生产 Sandbox/MCP/Backend cleanup 仍未完成。 | **Durable Core 和 Workspace chain 部分实现，资源矩阵缺失** | ❌ |
+| `24-package-langgraph-startup-shutdown-design.md` | `langgraph.json` 是 Graph 真源；启动失败闭合；Agent Server 管 Queue/Run/Checkpoint/shutdown；动态资源明确释放。 | 最终 wheel 已加载 Runtime 配置，API readiness、Worker shutdown requeue、lease recovery 和唯一终态通过；MCP/Backend 全生命周期与生产部署切换未完成。 | **通用启停链部分实现** | ❌ |
 
 ### 3.4 测试、模型路由、整合和研究
 
 | 文档 | 设计要求 | 当前证据 | 判定 | 是否实现 |
 | --- | --- | --- | --- | --- |
-| `25-runtime-testing-and-cross-service-contract-design.md` | Unit/Composition/Integration/Durable/E2E 分层；真实模型 E2E 不静默降级；Durable 不能用内存替代。 | 测试目录和 markers 已建立，快速测试和真实模型门槛基本遵守；没有当前可执行的跨服务契约 fixtures；Durable 默认全 skip，真实部署链未通过。 | **部分实现** | ❌ |
+| `25-runtime-testing-and-cross-service-contract-design.md` | Unit/Composition/Integration/Durable/E2E 分层；真实模型 E2E 不静默降级；Durable 不能用内存替代。 | 快速套件 `182 passed`；真实 GraphHarbor durable 套件 `14 passed, 1 skipped`；另有 Backend checkpoint 隔离真实测试 `1 passed`。skip 明确保留为缺口，没有用内存结果替代。跨服务 Platform fixture 仍后置。 | **测试分层成立，R6 覆盖未完整** | ❌ |
 | `26-runtime-custom-routes-and-model-config-design.md` | 不建设 Custom Route；Platform 管模型目录和快照，Runtime 只做本地能力校验与 Model 构造。 | 没有 Custom Route，符合“不建设”；Runtime 本地 Modeling 已实现。Platform 管理、快照绑定和正式 Gateway 尚未开始，属于 P1 前置缺口。 | **按设计不建设 Custom Route；整条配置链未完成** | ❌ |
 | `27-platform-runtime-integration-phased-design.md` | 先完成独立 Runtime，再通过 Gateway/Token/快照进入 Platform 阶段。 | Runtime 尚未通过 R6；没有进入 Platform Gateway 实施。文档的分阶段方向正确，但前置条件未满足。 | **未完成，按计划后置** | ❌ |
-| `28-runtime-refactor-development-plan.md` | 每阶段有最小门槛；只有真实证据通过才能进入下一阶段；R0-R5 已归档、R6 实施中。 | R1 矩阵已同步为 local Agent Server chain complete；R0 真实 DeepSeek E2E 已通过；R6 verification 仍记录真实 Docker entitlement 阻塞和 Durable 测试环境门槛。 | **R1 已同步，R6 仍阻塞** | ❌ |
+| `28-runtime-refactor-development-plan.md` | 每阶段有最小门槛；只有真实证据通过才能进入下一阶段；R0-R5 已归档、R6 实施中。 | R6 已记录 GraphHarbor `post20` Durable Core、Worker、Workspace、MCP、API restart 和修复后 bridge SSE 真实证据；生产切流 hard gate 仍保留。 | **R6 formal acceptance 通过，生产切流未完成** | ❌ |
 | `29-runtime-service-demo-examples-design.md` | 内容并入 28 号文档，不再产生第二份规范。 | 已明确只保留跳转说明，没有产生额外实现要求。 | **已正确收口** | ✅ |
-| `30-agent-server-replacement-research.md` | 替换 Agent Server 只能按完整 R6 硬门槛验证；候选替换不能用 SDK 连接或 mock 冒充 Durable。 | 研究文档对 per-Run factory、Durable、Replay、HITL、Policy 和回滚门槛定义清楚；Aegra 仍是 Spike，不能替代正式 R6。 | **研究结论成立，生产能力未实现** | ❌ |
+| `30-agent-server-replacement-research.md` | 替换 Agent Server 只能按完整 R6 硬门槛验证；候选替换不能用 SDK 连接或 mock 冒充 Durable。 | GraphHarbor 已选定并新增第 12 节原子 Harness；`post20` 通用 Durable Core、Runtime Thread Workspace chain 和修复后 bridge SSE 有真实进程证据，但 Runtime 其他资源、观测、发布和灰度仍未全部通过。 | **R6 formal acceptance 通过，生产替代未完成** | ❌ |
 
 ## 4. 当前真正已经实现的能力
 
-以下能力可以认定为当前代码真实拥有，但要限定在“本地/单进程/单元或组合测试”范围：
+以下能力可以认定为当前代码真实拥有；每项仍以其证据等级为边界：
 
 1. `src/runtime_service` 新包、稳定 `graphs/<graph_id>.py` 导出和 `get_agent(config) -> Pregel` 入口。
 2. 五类 frozen dataclass Runtime 类型。
@@ -156,9 +157,10 @@ R2 的范围已由 owner 批准为：Workflow 条件分支和本地 Interrupt/Re
 7. `reference_agent` 的显式只读 Tool、模型可见过滤和 Tool 执行前名称检查。
 8. 模型/Tool 调用上限和单次异步模型超时。
 9. `workflow_demo` 的最小 Typed `StateGraph`。
-10. Deep Agent、Bundled Skill、显式声明但尚无真实委派证据的 Subagent、fake MCP 和进程内 StateBackend Demo。
+10. Deep Agent、Bundled Skill、显式缩权且已有真实委派证据的 Subagent、fake MCP 和进程内 StateBackend Demo。
 11. Langfuse lazy 初始化、metadata allowlist、脱敏、诊断 callback、指标计数和 bounded flush。
-12. R6 测试脚手架、Compose、版本锁定和本地 smoke 命令。
+12. R6 真实 PostgreSQL/Redis/API/Worker 的 Durable Core、Worker 接管、SSE 恢复、唯一终态和
+    Thread Workspace 恢复/隔离链路。
 
 这些能力足以支撑本地学习和继续开发，但不足以声明“生产 Runtime 框架已完成”。
 
@@ -166,15 +168,17 @@ R2 的范围已由 owner 批准为：Workflow 条件分支和本地 Interrupt/Re
 
 ### P0：必须先修，否则不能进入 P1
 
-1. **Platform 签发链**：当前 shortest chain 使用 local signer fixture；Platform Gateway、快照签发和正式
-   Gateway payload 不属于本 change，不能用 Runtime 单测代替。
-2. **Workflow 恢复样例**：`workflow_demo` 需要最小真实 Interrupt/Resume 和至少一个条件
-   分支，否则 11 号文档对 Demo 的描述是假的。
-4. **真实 Durable 证据**：需要可用的正式 Agent Server entitlement/license，或经过批准的
-   等价替换方案，跑通 PostgreSQL、Redis、Worker 重启、SIGTERM、Checkpoint、Replay、
-   cancel、timeout、Tool failure 和唯一终态。
-5. **测试语义修正**：Durable 缺环境时必须在报告中明确为 blocked/not executed；不能让默认绿色
-   CI 被误读为 R6 通过。
+1. **生产依赖切换**：GraphHarbor 已锁定为已发布的 `0.13.0.post20`，并从 PyPI 安装到 Runtime
+   `.venv`；临时 source override 和本地 wheel 依赖已移除，Docker 使用同一正式版本。post20
+   的端口修复已进入正式 artifact，但生产切流仍未完成，`langgraph.json` 仍保持生产真源不变。
+2. **剩余资源恢复**：Thread Workspace 和本地 Streamable HTTP MCP provider 已有真实 API/Worker
+   验收；远程 MCP、Sandbox 的跨 Worker 重连、失败闭合、cleanup 和配额仍没有生产 provider 证据，
+   Workspace/MCP 本地 fixture 不能替代这些资源。
+3. **生产故障矩阵**：隔离 PostgreSQL backup/restore 和性能基线已有本地证据；历史 bridge network SSE
+   有证据，但本次 `post20` 正式 acceptance 因 Worker-ready 编排未形成有效结果；Langfuse/OTLP exporter
+   queue saturation/服务端故障、生产发布回滚仍未完成。
+4. **测试语义保持**：缺环境或 provider 的 Durable 检查必须继续标记 blocked/not executed；
+   不能因为 Workspace 链通过就把剩余 skip 记为 pass。
 
 ### P1：进入 Platform 整合前必须冻结
 
@@ -194,13 +198,13 @@ R2 的范围已由 owner 批准为：Workflow 条件分支和本地 Interrupt/Re
 ## 6. 最小收敛顺序
 
 1. **先修状态和真源**：把 10、28、`docs/README.md`、部署 README 的阶段状态统一为
-   `partial/blocked`；明确 `docs/standards/` 尚未生成；移除或生成 Dockerfile 中重复的
+`partial/blocked`；明确 `docs/standards/` 尚未生成；移除或生成 Dockerfile 中重复的
    Graph 注册来源，不能两边各写一份。
 2. **补 Workflow 最小能力**：只改 `workflow_demo`，增加一个真实条件分支和一个可恢复
    Interrupt/Resume 节点，配一条失败测试。不要借此创建通用 workflow framework。
-4. **取得 R6 真实环境**：完成 entitlement/license 或正式批准的替换 Server 选择，再执行现有
-   Durable 测试；测试本身先修正“中间 cursor、两次 interrupt、恢复 checkpoint、唯一终态”
-   的断言，避免只等 terminal status。
+4. **补齐 R6 剩余 hard gate**：GraphHarbor 已获批准，Durable Core、timeout/Tool failure、
+   cursor-expired、Thread Workspace、bridge network SSE、backup/restore 和性能基线已有真实/隔离验收；
+   下一步只补 Backend/MCP/Sandbox、观测服务端故障和发布切换，不重复实现通用 lease/checkpoint 状态机。
 5. **R6 通过后再做 P1**：Platform Gateway、配置快照、Run Event 投影、Run Explorer 和跨服务
    契约另起 governed change，不把 Platform 代码提前塞进 Runtime。
 
@@ -224,11 +228,11 @@ R2 capability-local-complete-local-agent-server / reference-lifecycle-incomplete
 R3 reliability-core-local-complete / provider-fallback-production-incomplete
 R4 demo-local-complete / production-resources-deferred
 R5 adapter-local-complete / full-propagation-incomplete
-R6 blocked
+R6 durable-core-partial / production-cutover-blocked
 P1 deferred
 ```
 
-在 R6 真实证据出现前，任何 README、路线图或 OpenSpec 归档记录都不应使用无限定的
+在 R6 全部 hard gate 通过前，任何 README、路线图或 OpenSpec 归档记录都不应使用无限定的
 “R0-R5 全部完成，因此 Runtime 可作为 Platform 执行面”的表述。
 
 ## 8. R4 Apply 对齐目录（2026-09-01）
@@ -242,10 +246,10 @@ P1 deferred
 | MCP 显式加载、名称冲突、required/optional 失败 | ✅ | `services/mcp_demo/loader.py` | `tests/services/test_r4_capability_demos.py` | 本地 stdio fake；无远程凭据、重连、取消证据 |
 | Bundled Skill 只读 | ✅ | `services/deep_agent_demo/agent.py` | `test_deep_agent_rejects_skill_write_before_backend_execution` | `/skills/**` 写入在 handler 前失败；未实现 User/Organization Skill |
 | Thread Workspace 本地隔离与 graph rebuild | ✅ | `services/backend_demo/agent.py` | `test_backend_workspace_survives_graph_rebuild_for_same_thread`；`test_backend_workspace_isolated_between_threads` | `InMemorySaver` 仅证明本地协议，不证明 Worker/服务重启恢复 |
-| Subagent 实际缩权委派 | ❌ | `deep_agent_demo/agent.py` 有 `tools=[]` 配置 | 无真实 delegation/事件隔离测试 | OpenSpec `3.4` 未完成 |
+| Subagent 实际缩权委派 | ✅ | `deep_agent_demo/agent.py` 显式 `tools=[]`、`permissions` 和 `summarizer` | `tests/services/test_r4_capability_demos.py::test_deep_agent_performs_explicit_subagent_delegation`：`1 passed` | 官方 `task` 调用返回子 Agent 结果；父 Agent 仍仅暴露显式工具集合 |
 | Backend scope mismatch、资源清理、跨 Worker Durable | ❌ | 尚无生产资源 binding/cleanup 实现 | OpenSpec `5.4/5.5/5.6` 未执行 | Agent Server entitlement、PostgreSQL/Redis、Sandbox 前置条件缺失，状态为 `blocked/not-executed` |
 
-结论：R4 为 `local-complete / production-chain-blocked`；R6 在真实 Durable 证据出现前不得结案，
+结论：R4 为 `local-complete / production-chain-blocked`；R6 已有 Durable Core 真实证据但 hard gate 未全过，
 P1 Platform 整合仍以后置为准。
 
 ## 9. R5 Harness 对齐目录（2026-09-01）
@@ -260,11 +264,11 @@ P1 Platform 整合仍以后置为准。
 | metadata allowlist、身份信任和 tag 边界 | ✅ | `_approved_metadata()`、`_trusted_metadata()`；四个解析 Service trusted 摘要 | `tests/observability/test_langfuse.py`；Graph tests | 未验证身份不会生成 `langfuse_user_id` |
 | 脱敏与正文丢弃 | ✅ | `_redact()`、`_mask()` | 观测专项和真实 smoke | 仅局部 DLP，不等于完整业务 secret 检测 |
 | Run/Tool/Token/取消/超时诊断 | ✅ | `_RuntimeDiagnosticsCallback` 与 Counter | 观测专项、真实 Agent/Deep Agent graph tests | Runtime 字段契约成立，远端 exporter 不由 Runtime 自建 |
-| fail-soft、bounded flush、队列丢弃 | ❌ | `_FailSoftCallback`、`close_langfuse()` | callback failure、flush error/timeout 和原始异常语义已通过 | SDK queue 有界但 `event_dropped` 未接入 Runtime Counter；生产 SIGTERM 未证明 |
+| fail-soft、bounded flush、队列丢弃 | ❌ | `_FailSoftCallback`、`close_langfuse()`、`_record_export_error()` | 401/429/5xx/timeout 分类、callback/flush failure、原始异常语义和稳定 `event_dropped` Counter 已通过 | SDK queue saturation、真实服务端故障和生产 SIGTERM 未证明 |
 | Model/Tool/Subagent Trace 层级和真实 Langfuse smoke | ✅ | 统一 callback；`tests/e2e/test_langfuse_real.py` | `test_graph_tracing.py`；真实 Langfuse smoke `1 passed`；真实 DeepSeek `1 passed` | 已证明本地传播和真实 client/flush，未查询服务端最终 observation 树 |
 | Cross-service trace propagation | ❌ | 仅消费调用方传入 metadata | Platform/Gateway 传播按设计后置 |
 
 R5 当前状态：`runtime complete-local / production-exporter partial`。本地生命周期、callback 传播和
 Langfuse smoke 已成立；目标镜像只证明 custom app import 和 PostgreSQL/Redis 连接，entitlement `403`
-阻止了 application startup 与 SIGTERM 验证。queue drop、目标生产容器生命周期和跨服务传播仍保持
+阻止了 application startup 与 SIGTERM 验证。queue saturation、目标生产容器生命周期和跨服务传播仍保持
 未完成，不能因为 R6 已在实施就跳过这些缺口。

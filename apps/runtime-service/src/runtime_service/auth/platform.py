@@ -49,7 +49,13 @@ async def authenticate(authorization: str | None = None) -> Auth.types.MinimalUs
     return {
         "identity": principal.user_id,
         "is_authenticated": True,
+        "tenant_id": principal.tenant_id,
+        "project_id": principal.project_id,
+        "role": principal.role,
         "permissions": list(principal.permissions),
+        "policy_version": policy.version,
+        "allowed_model_ids": list(policy.allowed_model_ids),
+        "allowed_tool_names": list(policy.allowed_tool_names),
         "runtime_principal": {
             "user_id": principal.user_id,
             "tenant_id": principal.tenant_id,
@@ -69,6 +75,8 @@ async def authenticate(authorization: str | None = None) -> Auth.types.MinimalUs
             "thread_id": verified.scope.thread_id,
         },
         "runtime_context_hash": verified.context_hash,
+        "request_id": verified.request_id,
+        "platform_trace_id": verified.platform_trace_id,
     }
 
 

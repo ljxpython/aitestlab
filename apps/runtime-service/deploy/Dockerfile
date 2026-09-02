@@ -1,38 +1,37 @@
-FROM langchain/langgraph-api:3.13@sha256:61ad2a5beb30020eecf05a5a8108bcaba7ed44cbebb570e565611e760f1e4a40
+FROM python:3.13-slim@sha256:bf503bb2243c5aad0aa951544dd60d165f992646441d35dea90893703fc26251
 
-# Generated from ../langgraph.json with `langgraph dockerfile`; regenerate this
-# file after production config changes. The pinned base image is intentional.
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    UV_COMPILE_BYTECODE=1
 
-# -- Adding local package ./ --
-ADD ./ /deps/runtime-service
-# -- End of local package ./ --
+WORKDIR /app
 
-# -- Installing all local dependencies --
-RUN for dep in /deps/*; do \
-        echo "Installing $dep"; \
-        if [ -d "$dep" ]; then \
-            (cd "$dep" && PYTHONDONTWRITEBYTECODE=1 uv pip install --system --no-cache-dir -c /api/constraints.txt -e .); \
-        fi; \
-    done
-# -- End of local dependencies install --
+COPY . /app/
 
-ENV LANGGRAPH_AUTH='{"path": "/deps/runtime-service/src/runtime_service/auth/platform.py:auth", "openapi": {"securitySchemes": {"RuntimeBearer": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}}, "security": [{"RuntimeBearer": []}]}}'
-ENV LANGGRAPH_HTTP='{"app": "/deps/runtime-service/src/runtime_service/webapp.py:app"}'
-ENV LANGSERVE_GRAPHS='{"reference_agent": {"path": "/deps/runtime-service/src/runtime_service/graphs/reference_agent.py:get_agent", "description": "R2 Runtime-aware create_agent reference service with explicit model resolution."}}'
+RUN pip install --no-cache-dir "uv==0.9.9" \
+    && uv pip install --system --no-cache-dir /app --no-deps \
+    && uv pip install --system --no-cache-dir \
+       "graphharbor==0.13.0.post20" \
+       "graphharbor-runtime==0.13.0.post20" \
+       "langchain[openai]>=1.2.10" \
+       "langchain-community>=0.4.1" \
+       "langchain-mcp-adapters>=0.2.1" \
+       "langgraph==1.2.11" \
+       "langgraph-sdk==0.4.3" \
+       "deepagents>=0.4.4" \
+       "langchain-deepseek>=1.0.1" \
+       "fastapi>=0.133.1" \
+       "uvicorn[standard]>=0.41.0" \
+       "requests>=2.32.5" \
+       "python-dotenv>=1.2.1" \
+       "langchain-openai>=1.1.10" \
+       "langfuse>=4.14,<5" \
+       "langchain-pymupdf4llm>=0.5.0" \
+       "pillow>=10.0.0" \
+       "pymupdf4llm>=0.1.0,<0.2.0" \
+       "pyjwt[crypto]>=2.10.1" \
+       "opentelemetry-exporter-otlp-proto-http>=1.42.1,<2" \
+    && rm -rf /root/.cache \
+    && python -c "import importlib.metadata as m; assert m.version('graphharbor') == '0.13.0.post20'; assert m.version('graphharbor-runtime') == '0.13.0.post20'"
 
-# Keep env-file loading in compose/runtime config. This image only sets the
-# graph/http registry and installs the app package.
-
-# -- Ensure user deps didn't inadvertently overwrite langgraph-api --
-RUN mkdir -p /api/langgraph_api /api/langgraph_runtime /api/langgraph_license \
-    && touch /api/langgraph_api/__init__.py /api/langgraph_runtime/__init__.py /api/langgraph_license/__init__.py
-RUN PYTHONDONTWRITEBYTECODE=1 uv pip install --system --no-cache-dir --no-deps -e /api
-# -- End of ensuring user deps didn't inadvertently overwrite langgraph-api --
-
-# -- Removing build deps from the final image --
-RUN pip uninstall -y pip setuptools wheel
-RUN rm -rf /usr/local/lib/python*/site-packages/pip* /usr/local/lib/python*/site-packages/setuptools* /usr/local/lib/python*/site-packages/wheel* \
-    && find /usr/local/bin -name "pip*" -delete || true
-RUN rm -rf /usr/lib/python*/site-packages/pip* /usr/lib/python*/site-packages/setuptools* /usr/lib/python*/site-packages/wheel* \
-    && find /usr/bin -name "pip*" -delete || true
-RUN uv pip uninstall --system pip setuptools wheel && rm /usr/bin/uv /usr/bin/uvx
+ENTRYPOINT ["graphharbor"]

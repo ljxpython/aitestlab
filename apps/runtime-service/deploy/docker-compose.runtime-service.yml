@@ -32,6 +32,19 @@ services:
       retries: 5
       interval: 60s
 
+  migrate:
+    image: "${RUNTIME_SERVICE_IMAGE:-aitestlab-runtime-service:local}"
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    command: ["migrate", "upgrade"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URI: "postgres://${RUNTIME_POSTGRES_USER:-runtime_service}:${RUNTIME_POSTGRES_PASSWORD:-runtime_service}@${RUNTIME_POSTGRES_HOST:-postgres}:5432/${RUNTIME_POSTGRES_DB:-runtime_service}?sslmode=disable"
+      REDIS_URI: "redis://${RUNTIME_REDIS_HOST:-redis}:${RUNTIME_REDIS_PORT:-6379}/${RUNTIME_REDIS_DB:-0}"
+
   runtime-service:
     image: "${RUNTIME_SERVICE_IMAGE:-aitestlab-runtime-service:local}"
     restart: unless-stopped
@@ -45,26 +58,45 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     env_file:
       - path: .env.runtime-service
-        required: false
+        required: true
     environment:
       REDIS_URI: "redis://${RUNTIME_REDIS_HOST:-redis}:${RUNTIME_REDIS_PORT:-6379}/${RUNTIME_REDIS_DB:-0}"
-      POSTGRES_URI: "postgres://${RUNTIME_POSTGRES_USER:-runtime_service}:${RUNTIME_POSTGRES_PASSWORD:-runtime_service}@${RUNTIME_POSTGRES_HOST:-postgres}:5432/${RUNTIME_POSTGRES_DB:-runtime_service}?sslmode=disable"
-      DEEPSEEK_PROXY_URL: "${DEEPSEEK_PROXY_URL:-}"
-      DEEPSEEK_PROXY_API_KEY: "${DEEPSEEK_PROXY_API_KEY:-}"
-      GPT_PROXY_URL: "${GPT_PROXY_URL:-}"
-      GPT_PROXY_API_KEY: "${GPT_PROXY_API_KEY:-}"
-      LANGSMITH_API_KEY: "${LANGSMITH_API_KEY:-}"
-      LANGSMITH_ENDPOINT: "${LANGSMITH_ENDPOINT:-https://api.smith.langchain.com}"
-      LANGGRAPH_CLOUD_LICENSE_KEY: "${LANGGRAPH_CLOUD_LICENSE_KEY:-}"
+      DATABASE_URI: "postgres://${RUNTIME_POSTGRES_USER:-runtime_service}:${RUNTIME_POSTGRES_PASSWORD:-runtime_service}@${RUNTIME_POSTGRES_HOST:-postgres}:5432/${RUNTIME_POSTGRES_DB:-runtime_service}?sslmode=disable"
+    command: ["serve", "--host", "0.0.0.0", "--port", "8000", "--config", "${RUNTIME_GRAPH_CONFIG:-/app/langgraph.json}", "--n-jobs-per-worker", "0"]
+    volumes:
+      - runtime-service-workspace-data:/var/lib/runtime-service/workspaces
     healthcheck:
-      test: ["CMD", "python", "/api/healthcheck.py"]
-      interval: 60s
+      test: ["CMD", "python", "-c", "import json,urllib.request; assert json.load(urllib.request.urlopen('http://127.0.0.1:8000/ready'))['ready']"]
+      interval: 10s
       start_period: 10s
+
+  worker:
+    image: "${RUNTIME_SERVICE_IMAGE:-aitestlab-runtime-service:local}"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    env_file:
+      - path: .env.runtime-service
+        required: true
+    environment:
+      REDIS_URI: "redis://${RUNTIME_REDIS_HOST:-redis}:${RUNTIME_REDIS_PORT:-6379}/${RUNTIME_REDIS_DB:-0}"
+      DATABASE_URI: "postgres://${RUNTIME_POSTGRES_USER:-runtime_service}:${RUNTIME_POSTGRES_PASSWORD:-runtime_service}@${RUNTIME_POSTGRES_HOST:-postgres}:5432/${RUNTIME_POSTGRES_DB:-runtime_service}?sslmode=disable"
+    command: ["worker", "--config", "${RUNTIME_GRAPH_CONFIG:-/app/langgraph.json}", "--n-jobs-per-worker", "1"]
+    volumes:
+      - runtime-service-workspace-data:/var/lib/runtime-service/workspaces
 
 volumes:
   runtime-service-redis-data:
     driver: local
   runtime-service-postgres-data:
+    driver: local
+  runtime-service-workspace-data:
     driver: local

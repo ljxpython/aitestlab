@@ -17,9 +17,10 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.runnables import RunnableConfig
 from langgraph.pregel import Pregel
 
-from runtime_service.services.reference_agent.prompts import SYSTEM_PROMPT
-from runtime_service.services.reference_agent.tools import read_reference
-from runtime_service.middlewares import ModelCallTimeoutMiddleware, RuntimeConfigMiddleware
+from runtime_service.middlewares import (
+    ModelCallTimeoutMiddleware,
+    RuntimeConfigMiddleware,
+)
 from runtime_service.observability import with_langfuse_tracing
 from runtime_service.runtime import (
     AgentDefaults,
@@ -35,6 +36,8 @@ from runtime_service.runtime import (
 )
 from runtime_service.runtime.auth import VerifiedDelegation
 from runtime_service.runtime.errors import RuntimeAuthError
+from runtime_service.services.reference_agent.prompts import SYSTEM_PROMPT
+from runtime_service.services.reference_agent.tools import read_reference
 
 _DEFAULTS = AgentDefaults(
     model_id="deepseek:DeepSeek-V4-Flash",
@@ -210,6 +213,8 @@ async def get_agent(config: RunnableConfig) -> Pregel:
             "prompt_version": resolved.prompt_version,
             "prompt_hash": resolved.prompt_hash,
             "policy_version": resolved.policy_version,
+            "request_id": facts.request_id,
+            "platform_trace_id": facts.platform_trace_id,
         },
     )
 

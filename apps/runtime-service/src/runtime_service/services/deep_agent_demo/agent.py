@@ -19,12 +19,12 @@ from runtime_service.middlewares import RuntimeConfigMiddleware
 from runtime_service.observability import with_langfuse_tracing
 from runtime_service.runtime import (
     AgentDefaults,
-    RuntimePolicy,
-    RuntimeContext,
-    RuntimePrincipal,
-    RuntimeScope,
     RuntimeAuthError,
+    RuntimeContext,
+    RuntimePolicy,
+    RuntimePrincipal,
     RuntimeResolutionError,
+    RuntimeScope,
     build_model,
     parse_runtime_context,
     reject_untrusted_configurable,
@@ -32,6 +32,7 @@ from runtime_service.runtime import (
     verified_delegation_from_user,
 )
 from runtime_service.runtime.auth import VerifiedDelegation
+
 
 class _DemoChatModel(FakeListChatModel):
     def bind_tools(
@@ -147,7 +148,7 @@ async def get_agent(config: RunnableConfig) -> Pregel:
         _permissions=_SKILL_READ_ONLY,
     )
     subagent: SubAgent = {
-        "name": "general-purpose",
+        "name": "summarizer",
         "description": "Summarize the current task without filesystem or network access.",
         "system_prompt": "Return a concise summary. Do not perform side effects.",
         "model": model,
@@ -202,6 +203,8 @@ async def get_agent(config: RunnableConfig) -> Pregel:
             "prompt_version": resolved.prompt_version,
             "prompt_hash": resolved.prompt_hash,
             "policy_version": resolved.policy_version,
+            "request_id": facts.request_id,
+            "platform_trace_id": facts.platform_trace_id,
         },
     )
 

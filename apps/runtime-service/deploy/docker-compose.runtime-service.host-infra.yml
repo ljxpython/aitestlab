@@ -1,0 +1,57 @@
+name: aitestlab-runtime-service-host-infra
+
+services:
+  migrate:
+    image: "${RUNTIME_SERVICE_IMAGE:-aitestlab-runtime-service:local}"
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    env_file:
+      - path: .env.runtime-service.host-infra
+        required: true
+    environment:
+      DATABASE_URI: "${DATABASE_URI:?DATABASE_URI is required}"
+      REDIS_URI: "${REDIS_URI:?REDIS_URI is required}"
+    command: ["migrate", "upgrade"]
+
+  runtime-service:
+    image: "${RUNTIME_SERVICE_IMAGE:-aitestlab-runtime-service:local}"
+    restart: unless-stopped
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    ports:
+      - "${RUNTIME_SERVICE_PORT:-8123}:8000"
+    env_file:
+      - path: .env.runtime-service.host-infra
+        required: true
+    environment:
+      DATABASE_URI: "${DATABASE_URI:?DATABASE_URI is required}"
+      REDIS_URI: "${REDIS_URI:?REDIS_URI is required}"
+    command: ["serve", "--host", "0.0.0.0", "--port", "8000", "--config", "${RUNTIME_GRAPH_CONFIG:-/app/langgraph.json}", "--n-jobs-per-worker", "0"]
+    volumes:
+      - runtime-service-host-infra-workspace-data:/var/lib/runtime-service/workspaces
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json,urllib.request; assert json.load(urllib.request.urlopen('http://127.0.0.1:8000/ready'))['ready']"]
+      interval: 10s
+      start_period: 10s
+
+  worker:
+    image: "${RUNTIME_SERVICE_IMAGE:-aitestlab-runtime-service:local}"
+    restart: unless-stopped
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    env_file:
+      - path: .env.runtime-service.host-infra
+        required: true
+    environment:
+      DATABASE_URI: "${DATABASE_URI:?DATABASE_URI is required}"
+      REDIS_URI: "${REDIS_URI:?REDIS_URI is required}"
+    command: ["worker", "--config", "${RUNTIME_GRAPH_CONFIG:-/app/langgraph.json}", "--n-jobs-per-worker", "1"]
+    volumes:
+      - runtime-service-host-infra-workspace-data:/var/lib/runtime-service/workspaces
+
+volumes:
+  runtime-service-host-infra-workspace-data:
+    driver: local

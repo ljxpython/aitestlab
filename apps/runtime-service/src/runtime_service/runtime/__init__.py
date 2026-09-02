@@ -30,6 +30,11 @@ from runtime_service.runtime.resolver import (
     runtime_context_hash,
     reject_untrusted_configurable,
 )
+from runtime_service.runtime.resource_bindings import (
+    RuntimeResourceBinding,
+    resolve_resource_binding,
+    thread_resource_metadata,
+)
 
 __all__ = [
     "AgentDefaults",
@@ -54,4 +59,7 @@ __all__ = [
     "runtime_config_snapshot",
     "runtime_context_hash",
     "reject_untrusted_configurable",
+    "RuntimeResourceBinding",
+    "resolve_resource_binding",
+    "thread_resource_metadata",
 ]

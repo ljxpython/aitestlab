@@ -3,10 +3,15 @@ from __future__ import annotations
 import asyncio
 import threading
 import time
+from collections.abc import Sequence
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
+from langfuse._client.span_processor import LangfuseSpanProcessor
+from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
+from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 
-from runtime_service.observability import langfuse
+from runtime_service.observability import langfuse, otel
 
 
 class _Graph:
@@ -169,6 +174,167 @@ def test_callback_failure_is_fail_soft(monkeypatch: pytest.MonkeyPatch) -> None:
     assert langfuse.with_langfuse_tracing(graph, {}, graph_id="demo") is graph  # type: ignore[arg-type]
 
 
+@pytest.mark.parametrize(
+    ("error", "category"),
+    [
+        (type("HttpError", (RuntimeError,), {"status_code": 401})(), "unauthorized"),
+        (type("HttpError", (RuntimeError,), {"status_code": 429})(), "rate_limited"),
+        (type("HttpError", (RuntimeError,), {"status_code": 503})(), "upstream_5xx"),
+        (TimeoutError("export timeout"), "timeout"),
+    ],
+)
+def test_export_failure_matrix_records_stable_drop_metric(
+    error: BaseException,
+    category: str,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    before = langfuse.get_observability_metrics().get("event_dropped", 0)
+    with caplog.at_level("WARNING"):
+        langfuse._record_export_error(error)
+    assert langfuse.get_observability_metrics()["event_dropped"] == before + 1
+    record = next(
+        item for item in caplog.records if item.message == "runtime_langfuse_event_dropped"
+    )
+    assert record.error_category == category
+
+
+def test_sdk_queue_saturation_drops_without_blocking_run(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    class _BlockingExporter(SpanExporter):
+        def __init__(self) -> None:
+            self.started = threading.Event()
+            self.release = threading.Event()
+
+        def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
+            self.started.set()
+            self.release.wait(2.0)
+            return SpanExportResult.SUCCESS
+
+        def shutdown(self) -> None:
+            self.release.set()
+
+        def force_flush(self, timeout_millis: int = 30_000) -> bool:
+            self.release.set()
+            return True
+
+    monkeypatch.setenv("OTEL_BSP_MAX_QUEUE_SIZE", "2")
+    exporter = _BlockingExporter()
+    processor = LangfuseSpanProcessor(
+        public_key="public",
+        secret_key="secret",
+        base_url="https://langfuse.invalid",
+        span_exporter=exporter,
+        flush_at=1,
+        flush_interval=60,
+        should_export_span=lambda _: True,
+    )
+    provider = TracerProvider()
+    provider.add_span_processor(processor)
+    tracer = provider.get_tracer("runtime-test")
+    try:
+        tracer.start_span("first").end()
+        assert exporter.started.wait(1.0)
+        with caplog.at_level("WARNING"):
+            started = time.monotonic()
+            for index in range(16):
+                tracer.start_span(f"queued-{index}").end()
+            elapsed = time.monotonic() - started
+        assert elapsed < 0.2
+        assert any("Queue full, dropping Span" in record.message for record in caplog.records)
+    finally:
+        exporter.release.set()
+        processor.shutdown()
+
+
+def test_otlp_http_exports_bounded_root_span_to_independent_destination(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    received = threading.Event()
+    paths: list[str] = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            length = int(self.headers.get("Content-Length", "0"))
+            assert self.rfile.read(length)
+            paths.append(self.path)
+            received.set()
+            self.send_response(200)
+            self.end_headers()
+
+        def log_message(self, *_: object) -> None:
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    monkeypatch.setenv(
+        "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+        f"http://127.0.0.1:{server.server_port}/v1/traces",
+    )
+    monkeypatch.setenv("OTEL_BSP_MAX_QUEUE_SIZE", "8")
+    monkeypatch.setenv("OTEL_BSP_MAX_EXPORT_BATCH_SIZE", "4")
+    monkeypatch.setenv("OTEL_BSP_SCHEDULE_DELAY", "60")
+    try:
+        provider = otel.initialize_otel(on_error=langfuse._record_export_error)
+        assert provider is not None
+        callback = otel.OTelDiagnosticsCallback(
+            provider,
+            "workflow_demo",
+            {"run_id": "run-otel", "thread_id": "thread-otel"},
+        )
+        callback.on_chain_start({}, {}, run_id="callback-otel")
+        callback.on_chain_end({}, run_id="callback-otel")
+        assert provider.force_flush(5_000)
+        assert received.wait(5)
+        assert paths == ["/v1/traces"]
+    finally:
+        otel.close_otel(timeout_seconds=5)
+        server.shutdown()
+        server.server_close()
+
+
+def test_otlp_http_503_is_recorded_without_raising(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    received = threading.Event()
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            length = int(self.headers.get("Content-Length", "0"))
+            self.rfile.read(length)
+            received.set()
+            self.send_response(503)
+            self.end_headers()
+
+        def log_message(self, *_: object) -> None:
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    monkeypatch.setenv(
+        "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+        f"http://127.0.0.1:{server.server_port}/v1/traces",
+    )
+    monkeypatch.setenv("OTEL_BSP_MAX_QUEUE_SIZE", "8")
+    monkeypatch.setenv("OTEL_BSP_MAX_EXPORT_BATCH_SIZE", "4")
+    before = langfuse.get_observability_metrics().get("event_dropped", 0)
+    try:
+        provider = otel.initialize_otel(on_error=langfuse._record_export_error)
+        assert provider is not None
+        callback = otel.OTelDiagnosticsCallback(provider, "failure_demo", {})
+        callback.on_chain_start({}, {}, run_id="callback-503")
+        callback.on_chain_end({}, run_id="callback-503")
+        assert provider.force_flush(5_000)
+        assert received.wait(5)
+        assert langfuse.get_observability_metrics()["event_dropped"] >= before + 1
+    finally:
+        otel.close_otel(timeout_seconds=5)
+        server.shutdown()
+        server.server_close()
+
+
 def test_concurrent_runs_keep_metadata_isolated(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(langfuse, "_new_callback", lambda: object())
     results: list[dict[str, object]] = []
@@ -226,6 +392,7 @@ def test_close_flush_error_is_fail_soft(monkeypatch: pytest.MonkeyPatch) -> None
     assert langfuse._client is None
     assert after["flush_error"] == before.get("flush_error", 0) + 1
     assert after["export_error"] == before.get("export_error", 0) + 1
+    assert after["event_dropped"] == before.get("event_dropped", 0) + 1
 
 
 def test_app_lifespan_owns_initialize_and_close(monkeypatch: pytest.MonkeyPatch) -> None:

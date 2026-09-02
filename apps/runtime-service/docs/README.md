@@ -3,8 +3,9 @@
 这里是新 Runtime Service 的项目级文档入口。新代码位于
 `apps/runtime-service/src/runtime_service/`，本目录只保留绿色重构真正需要的设计和实施资料。
 
-R0-R5 已有局部实现和归档验证记录，但尚未全部满足生产链路设计；R6 Durable Run 当前受真实
-Agent Server entitlement 阻塞。逐文档对齐结果见
+R0-R5 已有局部实现和归档验证记录，但尚未全部满足生产链路设计；R6 Durable Run 的
+GraphHarbor Durable Core 已在隔离 PostgreSQL/Redis 环境取得部分真实证据，但生产切换仍未就绪。
+逐文档对齐结果见
 `knowledge/31-runtime-refactor-alignment-audit.md`。实现代码和测试以应用根 README、
 `tests/runtime/` 和 `tests/services/` 为准；R0-R6 不修改 Platform API。
 

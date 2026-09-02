@@ -31,6 +31,16 @@ async def get_agent(config: RunnableConfig) -> Pregel:
 uv sync --frozen
 ```
 
+R6 使用 PyPI 上发布的 GraphHarbor 正式包，依赖由锁文件统一管理：
+
+```bash
+uv sync --frozen
+uv run --frozen graphharbor --version
+```
+
+安装和启动使用 `.venv/bin/...` 或 `uv run --frozen ...`，不依赖相邻 GraphHarbor 源码仓库、
+本地 wheel 或 `tool.uv.sources` override。
+
 真实模型 E2E 使用项目根 `.env`。该文件已加入 Git 忽略，变量从本机
 `~/.my_best/.env` 注入：
 
@@ -172,10 +182,37 @@ RUNTIME_DURABLE_ASSISTANT_ID=reference_agent
 容器以便排查时设置 `R6_KEEP_SERVICES=1`。Durable 测试命令：
 
 ```bash
-RUNTIME_DURABLE_URL=http://127.0.0.1:8123 uv run pytest tests/durable -m durable -q
+RUNTIME_DURABLE_URL=http://127.0.0.1:8123 uv run --no-sync pytest tests/durable -m durable -q
 ```
 
 缺少真实服务时测试会明确跳过，不能将跳过结果当作 R6 通过。
+
+R6 追加验收：
+
+```bash
+# 独立 Docker bridge network namespace 的 SSE 断线重连。
+# 当前 shell 必须显式提供与 Compose API/Worker 相同的测试 Token。
+R6_COMPOSE_PROJECT="r6-verify-$(date +%Y%m%d%H%M%S)" \
+RUNTIME_SERVICE_IMAGE=aitestlab-runtime-service:r6-post20 \
+R6_RUNTIME_SERVICE_PORT=18134 \
+R6_TEST_TOKEN_SECRET="$R6_TEST_TOKEN_SECRET" \
+./scripts/r6_network_sse_acceptance.sh
+
+# 隔离 PostgreSQL backup/restore
+scripts/r6_postgres_backup_restore.sh
+
+# 性能基线，只记录数据，不自动判定 SLO
+.venv/bin/python scripts/r6_performance_baseline.py --url http://127.0.0.1:18123 --runs 4
+```
+
+`r6_network_sse_acceptance.sh` 是 bridge SSE 的唯一入口：它先检查 API `/ready`，将目标 Compose
+project 的 Worker 收敛为唯一运行实例，再用 `recovery_demo` 执行真实 Worker 功能探针；探针成功后
+才启动 bridge 客户端执行 SSE cursor/replay 验收。默认退出会执行带 `--remove-orphans` 的项目清理，
+不删除 volume；仅调试时显式设置 `R6_KEEP_SERVICES=1`。
+
+跨网络、备份恢复和性能基线的当前证据会写入 `openspec/changes/runtime-service-r6-durable-run/verification.md`；
+远程 MCP/Sandbox、Langfuse 服务端故障矩阵和 Platform 灰度回滚未通过前，R6 仍保持 `not_ready`。Runtime 镜像回滚
+使用 `scripts/r6_runtime_rollback.sh`，默认 dry-run，生产执行必须显式 `--apply` 并设置 `R6_ROLLBACK_CONFIRM=1`。
 
 ## 文档入口
 

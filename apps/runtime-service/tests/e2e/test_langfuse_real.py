@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
+import uuid
 from pathlib import Path
 
 import pytest
@@ -35,21 +37,25 @@ def test_real_langfuse_workflow_trace_smoke(monkeypatch: pytest.MonkeyPatch) -> 
         if settings.get(name) is not None:
             monkeypatch.setenv(name, str(settings[name]))
 
+    thread_id = f"r6-langfuse-{uuid.uuid4().hex}"
+    run_id = f"r6-run-{uuid.uuid4().hex}"
+    request_id = f"r6-request-{uuid.uuid4().hex}"
     try:
         graph = asyncio.run(
             get_agent(
                 {
                     "metadata": {
-                        "run_id": "r5-smoke-run",
-                        "request_id": "r5-smoke-request",
+                        "run_id": run_id,
+                        "request_id": request_id,
+                        "thread_id": thread_id,
                     },
-                    "configurable": {"thread_id": "r5-smoke-thread"},
+                    "configurable": {"thread_id": thread_id},
                 }
             )
         )
         result = graph.invoke(
             {"message": "hello", "route": "approve"},
-            {"configurable": {"thread_id": "r5-smoke-thread"}},
+            {"configurable": {"thread_id": thread_id}},
         )
         assert result["response"] == "workflow approved: hello"
 
@@ -59,5 +65,28 @@ def test_real_langfuse_workflow_trace_smoke(monkeypatch: pytest.MonkeyPatch) -> 
         if callable(auth_check):
             assert auth_check() is True
         client.flush()
+        traces = []
+        for _ in range(6):
+            traces = [
+                trace
+                for trace in client.api.trace.list(
+                    session_id=thread_id, limit=20
+                ).data
+                if trace.name == "workflow_demo"
+            ]
+            if traces:
+                break
+            time.sleep(5)
+        assert len(traces) == 1
+        trace = traces[0]
+        assert trace.session_id == thread_id
+        assert trace.metadata["run_id"] == run_id
+        assert trace.metadata["request_id"] == request_id
+        assert trace.metadata["thread_id"] == thread_id
+        assert trace.metadata["graph_id"] == "workflow_demo"
+        observations = client.api.observations.get_many(
+            trace_id=trace.id, limit=100
+        )
+        assert observations.data
     finally:
         langfuse.close_langfuse(timeout_seconds=10.0)

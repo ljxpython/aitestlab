@@ -412,6 +412,7 @@ apps/runtime-service/__pycache__/
 apps/runtime-service/.langgraph_api/
 apps/runtime-service/.tmp.langgraph.docker.json
 apps/runtime-service/deploy/.env.runtime-service
+apps/runtime-service/deploy/.env.runtime-service.host-infra
 apps/runtime-service/test.log
 apps/runtime-service/test2.log
 apps/runtime-service/graph_src_v2/.env

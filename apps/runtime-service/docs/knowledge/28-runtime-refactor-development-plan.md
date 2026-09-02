@@ -2,7 +2,7 @@
 
 > 文档类型：Draft
 >
-> 状态：R0-R5 仅完成部分局部能力；R4 已完成 local harness 验收，但生产资源链仍阻塞；R6 正在实施且当前阻塞
+> 状态：R0-R5 仅完成部分局部能力；R4 已完成 local harness 验收；R6 Durable Core 与正式 acceptance 已通过，生产切流仍阻塞
 >
 > 适用范围：`apps/runtime-service`，以及后续最短的 `platform-api` 整合链路
 >
@@ -41,7 +41,8 @@ R0 新包和启动基线
 
 当前阶段为 R6 Durable Run 真实部署验证实施。R0-R5 的“局部实现”和“生产链路完成”必须分开理解；
 逐文档对齐、证据等级和剩余缺口见 [31 号审计](./31-runtime-refactor-alignment-audit.md)。
-R6 未取得真实 PostgreSQL/Redis/Worker 证据前，任何后续阶段的代码、Demo 或 Platform 整合不得提前实施；
+R6 已确定采用 `API + Worker + PostgreSQL + Redis` 四组件部署，GraphHarbor 作为通用 Agent Server Core；
+已取得 Durable Core 和修复后 bridge SSE formal acceptance 的真实 PostgreSQL/Redis/API/Worker 证据，但完整生产 hard gate 尚未通过；任何 Platform 整合不得提前实施；
 Demo 按本计划第 13 节随所属阶段进入。
 
 R0～R6 完成前不改 Platform 业务代码。P1 不是 Runtime 的前置条件，而是 Runtime 已经可以
@@ -60,7 +61,7 @@ R0～R6 完成前不改 Platform 业务代码。P1 不是 Runtime 的前置条�
 | R3 | [15 Middleware 生命周期](./15-runtime-middleware-lifecycle-and-failure-semantics.md) | [14 Contracts](./14-runtime-contracts-and-resolution-design.md)、[16 可观测设计](./16-runtime-observability-and-langfuse-design.md)、[25 测试契约](./25-runtime-testing-and-cross-service-contract-design.md) | 顺序、异常传播、超时、取消、重试和清理 |
 | R4 | [19 Tool/MCP/副作用](./19-runtime-tool-capability-mcp-and-side-effect-design.md)、[20 Backend/Workspace/Skills/Subagents](./20-runtime-backend-workspace-skills-and-subagents-design.md) | [11 Service 目录规范](./11-agent-service-directory-architecture.md)、[23 生命周期](./23-graph-thread-backend-checkpoint-lifecycle-design.md)、[14 Contracts](./14-runtime-contracts-and-resolution-design.md) | 显式工具装配、权限隔离、资源生命周期和子 Agent |
 | R5 | [16 可观测与 Langfuse](./16-runtime-observability-and-langfuse-design.md) | [15 Middleware 生命周期](./15-runtime-middleware-lifecycle-and-failure-semantics.md)、[25 测试契约](./25-runtime-testing-and-cross-service-contract-design.md) | Runtime Trace、日志、指标、脱敏和 fail-soft |
-| R6 | [23 Graph/Thread/Checkpoint 生命周期](./23-graph-thread-backend-checkpoint-lifecycle-design.md)、[24 启停设计](./24-package-langgraph-startup-shutdown-design.md)、[25 测试契约](./25-runtime-testing-and-cross-service-contract-design.md) | [18 事件与 Run Explorer](./18-open-swe-to-runtime-event-and-run-explorer-design.md)、[22 Platform/Runtime 契约](./22-platform-runtime-contract-design.md) | Durable Run、恢复、重连、重启和终态收敛 |
+| R6 | [23 Graph/Thread/Checkpoint 生命周期](./23-graph-thread-backend-checkpoint-lifecycle-design.md)、[24 启停设计](./24-package-langgraph-startup-shutdown-design.md)、[25 测试契约](./25-runtime-testing-and-cross-service-contract-design.md)、[30 Agent Server 替代研究](./30-agent-server-replacement-research.md) | [18 事件与 Run Explorer](./18-open-swe-to-runtime-event-and-run-explorer-design.md)、[22 Platform/Runtime 契约](./22-platform-runtime-contract-design.md) | Durable Run、恢复、重连、重启和终态收敛 |
 | P1 | [22 Platform/Runtime 契约](./22-platform-runtime-contract-design.md)、[27 分阶段整合](./27-platform-runtime-integration-phased-design.md) | [10 总路线](./10-production-agent-platform-roadmap.md)、[18 事件与 Run Explorer](./18-open-swe-to-runtime-event-and-run-explorer-design.md)、[25 测试契约](./25-runtime-testing-and-cross-service-contract-design.md) | 配置快照、Gateway、权限、幂等和跨服务契约 |
 
 文档冲突时，28 号只决定“何时做、做到什么门槛”；14、15、19、20、22、23、24、25 等领域
@@ -225,14 +226,15 @@ R4 同时完成三个能力 Demo：`deep_agent_demo`、`mcp_demo`、`backend_dem
 - 日志和 Trace metadata 经过脱敏和大小限制。
 
 R5 closure 已补齐 Runtime 内部生命周期、可信 metadata allowlist、Model/Tool/Subagent callback
-传播、结构化诊断和可重跑真实 Langfuse smoke。`16-runtime-observability-and-langfuse-design.md`
-的 Harness 表逐项记录了 `✅/❌` 和命令证据。Langfuse SDK queue drop 的 Runtime 专属
-`event_dropped` Counter、目标生产容器 SIGTERM/drain 和跨服务传播仍未完成。目标镜像已加载
-`webapp.py:app` 并连通 PostgreSQL/Redis，但 Agent Server entitlement `403` 使其在 application startup
-完成前以退出码 `3` 退出；这些边界不能因为本地 `langgraph dev`、归档 OpenSpec 或 `.env` 中存在凭据
-而升级为生产全链路完成。
+传播、结构化诊断、稳定 `event_dropped` Counter 和可重跑真实 Langfuse smoke。
+`16-runtime-observability-and-langfuse-design.md` 的 Harness 表逐项记录了 `✅/❌` 和命令证据。
+SDK queue saturation、目标生产容器 SIGTERM/drain 和跨服务传播仍未完成。历史官方
+`langgraph-api` 镜像曾因 Agent Server entitlement `403` 在 application startup 前退出；当前
+R6 已切换到 GraphHarbor 的 API + Worker + PostgreSQL + Redis 路线，不再把该历史授权错误当作
+当前启动链路证据，也不能因为本地 `langgraph dev`、归档 OpenSpec 或 `.env` 中存在凭据而升级为
+生产全链路完成。
 
-## 9. R6：Durable Run 真实验证（实施中）
+## 9. R6：Durable Run 真实验证（Durable Core 与正式 acceptance 已验证，生产切流待完成）
 
 ### 目标
 
@@ -247,14 +249,137 @@ R5 closure 已补齐 Runtime 内部生命周期、可信 metadata allowlist、Mo
 - SSE 重连按游标补发且不重复；
 - 不依赖 Platform API 也能使用本地 Token 完成 smoke test。
 
-当前实现提供 `scripts/r6-durable-smoke.sh`，使用 `deploy/docker-compose.runtime-service.yml`
-启动隔离 PostgreSQL、Redis 和 Agent Server。这里使用官方 `langgraph-api` 的
-`licensed` 变体：本地测试需要具备 LangGraph Cloud 访问资格的 `LANGSMITH_API_KEY`，生产/自托管
-需要 `LANGGRAPH_CLOUD_LICENSE_KEY`。普通 LangSmith API Key（即使可访问 LangSmith API）不等于
-Agent Server 资格。无 License 的 `langgraph dev` 仅能证明本地 in-memory 协议，不作为 Durable
-Run 通过证据。
+R6 已选择 GraphHarbor 作为通用 Agent Server，部署拓扑固定为 `API + Worker + PostgreSQL + Redis`。
+API 与 Worker 使用同一 Runtime 镜像，以不同启动角色运行；PostgreSQL 和 Redis 独立部署。
+2026-09-02 的正式包基线使用已发布的
+`graphharbor==0.13.0.post20` / `graphharbor-runtime==0.13.0.post20`、独立 PostgreSQL 16.9、
+Redis 7.4.2、真实 API/Worker、Runtime 部署 env 中的模型凭据和本地 Delegation Token。Compose 使用
+可注入的 `RUNTIME_GRAPH_CONFIG`；生产默认仍为 `langgraph.json`，R6 验收显式使用
+`/app/langgraph.r6.json`。全新 `r6-verify-post20-20260902` 环境使用
+`http://127.0.0.1:18134`，旧的 `post19` 验证环境未删除或修改。
+
+最新可复现结果：
+
+- Runtime durable suite：`14 passed, 1 skipped`；覆盖 sync/async/exit durability、Thread 重用、双顺序
+  interrupt/resume、非法 checkpoint、replay 去重、断线不取消、cancel 幂等、Tool failure、Backend checkpoint
+  隔离和 Thread Workspace 恢复/隔离；唯一 skip 是需单独 10 秒 Worker deadline 的 timeout 专项；
+- Compose Worker lifecycle：restart 与 SIGTERM replacement 各 `1 passed`；使用确定性的 `recovery_demo`，
+  两个场景均断言 checkpoint marker 恢复且最终完成；
+- GraphHarbor full suite：`132 passed, 14 skipped`，Ruff、mypy、lock/version gate 通过；
+- 独立 fault-injection harness 的真实进程 `SIGTERM` 与 `SIGKILL` checkpoint 接管均到达 `success`，
+  从 `marker=checkpointed` 恢复，`shutdown_requeue_total=1`，且 terminal event 唯一；
+- 重复 queue、迟到 finalize、reaper/cancel race 的唯一终态约束通过；
+- R6 专用 failure/timeout graphs 在真实 API、独立 Worker、PostgreSQL/Redis 下均已验证；timeout demo
+  使用显式可取消的 `StateGraph -> slow_tool`，避免 Fake model Tool loop 掩盖 Worker deadline；
+  PostgreSQL 中 Tool error 与 timeout 均只有一个对应终态，Worker deadline 使用正数配置；
+- Python 3.11、3.12、3.13 wheel 安装与启动通过。
+- 独立 Docker bridge network namespace 的 SSE 正式验收已通过统一 Harness 入口：
+  `scripts/r6_network_sse_acceptance.sh` 先检查 API `/ready`、收敛唯一 Worker 并执行真实 Worker
+  功能探针，再由 `r6_network_sse_acceptance.py` 使用两个独立 SDK 客户端验证首客户端断开、
+  `Last-Event-ID` 后续事件和最终 `success`。结果为 `initial_cursor=4`、`resumed_event_count=2`、
+  `run_status=success`，`6.5` 已完成。
+- 隔离 PostgreSQL 备份恢复通过：`scripts/r6_postgres_backup_restore.sh` 只读导出当前隔离源库，并恢复到
+  临时 `pgvector/pg16` 实例；源库、现有 volume 和业务数据不被删除或修改。
+- 性能基线通过但仅为记录：4 并发 `disconnect_demo` 的首事件 p50/p95 为 `508.63/535.72 ms`，完成
+  p50/p95 为 `15648.47/15664.91 ms`，checkpoint read p50/p95 为 `27.39/42.80 ms`；公共 API 未提供
+  queue enqueue watermark，`queue_lag_ms` 保持未观测，不能自动判定 SLO。
+- Workspace acceptance 在已发布 PyPI `post20` 上通过写入、Worker replacement、API `SIGTERM -> restart`、
+  Thread/tenant 隔离和不可用根 fail-closed；每个业务 Run 只有一个 terminal event。
+- Closure 批次的 RuntimeContext 严格 claims、关联字段 fail-soft 和显式端口修复已随两个
+  `0.13.0.post20` PyPI wheel 发布；同端口探针在正式 `post20` 镜像中通过，不再把本地 wheel 当作发布证据。
+- Workspace 总字节配额、TTL cleanup dry-run/apply 和 Deep Agent `task` Subagent 的真实委派及
+  namespace stream 投影已有对应代码与测试；生产 Backend/Sandbox provider 的原子配额、调度和清理
+  仍未验收。
+- Runtime rollback 已提供默认 dry-run 脚本；它要求调用方提供 known-good image，不执行 `compose down`
+  或删除 PostgreSQL/Redis volume。真实发布回滚演练仍未执行。
+
+这只证明 Durable Core 和正式 acceptance 的已覆盖边界。隔离库备份恢复和性能基线已有本地证据；生产
+Backend/Sandbox/远程 MCP、Langfuse/OTLP queue saturation 与服务端故障、Platform 灰度和 rollback 仍未完成。
+Runtime 依赖固定在 PyPI 上的 GraphHarbor `post20`，Docker 不依赖开发机源码或本地 wheel；正式切换仍保持
+`not_ready`，不能把正式 acceptance 通过等同于生产切流通过。
+详细原子状态见
+30 号文档第 12 节；GraphHarbor readiness 必须保持 `not_ready`。
+
+Thread Workspace 的 `post20` 真实验收通过：同一 Thread 在替代 Worker 和 API 重启后能读回持久化
+Workspace 文件，第二个 Thread 无法读取该文件，跨 tenant 查询返回 `404`，不可用 Workspace 根以
+`error` 终态 fail-closed，业务 Run 各只有一个 terminal event。该证据不扩展为 Backend、Sandbox
+或 MCP Provider 的生产恢复结论。
+
+Backend durable 隔离测试已在独立 GraphHarbor API、Worker、PostgreSQL 和 Redis 上通过：
+`tests/durable/test_backend_isolation.py -k backend_demo_keeps_thread_checkpoints_isolated`
+结果为 `1 passed`，两个 Thread 各自生成唯一 checkpoint；测试按最新 SDK 的公开契约将 `runs.wait()`
+视为最终 State，再从 `threads.get_state()` 验证 checkpoint。该测试证明 Thread checkpoint 不串线，
+不替代真实 Backend provider 跨 Worker 重连、清理和配额验收。
+
+R6 的 MCP 本地真实恢复验收也已通过：`scripts/r6_mcp_acceptance.py` 使用独立 Streamable HTTP
+provider，等待 provider readiness 后完成 discovery、`mcp_read` 调用、Worker 替换重连、provider
+重启恢复；缺少 Thread binding 和 provider 不可达时均持久化 `runtime.mcp.recovery_failed`，5 个
+Run 各只有一个终态事件。
+这不扩展为任意远程 MCP provider 的生产可用性结论。
 
 R6 通过后，Runtime 才进入可被 Platform 调用的状态。
+
+### 9.1 历史 post18 修复后验证（2026-09-02）
+
+GraphHarbor `0.13.0.post18` 双包已直接发布到 PyPI，Runtime lock 和 Docker 无缓存重建均确认使用
+该版本。本节是历史验证记录，不代表当前 `post20` 的结果；本轮按 Harness 只执行一次修复后验证，
+不因失败重试：
+
+- durable suite：`7 failed, 6 passed, 2 skipped`；失败集中在 `reference_agent` 模型初始化、
+  post18 Runtime Context unknown claims、timeout 配置未切到测试 deadline 和 Backend checkpoint
+  断言；
+- Workspace acceptance：首个写入 Run 因 `runtime context contains unknown claims` 进入 `error`；
+- 容器宿主的 `.env` 虽有模型凭据，但没有通过部署 env file 注入镜像；服务内模型变量为空；
+- 结论：版本发布和安装链已完成，但 Runtime Context 契约、凭据注入和 timeout 验收配置未闭合，R6
+  继续保持 `durable-core-partial / production-cutover-blocked`。
+
+不得把本轮失败后的任何重复执行写入为新的成功证据；下一次修复必须建立新的验证批次并重新记录根因。
+
+### 9.2 Closure gate 对齐（2026-09-02）
+
+| Gate | 是否实现 | 实现与验证位置 | 当前结论 |
+| --- | --- | --- | --- |
+| `6.1` host-infra 外部 PG/Redis | ✅ | `deploy/docker-compose.runtime-service.host-infra.yml`；静态 Compose contract test | API、Worker、migration 使用外部 PostgreSQL/Redis，未声明本地基础设施 |
+| `6.2` RuntimeContext producer/consumer 对齐 | ✅ | GraphHarbor `langgraph_runtime_pg/auth.py`、`graph_executor.py`；`test_production_contract.py` | 未知 top-level/nested claims 拒绝；Context 绑定 Run、Thread、tenant、project |
+| `6.3` 显式端口 SIGTERM/restart | ✅ | GraphHarbor `langhost/cli.py`、`test_cli.py`；`scripts/r6_api_restart_probe.py` | 已发布 `post20` 镜像同端口探针通过 |
+| `6.4` correlation 与 exporter fail-soft | ✅ | GraphHarbor `test_production_contract.py`、`test_observability.py`；Runtime `tests/observability/` | API、queue、Worker 关联字段和 exporter/queue drop 的 focused tests 通过 |
+| `6.5` 一次正式 R6 acceptance | ✅ | `openspec/.../verification.md`；`scripts/r6_network_sse_acceptance.sh` | 修复后仅执行一次正式 acceptance；API/Worker readiness、唯一 Worker、cursor `4`、后续事件 `2` 和最终 `success` 均通过 |
+| `6.6` sync/archive | ❌ | OpenSpec change | `6.5` 已完成；仍等待 owner acceptance、spec sync 和 archive |
+
+### 9.3 post20 正式验收记录（Harness 修复前，2026-09-02）
+
+本批次使用已发布 `post20` 双包和独立 Compose project `r6-verify-post20-20260902`。预检确认
+PostgreSQL、Redis、schema、queue 和 API readiness 均正常；Durable smoke、Worker `SIGTERM/SIGKILL`
+接管、Workspace、MCP 和 API 同端口重启均通过。故障注入期间已停止常驻 Compose Worker，确保只有
+一个消费者；两种 Worker 故障都从 `marker=checkpointed` 恢复，且 PostgreSQL 只有一个 terminal event。
+
+bridge SSE 未形成有效证据：客户端建立连接时本批次 Worker 仍处于停止状态，未收到 cursor；该步骤
+按 Harness 规则记为 `blocked`，没有重试。以后正式验收必须显式设置容器内 API URL、在创建 Run 前
+确认 API/Worker readiness，并在故障注入与跨网络 SSE 之间明确切换唯一消费者。详细结果见
+`openspec/changes/runtime-service-r6-durable-run/verification.md`。
+
+因此本历史批次状态为：`Durable Core + closure gates post20-verified / formal-release-acceptance-blocked`。
+本表中的 `✅` 只说明对应 gate 的实现和局部证据成立，不代表 GraphHarbor 已达到生产切流状态。
+
+### 9.4 post20 修复后正式验收记录（2026-09-02）
+
+修复后的 `scripts/r6_network_sse_acceptance.sh` 在已发布 `post20` 镜像和独立验收环境中只执行一次。
+API 与 Worker readiness、唯一 Worker、真实 `recovery_demo` 功能探针和独立 bridge network SSE 均通过：
+
+```json
+{
+  "status": "passed",
+  "api_readiness": "passed",
+  "worker_readiness": "passed",
+  "initial_cursor": 4,
+  "resumed_event_count": 2,
+  "run_status": "success"
+}
+```
+
+清理后 `project_containers=0`、`project_networks=0`、`port_18135_listeners=0`，保留 3 个验收数据卷，
+旧 `post19` 环境未触碰。由此 `6.5` 已完成，`6.6` 仍等待 owner acceptance、spec sync 和 archive；
+外部 Sandbox/远程 MCP、观测服务端故障、真实 rollback 和 Platform 灰度仍是生产切流门槛。
 
 ## 10. P1：Platform 控制面整合
 
@@ -418,9 +543,9 @@ Demo 不引入公共 Builder、Factory、Registry、Plugin、Custom Route 或重
 ### 13.6 R4 Apply 验收状态（2026-09-01）
 
 R4 apply 已完成本地能力闭环，但不能把本地内存适配器写成生产 Durable 证据。`InMemorySaver`、
-进程内 `StateBackend`、本地 fake MCP 和 fake model 只允许用于 local harness；没有可用 Agent Server
-Durable entitlement、PostgreSQL/Redis、跨 Worker 重建和真实 Sandbox Provider 时，生产状态必须保持
-`blocked`。
+进程内 `StateBackend`、本地 fake MCP 和 fake model 只允许用于 local harness；没有可用 Durable Agent
+Server、PostgreSQL/Redis、跨 Worker 重建和真实 Sandbox Provider 时，生产状态必须保持 `blocked`。
+当前 R6 使用 GraphHarbor，不依赖官方 Durable Server entitlement。
 
 | 边界 | 是否实现 | 实现与验证位置 | 证据结论 |
 | --- | --- | --- | --- |
@@ -428,8 +553,8 @@ Durable entitlement、PostgreSQL/Redis、跨 Worker 重建和真实 Sandbox Prov
 | MCP Service 私有加载、冲突和 required/optional 语义 | ✅ | `services/mcp_demo/loader.py`；同上测试 | 本地 stdio fake graph 闭环；不等于远程生产 MCP |
 | Skill 只读和 Backend fail-closed | ✅ | `deep_agent_demo/agent.py`、`backend_demo/agent.py`；同上测试 | 写 Skill、伪造 `execute/task`、Backend 初始化失败均拒绝 |
 | Thread Workspace 本地协议 | ✅ | `backend_demo/agent.py`；`test_backend_workspace_survives_graph_rebuild_for_same_thread`、`test_backend_workspace_isolated_between_threads` | 同 Thread 重建可读、不同 Thread 隔离；仅 `InMemorySaver` 证据 |
-| Subagent 实际委派缩权 | ❌ | `deep_agent_demo/agent.py` 已声明 `tools=[]` | 尚无真实 task delegation、事件和工具隔离断言，OpenSpec `3.4` 保持开放 |
-| Durable Workspace、跨 Worker/服务重启、清理 | ❌ | `tests/durable/`、R4 smoke 入口 | 当前环境无可用 entitlement/resources；OpenSpec `5.4/5.5/5.6`、`6.2/6.3` 保持开放 |
+| Subagent 实际委派缩权 | ✅ | `deep_agent_demo/agent.py` 的 `summarizer` Subagent | `test_deep_agent_performs_explicit_subagent_delegation`、`test_deep_agent_streams_subagent_namespace_and_projection`；OpenSpec `3.4` 已有真实证据 |
+| Durable Workspace、跨 Worker/服务重启、清理 | ❌ | `workspace_demo`、`scripts/r6_workspace_acceptance.py`、`scripts/r6_workspace_cleanup.py` | R4 本地表不承诺 Durable；后续 R6 的 `post20` 已证明 Thread Workspace、API restart 和隔离链路，生产 Backend/Sandbox provider 清理、配额和完整资源矩阵仍保持 blocked |
 
 R4 当前状态：`local-complete / production-chain-blocked`。本节覆盖并更新 19、20 号文档中的
 旧 R4 结论；具体 Requirement 明细以两份领域文档的 Apply Evidence Update 为准。

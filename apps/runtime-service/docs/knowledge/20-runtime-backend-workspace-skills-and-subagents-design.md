@@ -656,7 +656,61 @@ Cross-worker resource recovery and cleanup = deferred/blocked by missing provide
 | `20-R4-005` Bundled Skill 只读边界 | ✅ | `deep_agent_demo/agent.py` 的 `/skills/**` deny Permission 和只读 Tool surface | `test_deep_agent_rejects_skill_write_before_backend_execution` | 写调用在 Runtime Tool Policy 前置拒绝，Permission 同时是代码级纵深防御；未向模型暴露 write/edit Tool |
 | `20-R4-006` Backend 失败不 fallback | ✅ | `services/backend_demo/agent.py` | `test_backend_demo_does_not_fallback_after_initialization_failure` | 初始化错误传播；未切换宿主机目录或替代 Backend |
 | `20-R4-009` Deep Agent 内置 Tool 受限 | ✅ | `deep_agent_demo/agent.py`；`backend_demo/agent.py`；`RuntimeConfigMiddleware` | 真 graph Tool surface、`execute`/`task` forged-call 测试 | Deep Agent 只保留 `ls/read_file/glob/grep/task`；Backend 不保留 `execute/task` |
-| `20-R4-002` Subagent 实际缩权委派 | ❌ | 子 Agent 已显式声明 `tools=[]` 和 filesystem middleware | 无真实 task delegation 断言 | 保持 task 3.4 未完成 |
-| `20-R4-007` 跨 Worker 资源恢复、TTL/cleanup | ❌ | 无 | 无 durable 环境证据 | 需要真实 Agent Server durable checkpointer 和 Sandbox Provider；当前 `blocked` |
+| `20-R4-002` Subagent 实际缩权委派 | ✅ | `deep_agent_demo/agent.py` 的 `summarizer` Subagent | `test_deep_agent_performs_explicit_subagent_delegation`、`test_deep_agent_streams_subagent_namespace_and_projection` | 真实 `task` 委派、显式工具缩权和 namespace stream 证据已通过；独立 detached Subagent Run 仍不建设 |
+| `20-R4-007` 跨 Worker 资源恢复、TTL/cleanup | ❌ | `workspace_demo`、`scripts/r6_workspace_acceptance.py`、`scripts/r6_workspace_cleanup.py` | Thread Workspace 跨 Worker 验收和 TTL cleanup policy 测试已通过；生产 Backend/Sandbox provider 的清理、配额和完整资源矩阵仍 blocked |
 
-本轮状态：`R4 workspace local-complete`；Thread durable、Sandbox、清理和跨 Worker 恢复不是已实现能力。
+本轮状态：`R4 local-complete / production-chain-blocked`；Thread Workspace 的 durable 恢复和隔离
+已由 R6 真实链路补齐，生产 Sandbox、provider-wide cleanup、配额原子性和任意远程资源恢复仍未完成。
+
+## 19. R6 Harness 对齐更新（2026-09-02）
+
+本节覆盖前述 R4 历史审计中的过时结论。`✅` 只表示当前行有对应代码和可失败验证；外部 Provider
+和 Platform 生产切换仍按证据边界单独判断。
+
+| Requirement | 是否实现 | 实现位置 | 测试/验证位置 | 当前证据与未覆盖边界 |
+| --- | --- | --- | --- | --- |
+| `20-R6-001` Thread Workspace 按 tenant/project/thread 隔离并跨 Worker 恢复 | ✅ | `services/workspace_demo/agent.py`；`runtime/resource_bindings.py`；GraphHarbor workspace binding | `scripts/r6_workspace_acceptance.py`；`tests/services/test_workspace_demo.py` | 真实 API、替代 Worker、PostgreSQL/Redis 下同 Thread 读回成功，双 Thread/tenant 隔离和不可用根 fail-closed 通过 |
+| `20-R6-002` Workspace 单文件、文件数量、总字节数、路径和符号链接边界 | ✅ | `services/workspace_policy.py`；部署 env/Compose | `tests/services/test_workspace_policy.py`：大小、数量、总配额、越界、符号链接、并发写入 | Runtime 侧策略和同一 Thread 共享卷上的锁内配额 mutation 通过；跨主机 provider 原子配额记账仍依赖 Backend 能力 |
+| `20-R6-003` Workspace TTL/cleanup 只清理过期非活跃 Thread | ✅ | `services/workspace_policy.py`；`scripts/r6_workspace_cleanup.py` | `test_cleanup_removes_only_expired_inactive_threads`；cleanup CLI dry-run/apply | 只接受持久化 Thread 事实源提供的 active IDs，默认 dry-run；生产任务的调度、租约和 provider 删除仍属部署层 |
+| `20-R6-004` MCP binding 跨 Worker/provider 重启恢复并失败闭合 | ✅ | `services/mcp_demo/loader.py`；`graphs/mcp_probe.py` | `scripts/r6_mcp_acceptance.py`；`tests/services/test_resource_reconnect.py` | 独立 Streamable HTTP provider 的 discovery、调用、Worker 替换、provider 重启及缺 binding/不可达失败通过；任意远程 provider SLA/凭据矩阵未验收 |
+| `20-R6-005` Deep Agent Subagent 实际委派且能力不扩大 | ✅ | `services/deep_agent_demo/agent.py`；`summarizer` SubAgent | `test_deep_agent_performs_explicit_subagent_delegation`；`test_deep_agent_streams_subagent_namespace_and_projection`；观测 callback 测试 | 官方 `task` 真实返回子 Agent 结果，子 Agent 使用显式缩权配置；v2 stream 暴露非空 namespace 和 `summarizer` 事件；跨进程 detached Subagent 未实现 |
+| `20-R6-006` Sandbox 按 Thread binding 恢复并失败闭合 | ❌ | `services/sandbox.py` | `tests/services/test_resource_reconnect.py` 的缺凭据/错误 provider 分支 | Adapter 已 fail-closed，但 LangSmith Sandbox entitlement 返回 `403`，没有真实 Sandbox ID、跨 Worker/cleanup/quota 证据 |
+| `20-R6-007` Backend/MCP/Sandbox 资源成功、异常、取消、超时和 shutdown 后释放 | ❌ | Runtime adapter 与 GraphHarbor 生命周期 | 当前仅本地 MCP provider 和缺资源失败证据 | MCP 本地连接生命周期已有验收；真实远程 MCP/Sandbox provider 的释放、租约和清理仍未执行 |
+
+当前 R6 结论：`Workspace/MCP/Subagent = chain-evidenced`；`Sandbox/provider-wide cleanup = blocked_external_dependency`。
+不能将前述历史表中的 R4 skeleton 缺口继续当成代码不存在，也不能将外部 Provider 未验收写成生产完成。
+
+## 20. 四类资源与 GraphHarbor 的责任边界（2026-09-02）
+
+本设计把 Workspace、Backend、Sandbox、MCP 拆成四个不同问题。GraphHarbor 是通用 Agent
+Server 和 Durable 执行面，不是当前项目的资源 Provider、Tool Registry 或 Workspace Manager。
+
+| 资源 | 定义 | 对 GraphHarbor 的影响 | 应由谁解决 | 当前证据 |
+| --- | --- | --- | --- | --- |
+| Workspace | Thread 可访问的受控文件路径空间，默认边界为 `tenant/project/thread` | 需要保留不透明 binding，保证同 Thread 跨 Worker 恢复且事件不串线 | Runtime Service + Backend/Sandbox Provider | Runtime Workspace chain 已有跨 Worker/隔离证据；生产 cleanup/provider 配额仍未闭合 |
+| Backend | Agent 进行 `ls/read/write/edit/glob/grep/execute` 的文件操作适配器 | 需要按 Run 调用 graph factory、保留 `RunnableConfig`、释放 graph 级资源 | Service `agent.py` 组合根 + Deep Agents 官方 Backend | `StateBackend`、Bundled Skills 和 Tool surface 已有本地/链路证据；不建设公共 Registry |
+| Sandbox | 带隔离文件系统、Shell、网络和资源限制的外部执行环境 | 只需让 Worker 替换后重连同一 binding，并把 provider 不可用映射成唯一失败 | Runtime adapter + 外部 Sandbox Provider | 目前只有 adapter fail-closed；真实 provider、cleanup、quota 和跨 Worker 恢复未通过 |
+| MCP | Agent 连接外部 Tool Server 的协议和 session 生命周期 | 需要支持 per-Run factory、binding 恢复和 Tool/MCP 失败事件 | Runtime MCP loader + Provider | 独立 Streamable HTTP provider 的 discovery、Worker/provider 重启和失败闭合已通过；任意远程 SLA 未验收 |
+
+### 20.1 哪些内容不要放进 GraphHarbor
+
+- 不在 GraphHarbor 中决定 `tenant/project/thread` 目录命名、TTL、配额或清理调度。
+- 不在 GraphHarbor 中实现当前项目的 `Backend Registry`、`Sandbox Provider Registry`、MCP
+  凭据中心或 Tool Policy。
+- 不把 Backend credential、MCP token、Sandbox client、绝对路径或 Python 对象写进
+  `RuntimeContext`、Checkpoint message 或客户端 payload。
+- GraphHarbor 只保存和传递通用的、经过签名或持久化保护的 opaque resource binding，并负责
+  Run、Checkpoint、事件、Worker lease 和终态语义。
+
+### 20.2 Open SWE 对本设计的直接参考
+
+Open SWE 的 `agent/server.py:ensure_sandbox_for_thread()` 和
+`agent/utils/sandbox_state.py` 可直接借鉴 Thread metadata 绑定、进程缓存仅加速、Worker
+重建重连，以及“已删除”与“暂时不可达”分开的失败语义。`CompositeBackend` 和
+`ReadOnlyBackend` 可借鉴 Workspace/Skills 分路和只读保护；`agent/utils/langfuse.py` 可借鉴
+graph 入口 Callback、脱敏和 exporter fail-soft；`MultiServerMCPClient` 可借鉴 async session
+关闭。
+
+不复制 Open SWE 的 GitHub/Slack/Linear/PR/CI 工具、全局 Sandbox Provider、任意 Shell、
+User/Organization Skill 管理和 detached Subagent Run。当前项目的资源选择和安全策略仍在
+各 Service 的 `get_agent()` 组合根内显式声明。

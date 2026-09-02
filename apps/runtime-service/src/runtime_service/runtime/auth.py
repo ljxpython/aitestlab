@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-import re
 from typing import Any
 
 import jwt
@@ -43,6 +43,8 @@ _ALLOWED_CLAIMS = frozenset(
         "policy_project_id",
         "scope",
         "context_hash",
+        "request_id",
+        "platform_trace_id",
     }
 )
 
@@ -64,10 +66,21 @@ class VerifiedDelegation:
     policy: RuntimePolicy
     scope: RuntimeScope
     context_hash: str
+    request_id: str | None = None
+    platform_trace_id: str | None = None
 
 
 def _invalid(code: str = "runtime.auth.invalid_claim", field: str | None = None) -> RuntimeAuthError:
     return RuntimeAuthError(code, field)
+
+
+def _optional_correlation(claims: Mapping[str, Any], name: str) -> str | None:
+    value = claims.get(name)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip() or len(value) > 256:
+        raise _invalid("runtime.auth.invalid_claim", name)
+    return value.strip()
 
 
 def _parse_scope(raw: object) -> RuntimeScope:
@@ -121,7 +134,7 @@ def verify_delegation_claims(
 
     unknown = set(claims) - _ALLOWED_CLAIMS
     if unknown:
-        raise _invalid(field=sorted(unknown)[0])
+        raise _invalid(field=min(unknown))
     if claims.get("type") != "runtime_delegation":
         raise _invalid(field="type")
 
@@ -166,7 +179,14 @@ def verify_delegation_claims(
         }
         if any(actual.get(key) != value for key, value in expected_scope.items()):
             raise _invalid("runtime.auth.invalid_principal", "scope")
-    return VerifiedDelegation(principal, policy, scope, context_claim)
+    return VerifiedDelegation(
+        principal,
+        policy,
+        scope,
+        context_claim,
+        _optional_correlation(claims, "request_id"),
+        _optional_correlation(claims, "platform_trace_id"),
+    )
 
 
 def verify_delegation_token(
@@ -221,7 +241,21 @@ def verified_delegation_from_user(user: object) -> VerifiedDelegation:
         raise _invalid("runtime.auth.invalid_principal", "scope")
     if not isinstance(context_claim, str) or not _HASH_PATTERN.fullmatch(context_claim):
         raise _invalid("runtime.auth.invalid_claim", "context_hash")
-    return VerifiedDelegation(principal, policy, scope, context_claim)
+    request_id = _user_value(user, "request_id")
+    platform_trace_id = _user_value(user, "platform_trace_id")
+    for name, value in (("request_id", request_id), ("platform_trace_id", platform_trace_id)):
+        if value is not None and (
+            not isinstance(value, str) or not value.strip() or len(value) > 256
+        ):
+            raise _invalid("runtime.auth.invalid_claim", name)
+    return VerifiedDelegation(
+        principal,
+        policy,
+        scope,
+        context_claim,
+        request_id.strip() if isinstance(request_id, str) else None,
+        platform_trace_id.strip() if isinstance(platform_trace_id, str) else None,
+    )
 
 
 __all__ = [

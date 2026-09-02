@@ -85,3 +85,61 @@ Checkpoint, Stream, and terminal state without calling Platform API.
 #### Scenario: Missing infrastructure is reported explicitly
 - **WHEN** PostgreSQL, Redis, Worker, or required test configuration is unavailable
 - **THEN** the durable test is marked not executed or failed with a clear prerequisite error and never reported as passed
+
+### Requirement: Runtime SHALL support explicit external infrastructure deployment
+
+The Runtime deployment SHALL provide a host-infra mode that starts only API, Worker, and migration
+containers. It MUST not declare PostgreSQL or Redis services, volumes, or `depends_on` edges, and API,
+Worker, and migration MUST use the same explicitly configured external `DATABASE_URI` and `REDIS_URI`.
+
+#### Scenario: Host-infra compose uses registered services
+- **WHEN** host-infra deployment is rendered with valid external PostgreSQL and Redis URIs
+- **THEN** only Runtime containers are declared and all three roles receive the same external endpoints
+
+#### Scenario: Host-infra compose rejects implicit infrastructure
+- **WHEN** the host-infra compose is inspected
+- **THEN** no PostgreSQL/Redis service, data volume, or infrastructure dependency is present
+
+### Requirement: RuntimeContext SHALL use one strict producer/consumer contract
+
+The API producer and Worker consumer MUST agree on the exact signed RuntimeContext envelope schema,
+including required identity, scope, run/thread binding, expiry, issuer/audience, and policy fields when
+production requires them. Unknown top-level or nested claims MUST fail closed; Runtime-specific context
+fields MUST remain outside GraphHarbor's generic envelope contract.
+
+#### Scenario: Valid context crosses the Worker boundary
+- **WHEN** API signs a context and a Worker verifies it for the same Run and Thread
+- **THEN** the Worker receives the same normalized identity, scope, and policy facts
+
+#### Scenario: Unknown context claim is rejected
+- **WHEN** an envelope contains an unrecognized top-level or nested claim
+- **THEN** verification returns a stable context error and the Run is not executed
+
+### Requirement: Agent Server SHALL recover on same-port API restart
+
+After an API process receives SIGTERM, it MUST exit within the configured grace period and a replacement
+process MUST be able to bind the same explicitly requested host/port within a bounded readiness timeout.
+The CLI MUST NOT silently substitute a random port for an explicitly requested port.
+
+#### Scenario: API restarts on the requested port
+- **WHEN** a ready API is terminated with SIGTERM and started again with the same host and port
+- **THEN** the replacement serves `/ready` on that same port within the acceptance timeout
+
+#### Scenario: Port conflict is explicit
+- **WHEN** an explicitly requested port is still owned by another process
+- **THEN** startup fails with a clear bind error rather than advertising a different port
+
+### Requirement: Generic observability SHALL preserve correlation and fail soft
+
+GraphHarbor MUST preserve generic `request_id`, `run_id`, `thread_id`, and `graph_id` correlation fields
+across API, queue, Worker, and emitted events when supplied by the Runtime contract. A telemetry exporter
+failure or bounded queue saturation MUST NOT block or change Run execution, and dropped telemetry MUST be
+observable through a stable metric or log signal.
+
+#### Scenario: Correlation survives Worker execution
+- **WHEN** a correlated Run is queued and executed by another Worker
+- **THEN** the generic correlation fields remain available on the Worker trace/event boundary
+
+#### Scenario: Exporter failure does not fail the Run
+- **WHEN** the configured telemetry exporter rejects data or its bounded queue is full
+- **THEN** the Run remains available and terminal state is unchanged while a drop signal is emitted

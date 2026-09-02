@@ -463,12 +463,12 @@ Requirement 整体有正确边界、实现和可失败验证时才填 `✅`；`l
 | R5-004 可信 Runtime metadata 覆盖不可信身份 | ✅ | `reference_agent`、`deep_agent_demo`、`backend_demo`、`mcp_demo` 传入 resolver 摘要；workflow 只保留技术字段 | `tests/observability/test_langfuse.py`；`tests/services/test_r4_capability_demos.py`；`test_graph_tracing.py` | 未验证 metadata 不生成 `langfuse_user_id`；workflow 不伪造匿名身份 |
 | R5-005 metadata-only、完整正文丢弃和敏感字段脱敏 | ✅ | `langfuse.py:_redact/_mask` | `tests/observability/test_langfuse.py`；真实 smoke | 本地边界和真实 SDK callback 通过；不是完整 DLP |
 | R5-006 Run/Tool/Token/耗时诊断信号 | ✅ | `langfuse.py:_RuntimeDiagnosticsCallback/get_observability_metrics` | `tests/observability/test_langfuse.py`；真实 Agent/Deep Agent graph tests | 日志含 graph/run/thread/request、状态、耗时、Tool error 和 token；远端 metrics exporter 不由 Runtime 自建 |
-| R5-007 Langfuse/exporter/queue/flush 故障 fail-soft | ❌ | `langfuse.py:_FailSoftCallback/close_langfuse` | callback 异常、flush error/timeout 和原始 Model/Tool/interrupt/cancel/timeout 语义已覆盖 | SDK 自带有界 queue，但 Runtime 尚未将 queue drop 接入稳定 `event_dropped` Counter，也没有 queue saturation 可重跑证据 |
+| R5-007 Langfuse/exporter/queue/flush 故障 fail-soft | ❌ | `langfuse.py:_FailSoftCallback/close_langfuse`；正式 OpenTelemetry `BatchSpanProcessor` queue 配置 | `tests/observability/test_langfuse.py` 覆盖 401/429/5xx/timeout 分类、callback/flush failure、SDK queue saturation、原始 Model/Tool/interrupt/cancel/timeout 语义；`event_dropped` Counter 已接入 | 本地 queue-full 非阻塞和真实 Trace/Observation 查询成立，但真实 exporter 服务端故障、独立 generic OTLP destination 和生产 SIGTERM/drain 尚未可重跑；因此仍不填 `✅` |
 | R5-008 Model、Tool、Subagent 父子 Trace 层级与并发隔离 | ✅ | adapter callback 绑定；现有 `create_agent`/`create_deep_agent` graph | `tests/observability/test_graph_tracing.py`：Model/Tool/Subagent 传播通过 | 已证明 LangChain callback 事件传播和本地隔离；尚未查询 Langfuse 服务端最终 observation 树 |
 | R5-009 五个 Service 都接入统一 adapter | ✅ | `services/{reference_agent,workflow_demo,deep_agent_demo,mcp_demo,backend_demo}/agent.py` | `tests/services/test_r4_capability_demos.py`；全量 Runtime tests | 五个入口统一接线，MCP trusted metadata 已补齐，workflow 保持匿名边界 |
 | R5-010 跨服务 request/platform trace 与 Runtime run/thread 传播 | ❌ | adapter 只读取传入 `RunnableConfig` metadata/configurable | 无 Agent Server -> Service -> Langfuse 传播测试 | Platform Gateway、可信 parent、四类关联 ID 查询链未实现；文档已明确后置，不能计入 R5 完成 |
 | R5-011 Run 状态、SSE、Audit 与 Langfuse 职责分离 | ✅ | 本文 §2、§6；R5 未实现 Run Coordinator/查询代理 | 设计静态检查；无 Runtime 代码复制状态机 | 作为“不建设”的边界成立；不代表 Run Event、Run Explorer 已存在 |
-| R5-012 真实 Langfuse Trace smoke 可重跑 | ✅ | `tests/e2e/test_langfuse_real.py` | `RUNTIME_R5=1 uv run pytest tests/e2e/test_langfuse_real.py -m e2e -q`：`1 passed`；`.env` 凭据已实际读取 | workflow Trace、`auth_check()` 和 flush 通过；服务端异步可查询性和 UI 查询不在当前 smoke 内 |
+| R5-012 真实 Langfuse Trace smoke 可重跑 | ✅ | `tests/e2e/test_langfuse_real.py` | `RUNTIME_E2E=1 RUNTIME_R5=1 uv run --frozen pytest tests/e2e/test_langfuse_real.py -m e2e -q`：`1 passed in 3.09s`；`.env` 凭据已实际读取 | workflow Trace、`auth_check()` 和 flush 通过；服务端异步可查询性和 UI 查询不在当前 smoke 内 |
 
 ### 15.1 本文 R5 判定
 
@@ -484,3 +484,32 @@ Model/Tool/Subagent callback 传播、结构化诊断和真实 Langfuse smoke �
 entitlement 检查返回 `403`，在 application startup 完成前以退出码 `3` 退出。因而仍不能确认生产容器
 SIGTERM/drain、SDK queue drop 的 Runtime Counter、服务端最终 observation 树和跨服务传播。
 因此 R5 可写成 `complete-local`，不能写成生产全链路完成。
+
+## 16. GraphHarbor 与 Runtime 的观测责任分界（2026-09-02）
+
+观测链路尚未达到生产门槛时，先判断缺口属于哪个边界。Runtime Service 不把 Langfuse
+业务逻辑移入 GraphHarbor；GraphHarbor 只需要保证通用执行链路不丢失关联字段和生命周期
+证据。
+
+| 观测问题 | Runtime Service | GraphHarbor | 当前判定 |
+| --- | --- | --- | --- |
+| Model、Tool、Subagent 的 Observation 和 metadata allowlist | 负责 Callback、可信字段和脱敏 | 只保留通用 `RunnableConfig` 传递 | Runtime 已有本地实现 |
+| `run_id/thread_id/graph_id/request_id` 跨 API、队列和 Worker | 负责映射和查询约定 | 负责通用传递、持久化和事件日志 | 必须做集成契约测试 |
+| API 到 Worker 的 trace/correlation context | 负责只接受可信关联值 | 负责跨进程保留和恢复 | 当前跨服务传播仍未验收 |
+| queue lag、lease recovery、checkpoint latency、Run terminal | 使用这些信号定位业务问题 | 负责通用日志/指标 | GraphHarbor 已有基础能力，生产水位仍需验收 |
+| Langfuse endpoint、队列满、401/429/5xx/timeout、bounded flush | 负责 fail-soft 和 `event_dropped` | 不感知 Langfuse | Runtime 本地矩阵已覆盖，生产组合未闭合 |
+| Platform Audit、成本归属、Trace 查询授权 | Platform/Runtime 负责 | 不负责 | 不进入 GraphHarbor |
+
+因此对“`langgraph` 的 runtime-service 这一层还需不需要触及 GraphHarbor”的回答是：
+
+1. 需要触及 GraphHarbor 的**通用协议边界**，验证 metadata/context/correlation 是否从 API
+   到 Worker 且跨重启保持一致；发现丢失才在 GraphHarbor 创建独立改动。
+2. 不需要把 `LangfuseCallback`、项目模型字段、Tool Policy、脱敏规则或 Platform 查询 API
+   写入 GraphHarbor。
+3. 当前 `30-R6-013` 的 `partial` 不是 GraphHarbor 必须接管 Langfuse 的结论，而是生产
+   exporter 故障、generic OTLP 和跨服务传播证据还没有闭合。
+
+最小生产化证据应同时包含：同一 Run 的 API/Worker/PG/Redis/Langfuse 关联查询；Worker 替换
+后的 trace context 连续性；exporter 不可达或队列满时 Run 仍能 finalize；日志和指标不输出
+凭据、完整 Prompt、模型响应或无限制 Tool 参数。没有这些证据，不能把 local callback
+测试升级为生产观测完成。

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import os
 import sys
 from collections.abc import Mapping
 from pathlib import Path
@@ -9,7 +11,11 @@ from pathlib import Path
 from langchain_core.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
-from runtime_service.runtime import RuntimeResolutionError
+from runtime_service.runtime import (
+    RuntimePrincipal,
+    RuntimeResolutionError,
+    resolve_resource_binding,
+)
 
 _SERVER = Path(__file__).with_name("fake_server.py")
 
@@ -19,6 +25,8 @@ async def load_mcp_tools(
     allowed_names: tuple[str, ...] = ("mcp_read",),
     conflict: bool = False,
     required: bool = True,
+    config: Mapping[str, object] | None = None,
+    principal: RuntimePrincipal | None = None,
 ) -> list[BaseTool]:
     """Load tools through the official MCP adapter, then enforce local policy."""
 
@@ -29,7 +37,27 @@ async def load_mcp_tools(
             "args": [str(_SERVER)],
         }
     }
-    if conflict:
+    reconnecting = config is not None or principal is not None
+    if reconnecting:
+        if config is None or principal is None:
+            raise RuntimeResolutionError("runtime.mcp.recovery_failed")
+        binding = resolve_resource_binding(config, principal, "mcp")
+        if binding.provider != "mcp_http":
+            raise RuntimeResolutionError("runtime.mcp.recovery_failed")
+        try:
+            configured = json.loads(
+                os.environ.get("RUNTIME_MCP_CONNECTIONS_JSON", "{}")
+            )
+            connection = configured[binding.resource_id]
+            if (
+                not isinstance(connection, dict)
+                or connection.get("transport") != "streamable_http"
+            ):
+                raise ValueError("MCP connection must be streamable_http")
+            connections = {"runtime": connection}
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise RuntimeResolutionError("runtime.mcp.recovery_failed") from exc
+    elif conflict:
         connections = {
             **connections,
             "runtime_demo_copy": {
@@ -42,9 +70,14 @@ async def load_mcp_tools(
     try:
         tools = await client.get_tools()
     except Exception as exc:
-        if not required:
+        if not required and not reconnecting:
             return []
-        raise RuntimeResolutionError("runtime.mcp.required_unavailable") from exc
+        code = (
+            "runtime.mcp.recovery_failed"
+            if reconnecting
+            else "runtime.mcp.required_unavailable"
+        )
+        raise RuntimeResolutionError(code) from exc
     names = [tool.name for tool in tools]
     if len(names) != len(set(names)):
         raise RuntimeResolutionError("runtime.tool.name_conflict", "tool_name")

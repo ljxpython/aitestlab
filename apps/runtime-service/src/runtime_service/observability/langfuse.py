@@ -9,12 +9,18 @@ import threading
 import time
 from asyncio import CancelledError
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from typing import Any, cast
 
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.runnables import RunnableConfig
 from langgraph.pregel import Pregel
+
+from runtime_service.observability.otel import (
+    OTelDiagnosticsCallback,
+    close_otel,
+    initialize_otel,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +46,8 @@ _TRUSTED_METADATA = frozenset(
         "prompt_version",
         "prompt_hash",
         "policy_version",
+        "request_id",
+        "platform_trace_id",
     }
 )
 _ALLOWED_TAGS = frozenset({"environment", "service", "graph_id", "source", "release"})
@@ -68,11 +76,25 @@ class LangfuseConfigurationError(RuntimeError):
     """Raised when Langfuse was explicitly enabled with invalid settings."""
 
 
+def _error_category(error: BaseException) -> str:
+    status_code = getattr(error, "status_code", None)
+    if status_code == 401:
+        return "unauthorized"
+    if status_code == 429:
+        return "rate_limited"
+    if isinstance(status_code, int) and 500 <= status_code <= 599:
+        return "upstream_5xx"
+    if isinstance(error, TimeoutError):
+        return "timeout"
+    return type(error).__name__
+
+
 def _record_export_error(error: BaseException) -> None:
     _metrics["export_error"] += 1
+    _metrics["event_dropped"] += 1
     logger.warning(
-        "runtime_langfuse_export_error",
-        extra={"error_category": type(error).__name__},
+        "runtime_langfuse_event_dropped",
+        extra={"error_category": _error_category(error)},
     )
 
 
@@ -91,7 +113,7 @@ class _FailSoftCallback(BaseCallbackHandler):
             def call(*args: Any, **kwargs: Any) -> Any:
                 try:
                     result = method(*args, **kwargs)
-                except Exception as error:
+                except Exception as error:  # noqa: BLE001 - exporter must remain fail-soft.
                     _record_export_error(error)
                     return None
                 if not inspect.isawaitable(result):
@@ -100,7 +122,7 @@ class _FailSoftCallback(BaseCallbackHandler):
                 async def wait() -> Any:
                     try:
                         return await result
-                    except Exception as error:
+                    except Exception as error:  # noqa: BLE001 - exporter must remain fail-soft.
                         _record_export_error(error)
                         return None
 
@@ -246,7 +268,9 @@ def initialize_langfuse(*, env: Mapping[str, str] | None = None) -> Any | None:
     """Initialize one process-scoped client, or return ``None`` when disabled."""
 
     global _client
-    settings = _settings(os.environ if env is None else env)
+    settings_env = os.environ if env is None else env
+    settings = _settings(settings_env)
+    initialize_otel(env=settings_env, on_error=_record_export_error)
     if settings is None:
         return None
     if _client is not None:
@@ -318,7 +342,8 @@ def _merge_config(config: RunnableConfig, callback: Any, graph_id: str) -> Runna
     ]
     tags.extend(tag for tag in ("runtime-service", graph_id) if tag not in tags)
     callbacks = _values(config.get("callbacks"))
-    callbacks.append(callback)
+    if callback is not None:
+        callbacks.append(callback)
     bound["metadata"] = metadata
     bound["tags"] = tags
     bound["callbacks"] = callbacks
@@ -336,13 +361,16 @@ def with_langfuse_tracing(
 
     try:
         callback = _new_callback()
-        if callback is None:
+        otel_provider = initialize_otel(on_error=_record_export_error)
+        if callback is None and otel_provider is None:
             return graph
         bound = _merge_config(config, callback, graph_id)
         callbacks = list(bound["callbacks"])
         bound_metadata = dict(bound.get("metadata") or {})
         if trusted_metadata:
             bound_metadata.update(_trusted_metadata(trusted_metadata))
+        if otel_provider is not None:
+            callbacks.append(OTelDiagnosticsCallback(otel_provider, graph_id, bound_metadata))
         callbacks.append(_RuntimeDiagnosticsCallback(graph_id, bound_metadata))
         bound["callbacks"] = callbacks
         bound_metadata["langfuse_trace_name"] = graph_id
@@ -368,26 +396,31 @@ def close_langfuse(*, timeout_seconds: float = 5.0) -> None:
 
     global _client
     client = _client
-    if client is None:
-        return
+    if client is not None:
+        done = threading.Event()
 
-    done = threading.Event()
+        def flush() -> None:
+            try:
+                client.flush()
+            except Exception:
+                _metrics["flush_error"] += 1
+                _metrics["export_error"] += 1
+                _metrics["event_dropped"] += 1
+                logger.exception("runtime_langfuse_flush_error")
+            finally:
+                done.set()
 
-    def flush() -> None:
-        try:
-            client.flush()
-        except Exception:
-            _metrics["flush_error"] += 1
-            _metrics["export_error"] += 1
-            logger.exception("runtime_langfuse_flush_error")
-        finally:
-            done.set()
+        threading.Thread(target=flush, daemon=True).start()
+        if not done.wait(timeout_seconds):
+            _metrics["flush_timeout"] += 1
+            _metrics["event_dropped"] += 1
+            logger.warning("runtime_langfuse_flush_timeout")
+        _client = None
 
-    threading.Thread(target=flush, daemon=True).start()
-    if not done.wait(timeout_seconds):
+    if not close_otel(timeout_seconds=timeout_seconds):
         _metrics["flush_timeout"] += 1
-        logger.warning("runtime_langfuse_flush_timeout")
-    _client = None
+        _metrics["event_dropped"] += 1
+        logger.warning("runtime_otel_flush_timeout")
 
 
 def get_observability_metrics() -> dict[str, int]:

@@ -5,13 +5,13 @@ import asyncio
 import pytest
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.messages import AIMessage, ToolMessage
+from support import BindableFakeChatModel, BindableFakeMessagesChatModel
 
 from runtime_service.observability import langfuse
 from runtime_service.runtime import RuntimeContext
 from runtime_service.runtime.resolver import runtime_context_hash
 from runtime_service.services.deep_agent_demo import agent as deep_agent
 from runtime_service.services.reference_agent import agent as reference_agent
-from support import BindableFakeChatModel, BindableFakeMessagesChatModel
 
 
 class _CaptureCallback(BaseCallbackHandler):
@@ -103,7 +103,7 @@ def test_deep_agent_propagates_callbacks_into_subagent(monkeypatch) -> None:
                         "name": "task",
                         "args": {
                             "description": "Summarize runtime",
-                            "subagent_type": "general-purpose",
+                            "subagent_type": "summarizer",
                         },
                         "id": "task-call",
                     }
@@ -132,6 +132,11 @@ def test_deep_agent_propagates_callbacks_into_subagent(monkeypatch) -> None:
         )
     )
 
+    tool_messages = [
+        message for message in result["messages"] if isinstance(message, ToolMessage)
+    ]
+    assert tool_messages
+    assert tool_messages[-1].content == "subagent result"
     assert result["messages"][-1].content == "parent result"
     assert capture.events.count("model") >= 3
     assert "tool_start" in capture.events

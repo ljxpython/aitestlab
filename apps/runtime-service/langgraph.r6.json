@@ -1,0 +1,76 @@
+{
+  "$schema": "https://langgra.ph/schema.json",
+  "python_version": "3.13",
+  "dependencies": ["."],
+  "http": {
+    "app": "./src/runtime_service/webapp.py:app"
+  },
+  "graphs": {
+    "reference_agent": {
+      "path": "./src/runtime_service/graphs/reference_agent.py:get_agent",
+      "description": "R6 durable reference graph."
+    },
+    "workflow_demo": {
+      "path": "./src/runtime_service/graphs/workflow_demo.py:get_agent",
+      "description": "R6 durable conditional workflow and interrupt/resume graph."
+    },
+    "deep_agent_demo": {
+      "path": "./src/runtime_service/graphs/deep_agent_demo.py:get_agent",
+      "description": "R6 Deep Agent and restricted Subagent composition graph."
+    },
+    "backend_demo": {
+      "path": "./src/runtime_service/graphs/backend_demo.py:get_agent",
+      "description": "R6 Thread Workspace Backend recovery graph."
+    },
+    "failure_demo": {
+      "path": "./src/runtime_service/graphs/failure_demo.py:get_agent",
+      "description": "R6 deterministic unrecoverable Tool failure graph."
+    },
+    "timeout_demo": {
+      "path": "./src/runtime_service/graphs/failure_demo.py:get_timeout_agent",
+      "description": "R6 deterministic run timeout graph."
+    },
+    "disconnect_demo": {
+      "path": "./src/runtime_service/graphs/failure_demo.py:get_disconnect_agent",
+      "description": "R6 deterministic SSE disconnect graph."
+    },
+    "recovery_demo": {
+      "path": "./src/runtime_service/graphs/failure_demo.py:get_recovery_agent",
+      "description": "R6 deterministic Worker checkpoint takeover graph."
+    },
+    "workspace_demo": {
+      "path": "./src/runtime_service/graphs/workspace_demo.py:get_agent",
+      "description": "R6 Thread-scoped Workspace recovery and isolation graph."
+    },
+    "mcp_demo": {
+      "path": "./src/runtime_service/graphs/mcp_demo.py:get_agent",
+      "description": "R6 Thread-scoped MCP reconnect graph."
+    },
+    "mcp_probe": {
+      "path": "./src/runtime_service/graphs/mcp_probe.py:get_agent",
+      "description": "R6 deterministic Streamable HTTP MCP recovery probe."
+    },
+    "sandbox_demo": {
+      "path": "./src/runtime_service/graphs/sandbox_demo.py:get_agent",
+      "description": "R6-only Sandbox reconnect probe."
+    }
+  },
+  "env": ".env",
+  "auth": {
+    "path": "./src/runtime_service/auth/platform.py:auth",
+    "openapi": {
+      "securitySchemes": {
+        "RuntimeBearer": {
+          "type": "http",
+          "scheme": "bearer",
+          "bearerFormat": "JWT"
+        }
+      },
+      "security": [
+        {
+          "RuntimeBearer": []
+        }
+      ]
+    }
+  }
+}

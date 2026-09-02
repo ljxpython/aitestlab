@@ -9,16 +9,20 @@ from deepagents.backends import StateBackend
 from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.pregel import Pregel
+from support import BindableFakeChatModel, BindableFakeMessagesChatModel
 
 from runtime_service.graphs.backend_demo import get_agent as get_backend_agent
 from runtime_service.graphs.deep_agent_demo import get_agent as get_deep_agent
 from runtime_service.graphs.mcp_demo import get_agent as get_mcp_agent
-from runtime_service.runtime import RuntimeAuthError, RuntimeResolutionError
-from runtime_service.services.mcp_demo.loader import load_mcp_tools
-from runtime_service.services.mcp_demo import loader as mcp_loader
+from runtime_service.runtime import (
+    RuntimeAuthError,
+    RuntimeContext,
+    RuntimeResolutionError,
+)
 from runtime_service.services.backend_demo import agent as backend_server
-from support import BindableFakeChatModel, BindableFakeMessagesChatModel
-
+from runtime_service.services.deep_agent_demo import agent as deep_agent_server
+from runtime_service.services.mcp_demo import loader as mcp_loader
+from runtime_service.services.mcp_demo.loader import load_mcp_tools
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -60,6 +64,27 @@ def test_demo_config_registers_all_r4_capability_graphs() -> None:
 def test_deep_agent_declares_state_backend_and_bundled_skill() -> None:
     graph = asyncio.run(get_deep_agent(_config()))
     assert "SkillsMiddleware.before_agent" in graph.get_graph().nodes
+
+
+def test_deep_agent_subagent_is_explicitly_restricted(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    def capture(**kwargs: object) -> object:
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(deep_agent_server, "create_deep_agent", capture)
+    asyncio.run(deep_agent_server.get_agent(_config()))
+
+    subagents = captured["subagents"]
+    assert isinstance(subagents, list) and len(subagents) == 1
+    subagent = subagents[0]
+    assert subagent["name"] == "summarizer"
+    assert subagent["tools"] == []
+    assert subagent["permissions"] == deep_agent_server._SKILL_READ_ONLY
+    assert subagent["middleware"]
+    assert subagent["middleware"][0].backend is captured["backend"]
+    assert captured["skills"] == [str(deep_agent_server._SKILL_DIR)]
 
 
 def test_mcp_loader_explicitly_allowlists_fake_tool() -> None:
@@ -204,6 +229,16 @@ def test_backend_demo_accepts_explicit_test_checkpointer() -> None:
     assert graph is not None
 
 
+def test_backend_demo_rejects_invalid_test_checkpointer() -> None:
+    config = _config()
+    config["configurable"] = {
+        **config["configurable"],
+        "_runtime_test_checkpointer": object(),
+    }
+    with pytest.raises(RuntimeResolutionError, match="runtime.checkpointer.invalid"):
+        asyncio.run(get_backend_agent(config))
+
+
 def _tool_model(name: str, args: dict[str, object]) -> BindableFakeMessagesChatModel:
     return BindableFakeMessagesChatModel(
         responses=[
@@ -260,3 +295,82 @@ def test_deep_agent_rejects_skill_write_before_backend_execution() -> None:
     }
     with pytest.raises(RuntimeResolutionError, match="runtime.tool.not_allowed"):
         asyncio.run(_invoke(get_deep_agent, config, "write skill"))
+
+
+def test_deep_agent_performs_explicit_subagent_delegation() -> None:
+    model = BindableFakeMessagesChatModel(
+        responses=[
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "task",
+                        "args": {
+                            "description": "Summarize the task in one sentence.",
+                            "subagent_type": "summarizer",
+                        },
+                        "id": "task-call",
+                    }
+                ],
+            ),
+            AIMessage(content="subagent-summary"),
+            AIMessage(content="parent-summary"),
+        ]
+    )
+    result = asyncio.run(_invoke(get_deep_agent, _config(model), "delegate"))
+    tool_messages = [message for message in result["messages"] if isinstance(message, ToolMessage)]
+    assert any(message.tool_call_id == "task-call" and "subagent-summary" in str(message.content) for message in tool_messages)
+    assert _tool_names(asyncio.run(get_deep_agent(_config(model)))) == {
+        "ls",
+        "read_file",
+        "glob",
+        "grep",
+        "task",
+    }
+
+
+def test_deep_agent_streams_subagent_namespace_and_projection() -> None:
+    model = BindableFakeMessagesChatModel(
+        responses=[
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "task",
+                        "args": {
+                            "description": "Summarize the task.",
+                            "subagent_type": "summarizer",
+                        },
+                        "id": "stream-task-call",
+                    }
+                ],
+            ),
+            AIMessage(content="streamed summary"),
+            AIMessage(content="parent conclusion"),
+        ]
+    )
+    config = _config(model)
+
+    async def collect() -> list[dict[str, object]]:
+        graph = await get_deep_agent(config)
+        events = []
+        async for event in graph.astream(
+            {"messages": [{"role": "user", "content": "delegate"}]},
+            context=RuntimeContext(),
+            stream_mode="updates",
+            subgraphs=True,
+            version="v2",
+        ):
+            events.append(event)
+        return events
+
+    events = asyncio.run(collect())
+    subagent_models = [
+        event
+        for event in events
+        if event.get("ns")
+        and isinstance(event.get("data"), dict)
+        and isinstance(event["data"].get("model"), dict)
+        and event["data"]["model"]["messages"][0].name == "summarizer"
+    ]
+    assert subagent_models
