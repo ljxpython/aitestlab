@@ -7,8 +7,9 @@
 按顺序读取：
 
 1. [Root AGENTS Routing Surface](../AGENTS.md)
-2. 最窄的 app/service leaf standard
-3. [AI 执行系统当前标准](./standards/01-ai-execution-system.md)
+2. [仓库级 Harness](./harness/README.md)
+3. 最窄的 app/service leaf standard
+4. [AI 执行系统当前标准](./standards/01-ai-execution-system.md)（跨 leaf 路由或治理升级时）
 
 人类使用示例见 [AI 执行系统使用指南](./ai-execution-system-usage-guide.md)。
 
@@ -16,9 +17,17 @@
 
 ## 2. 理解 Harness
 
-当前简明说明：
+唯一导航入口：
+
+- [仓库级 Harness](./harness/README.md)
+
+当前简明背景：
 
 - [Harness Engineering 在本仓库中的含义](./knowledge/harness-engineering.md)
+
+Runtime 的 R0-R6 是领域实例，其设计和证据看
+`apps/runtime-service/docs/knowledge/31-runtime-refactor-alignment-audit.md`，不定义仓库级
+Harness。
 
 以下长篇文档已退出默认阅读路径，仅作历史背景：
 

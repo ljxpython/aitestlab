@@ -6,6 +6,7 @@
 本文只定义“现在必须怎么做”。背景说明见
 `docs/knowledge/harness-engineering.md`，人类使用示例见
 `docs/ai-execution-system-usage-guide.md`。
+通用任务入口和导航见 `docs/harness/README.md`；该入口不覆盖本文或 leaf-local standard。
 
 ## 1. 权威顺序
 
@@ -160,6 +161,9 @@ OpenSpec Skills。只有多个真实 change 反复暴露相同缺口时才重新
 最晚在任务生成后创建验证计划，实施和检查过程中持续更新；不能用 tasks 的勾选
 状态替代验证结果。
 
+新建或主动更新的 `verification.md` 使用 `docs/harness/README.md` 定义的 Harness metadata
+v1；历史 verification 不要求批量迁移，但不得作为当前状态格式的先例。
+
 ## 5. Leaf Resolver
 
 ### `platform-web`
@@ -178,7 +182,8 @@ OpenSpec Skills。只有多个真实 change 反复暴露相同缺口时才重新
 ### `runtime-service`
 
 - 标准：`apps/runtime-service/docs/standards/*.md`（绿色重构标准待重新生成）
-- 可执行门禁：`apps/runtime-service/runtime_service/tests/harness/*.py`
+- 可执行门禁：`apps/runtime-service/tests/` 中与本次 concern 对应的测试；Runtime R0-R6
+  阶段证据和缺口见 `apps/runtime-service/docs/knowledge/31-runtime-refactor-alignment-audit.md`
 
 ### `runtime-web`
 

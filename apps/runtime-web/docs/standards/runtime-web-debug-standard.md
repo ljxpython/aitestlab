@@ -85,7 +85,7 @@
 先读：
 
 - `apps/runtime-service/docs/knowledge/*.md`
-- `apps/runtime-service/runtime_service/tests/harness/*.py`
+- `apps/runtime-service/tests/`
 
 适用于：
 

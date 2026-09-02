@@ -779,8 +779,8 @@ Open SWE 的业务资源编排。
 
 ### 13.4 `ai-test-agent-system-platform` 的参考价值
 
-`/Users/lijiaxin/Downloads/ai-test-agent-system-platform` 对 Runtime 的 Agent 组合有参考
-价值，对 GraphHarbor Core 没有直接替代价值。
+参考项目 `ai-test-agent-system-platform` 对 Runtime 的 Agent 组合有参考价值，对 GraphHarbor
+Core 没有直接替代价值。
 
 | 参考位置 | 可用内容 | 采用条件 |
 | --- | --- | --- |

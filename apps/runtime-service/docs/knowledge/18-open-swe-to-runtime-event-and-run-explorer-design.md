@@ -11,7 +11,7 @@
 > `16-runtime-observability-and-langfuse-design.md`、
 > `17-platform-observability-query-and-admin-console-design.md`
 >
-> 参考项目：`/Users/lijiaxin/PyCharmMiscProject/research/open-swe`
+> 参考项目：`open-swe` 外部研究副本
 
 ## 1. 结论
 

@@ -4,6 +4,9 @@ This file is the repo's thin AI routing and execution gate. Canonical rules live
 `docs/standards/01-ai-execution-system.md`; human guidance lives in
 `docs/ai-execution-system-usage-guide.md`.
 
+Repo-wide Harness navigation lives in `docs/harness/README.md`. It provides the common
+intake and evidence model, but does not override root or leaf standards.
+
 For an explicit guided intake, invoke `$route-project-change`. The Skill applies this
 routing surface but does not override root or leaf standards.
 
@@ -18,9 +21,10 @@ before proposing implementation code.
 For non-trivial work:
 
 1. Read this file.
-2. Resolve the narrowest authoritative leaf document.
-3. Use the repo standard only for cross-leaf routing and escalation.
-4. Read knowledge/history only when rationale is needed.
+2. Use `docs/harness/README.md` to resolve the common intake and reading path.
+3. Resolve the narrowest authoritative leaf document.
+4. Use the repo standard only for cross-leaf routing and escalation.
+5. Read knowledge/history only when rationale is needed.
 
 Authority order:
 

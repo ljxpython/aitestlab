@@ -234,7 +234,7 @@ Durable Run 定义执行持久化、snapshot 与恢复语义；Protocol v2 定�
 1. `apps/runtime-service/runtime_service/docs/knowledge/09-langgraph-runtime-upgrade-and-event-migration.md`
    定义本仓库接入官方 Agent Server、Protocol v2、`version="v2"` 本地 StreamPart、隔离升级
    与平台边界的做法。
-2. `/Users/lijiaxin/PyCharmMiscProject/research/open-swe/docs/agent-engineering-learning/12-migration-phase-2-durable-run-and-stream-zh.md`
+2. Open SWE 的 Durable Run migration note
    定义应吸收的 Durable Run 生命周期原则：Coordinator 唯一创建、同步 durability、可恢复流、
    checkpoint 先于终态、终态先于通知，以及浏览器仅为授权观察者。
 

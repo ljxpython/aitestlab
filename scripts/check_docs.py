@@ -20,6 +20,7 @@ LOCAL_PATHS = (
 LEGACY_HOSTS = ("platform-web-vue", "platform-api-v2")
 HISTORICAL_PREFIXES = (
     ".omx/",
+    "archive/",
     "docs/CHANGELOG.md",
     "docs/archive/",
     "docs/releases/",
@@ -31,6 +32,20 @@ ACTIVE_PLAN_PREFIX = ".harness/plans/"
 CHANGE_STATUSES = {"Pending", "Complete"}
 CHANGE_DISPOSITIONS = {"Pending acceptance", "Accepted", "Rejected", "Abandoned"}
 REVIEW_STATUSES = {"Pending", "Approved", "Waived"}
+VERIFICATION_SCHEMA_MARKER = "Harness verification schema: `v1`"
+HARNESS_ENTRY = ROOT / "docs/harness/README.md"
+HARNESS_REQUIRED_REFS = {
+    ROOT / "AGENTS.md": "docs/harness/README.md",
+    ROOT / "docs/README.md": "./harness/README.md",
+    ROOT / "docs/standards/01-ai-execution-system.md": "docs/harness/README.md",
+}
+HARNESS_REQUIRED_PATHS = (
+    ROOT / "docs/standards",
+    ROOT / "docs/knowledge",
+    ROOT / "openspec/changes",
+    ROOT / "apps/runtime-service/tests",
+)
+STALE_RUNTIME_HARNESS_PATH = "apps/runtime-service/runtime_service/tests/harness/"
 
 
 def markdown_files() -> list[Path]:
@@ -182,6 +197,9 @@ def check_openspec_change(change_dir: Path, *, archived: bool) -> list[str]:
         return [f"{relative}: persisted change is missing verification.md"]
 
     text = verification_path.read_text(encoding="utf-8")
+    if VERIFICATION_SCHEMA_MARKER not in text:
+        return errors
+
     status = metadata_value(text, "Status")
     disposition = metadata_value(text, "Disposition")
     review = metadata_value(text, "Pre-apply review")
@@ -234,6 +252,34 @@ def check_openspec_changes() -> list[str]:
     return errors
 
 
+def check_harness_navigation() -> list[str]:
+    errors: list[str] = []
+    if not HARNESS_ENTRY.is_file():
+        return ["docs/harness/README.md: repo-wide Harness entry is missing"]
+
+    for path in HARNESS_REQUIRED_PATHS:
+        if not path.exists():
+            relative = path.relative_to(ROOT).as_posix()
+            errors.append(f"{relative}: required Harness location is missing")
+
+    for path, required_reference in HARNESS_REQUIRED_REFS.items():
+        relative = path.relative_to(ROOT).as_posix()
+        text = path.read_text(encoding="utf-8")
+        if required_reference not in text:
+            errors.append(
+                f"{relative}: missing repo-wide Harness navigation reference"
+            )
+        if STALE_RUNTIME_HARNESS_PATH in text:
+            errors.append(f"{relative}: stale Runtime Harness test path")
+
+    for path in markdown_files():
+        text = path.read_text(encoding="utf-8")
+        if not is_historical(path, text) and STALE_RUNTIME_HARNESS_PATH in text:
+            relative = path.relative_to(ROOT).as_posix()
+            errors.append(f"{relative}: stale Runtime Harness test path")
+    return errors
+
+
 def self_check() -> None:
     assert local_path_kind("/Users/alice/project/readme.md") == "macOS"
     assert local_path_kind("/home/alice/project/readme.md") == "Linux"
@@ -257,12 +303,17 @@ def self_check() -> None:
     )
     assert parsed["ADDED"] == {"New behavior"}
     assert parsed["REMOVED"] == {"Old behavior"}
+    assert VERIFICATION_SCHEMA_MARKER in (
+        "- Harness verification schema: `v1`\n- Status: `Pending`"
+    )
+    assert all(path.exists() for path in HARNESS_REQUIRED_PATHS)
 
 
 def main() -> int:
     self_check()
     errors = [error for path in markdown_files() for error in check_file(path)]
     errors.extend(check_openspec_changes())
+    errors.extend(check_harness_navigation())
     if errors:
         print("\n".join(errors))
         return 1
