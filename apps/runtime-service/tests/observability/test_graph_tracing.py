@@ -10,7 +10,7 @@ from support import BindableFakeChatModel, BindableFakeMessagesChatModel
 from runtime_service.observability import langfuse
 from runtime_service.runtime import RuntimeContext
 from runtime_service.runtime.resolver import runtime_context_hash
-from runtime_service.services.deep_agent_demo import agent as deep_agent
+from runtime_service.services.demo.deep_agent_demo import agent as deep_agent
 from runtime_service.services.reference_agent import agent as reference_agent
 
 
@@ -219,7 +219,7 @@ def test_exporter_failure_preserves_timeout_and_cancel(monkeypatch) -> None:
 
 
 def test_exporter_failure_preserves_workflow_interrupt(monkeypatch) -> None:
-    from runtime_service.services.workflow_demo.agent import get_agent
+    from runtime_service.services.demo.workflow_demo.agent import get_agent
 
     monkeypatch.setattr(langfuse, "_new_callback", _failing_exporter)
     graph = asyncio.run(get_agent({}))

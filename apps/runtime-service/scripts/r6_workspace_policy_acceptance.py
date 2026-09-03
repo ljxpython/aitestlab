@@ -9,7 +9,7 @@ import tempfile
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
-from runtime_service.services.workspace_demo.policy import (
+from runtime_service.services.demo.workspace_demo.policy import (
     WorkspaceLimits,
     cleanup_expired_workspace_threads,
     expired_workspace_threads,

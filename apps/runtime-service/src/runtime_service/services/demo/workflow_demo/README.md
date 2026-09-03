@@ -27,7 +27,7 @@ async def get_agent(config: RunnableConfig) -> Pregel:
 
 ```python
 from langgraph.types import Command
-from runtime_service.services.workflow_demo.agent import get_agent
+from runtime_service.services.demo.workflow_demo.agent import get_agent
 
 graph = await get_agent({})
 config = {"configurable": {"thread_id": "workflow-example"}}

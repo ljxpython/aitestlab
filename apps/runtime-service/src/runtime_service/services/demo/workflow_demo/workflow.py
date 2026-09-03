@@ -5,7 +5,7 @@ from typing import Literal
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
-from runtime_service.services.workflow_demo.schemas import WorkflowState
+from runtime_service.services.demo.workflow_demo.schemas import WorkflowState
 
 
 def prepare(state: WorkflowState) -> dict[str, int]:

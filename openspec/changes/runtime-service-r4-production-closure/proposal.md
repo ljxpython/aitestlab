@@ -28,7 +28,7 @@ R4 当前只有 Demo 构图和本地 fake 证据：Deep Agents 内置 Tool 没�
 
 - **Owning locus**：`apps/runtime-service`；affected chain 为 Agent Server auth -> Service `get_agent()` -> Runtime Middleware -> Deep Agents/MCP Tool -> Checkpointer/Workspace Backend。
 - **Execution band**：B3 Governed；涉及认证、权限、跨租户资源隔离、持久化和 Worker 恢复。
-- **代码**：`src/runtime_service/services/{deep_agent_demo,mcp_demo,backend_demo}/`、必要的 Service 私有 backend/helper、R4 测试和部署配置。
+- **代码**：`src/runtime_service/demo/{deep_agent_demo,mcp_demo,backend_demo}/`、必要的 Demo 私有 backend/helper、R4 测试和部署配置。
 - **依赖**：使用锁定的 `deepagents==0.7.8`、现有 LangGraph Agent Server/checkpointer 和已安装 MCP adapter；不新增公共 Registry、FilesystemBackend Web 直通或第二套 Run Coordinator。
 - **生产边界**：`FilesystemBackend` 只允许受控本地开发；生产 Thread 文件状态由 durable checkpointer 承载，真实 Shell/Repo 工作区必须有独立 Sandbox Provider 和明确资源绑定。
 - **兼容/回滚**：R4 Demo 的构图参数和 graph ID 保持不变；回滚只移除新增 R4 Service 接线和测试，不做数据迁移。若生产 Workspace 前置条件不足，保留明确失败，不回退到共享宿主机目录。

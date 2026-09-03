@@ -32,7 +32,7 @@ Service，但 active spec 目前只覆盖 `reference_agent`，导致设计目标
 
 - **Owning locus**：`apps/runtime-service`。
 - **Execution band**：B3 Governed；active spec、认证失败语义和恢复行为是受治理合同。
-- **Affected code**：`src/runtime_service/services/workflow_demo/`、
+- **Affected code**：`src/runtime_service/demo/workflow_demo/`、
   `src/runtime_service/services/reference_agent/`（仅在实现阶段按批准设计调整）、
   `tests/services/` 和必要的 Agent Server 集成测试。
 - **Affected docs**：11、28、31 号 R2 对齐矩阵，以及 R2 verification evidence。

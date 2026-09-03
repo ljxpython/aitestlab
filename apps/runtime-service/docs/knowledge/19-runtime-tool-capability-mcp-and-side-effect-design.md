@@ -360,11 +360,11 @@ Backend、Workspace、Skills 和 Subagent 的完整生命周期在下一专题�
 
 | Requirement | 要求 | 是否实现 | 实现位置 | 测试/验证位置 | 真实调用案例与缺口 | Open SWE 取舍 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `19-R4-001` | Service 在组合根显式列出 Tool，不建设公共 Registry | ✅ | `services/mcp_demo/agent.py:32-40`；`services/deep_agent_demo/agent.py:46-51` | `tests/services/test_r4_capability_demos.py:33-45`；静态 `rg` 无公共 Registry/Builder | 三个 R4 graph 均由各自 `get_agent()` 构造；仅证明本地装配 | 借鉴 Open SWE `server.py` 的显式 `tools`，不复制延迟导入 Registry |
+| `19-R4-001` | Service 在组合根显式列出 Tool，不建设公共 Registry | ✅ | `services/demo/mcp_services/demo/agent.py:32-40`；`services/demo/deep_agent_services/demo/agent.py:46-51` | `tests/services/test_r4_capability_demos.py:33-45`；静态 `rg` 无公共 Registry/Builder | 三个 R4 graph 均由各自 `get_agent()` 构造；仅证明本地装配 | 借鉴 Open SWE `server.py` 的显式 `tools`，不复制延迟导入 Registry |
 | `19-R4-002` | 模型可见 Tool 与执行前 Tool Policy 使用同一 allowlist | ❌ | R4 Demo 未接入 `RuntimeConfigMiddleware`；MCP 只有 loader 层名单 | 当前无 R4 graph 的 Policy 可见性和伪造调用测试 | `reference_agent` 有公共 Runtime 复核，但 `mcp_demo`/Deep Agent 未覆盖；需在对应 Service 接入并测试 | 不复制 `DynamicToolMiddleware`；仍需把 Runtime 收缩边界接到 R4 Demo |
-| `19-R4-003` | MCP 在构图前由 Service 私有 loader 加载，并显式加入 Tool 列表 | ✅ | `services/mcp_demo/loader.py:17-47`；`services/mcp_demo/agent.py:32-40` | `tests/services/test_r4_capability_demos.py:53-57`；R4 定向测试 `10 passed` | 本地 stdio fake Server 被真实 `MultiServerMCPClient.get_tools()` 加载；无生产 MCP 证据 | 复用官方 MCP adapter，不创建公共 MCP Manager |
-| `19-R4-004` | MCP Tool 名称冲突在 Agent 创建前失败 | ✅ | `services/mcp_demo/loader.py:40-46` | `tests/services/test_r4_capability_demos.py:60-63` | 两个 fake Server 暴露同名 Tool 时返回 `runtime.tool.name_conflict`，尚未覆盖真实多租户配置 | 借鉴 Open SWE 的显式冲突拒绝，不引入全局命名注册表 |
-| `19-R4-005` | MCP 凭据服务端解析，optional/required MCP 失败语义明确且不泄漏凭据 | ❌ | `services/mcp_demo/loader.py:24-39` 只启动本地 fake command，无凭据解析和 required/optional 分支 | 当前无凭据边界、MCP 不可用和可选 MCP 缺失测试 | 当前案例不连接外部 MCP，不能证明生产凭据、超时、重连和失败闭合 | 只借鉴 Open SWE 的 server-side credential boundary；生产 loader 另需真实需求 |
+| `19-R4-003` | MCP 在构图前由 Service 私有 loader 加载，并显式加入 Tool 列表 | ✅ | `services/demo/mcp_services/demo/loader.py:17-47`；`services/demo/mcp_services/demo/agent.py:32-40` | `tests/services/test_r4_capability_demos.py:53-57`；R4 定向测试 `10 passed` | 本地 stdio fake Server 被真实 `MultiServerMCPClient.get_tools()` 加载；无生产 MCP 证据 | 复用官方 MCP adapter，不创建公共 MCP Manager |
+| `19-R4-004` | MCP Tool 名称冲突在 Agent 创建前失败 | ✅ | `services/demo/mcp_services/demo/loader.py:40-46` | `tests/services/test_r4_capability_demos.py:60-63` | 两个 fake Server 暴露同名 Tool 时返回 `runtime.tool.name_conflict`，尚未覆盖真实多租户配置 | 借鉴 Open SWE 的显式冲突拒绝，不引入全局命名注册表 |
+| `19-R4-005` | MCP 凭据服务端解析，optional/required MCP 失败语义明确且不泄漏凭据 | ❌ | `services/demo/mcp_services/demo/loader.py:24-39` 只启动本地 fake command，无凭据解析和 required/optional 分支 | 当前无凭据边界、MCP 不可用和可选 MCP 缺失测试 | 当前案例不连接外部 MCP，不能证明生产凭据、超时、重连和失败闭合 | 只借鉴 Open SWE 的 server-side credential boundary；生产 loader 另需真实需求 |
 | `19-R4-006` | 写 Tool 具备审批、幂等、超时、未知副作用结果和明确 retry 名单 | ❌ | R4 只有只读 `mcp_read`，无写 Tool/HITL 实现 | 当前无写 Tool 或 `interrupt()` 审批测试 | 只读 fake MCP 不等于副作用隔离；需有真实写能力后在 Service 私有边界补齐 | 不搬 Open SWE GitHub/Slack/PR 业务 Middleware |
 | `19-R4-007` | 普通 Agent 不暴露管理员、Sandbox、Shell 或 Repo Execution Tool | ❌ | `mcp_demo` 仅传入 MCP Tool；Deep Agent 内置 Tool 由框架默认组合 | 当前无完整模型 Tool 列表和执行拒绝断言 | `mcp_demo` 的只读列表有局部证据；Deep Agent 内置 Tool 未经统一审计 | 借鉴 Open SWE 的显式排除原则；必须按锁定 Deep Agents API 补契约测试 |
 | `19-R4-008` | 不通过 RuntimeContext 注入 MCP URL、command、headers、token 或 Tool 实现 | ❌ | `loader.py` 使用模块内 `_SERVER`，但未接 Runtime Context 约束 | 当前无注入恶意连接配置和凭据不落 checkpoint/trace 的测试 | 本地 fake 配置不可由用户提交，但没有边界测试证明这一点 | 不复制 Open SWE 的远程集成配置，只保留 Service 私有可信配置 |
@@ -388,10 +388,10 @@ Policy 双重检查、写 Tool 审批/幂等/恢复或生产凭据生命周期�
 | Requirement | 是否实现 | 实现位置 | 测试/验证位置 | 结论与缺口 |
 | --- | --- | --- | --- | --- |
 | `19-R4-002` Policy 同时约束可见与执行 Tool | ✅ | `middlewares/runtime_config.py`；三个 `services/*/agent.py` | `tests/services/test_r4_capability_demos.py` 的 Tool surface、伪造 `execute`/`task` | `44 passed`；Runtime 在模型返回和 Tool handler 前均拒绝未授权名称 |
-| `19-R4-003`/`004` MCP 显式加载与冲突拒绝 | ✅ | `services/mcp_demo/loader.py` | 同文件的真实 `mcp_read` graph 调用、冲突测试 | 本地 stdio fake MCP 证据，不是远程生产连接 |
-| `19-R4-005` 服务端 MCP 边界与 required/optional | ✅ | `services/mcp_demo/loader.py`；`runtime/resolver.py:reject_untrusted_configurable` | required 不可用稳定失败、optional 返回空集合、URL/command/headers/token/Tool 注入拒绝 | 无真实凭据存储、超时、取消或远程重连证据 |
+| `19-R4-003`/`004` MCP 显式加载与冲突拒绝 | ✅ | `services/demo/mcp_services/demo/loader.py` | 同文件的真实 `mcp_read` graph 调用、冲突测试 | 本地 stdio fake MCP 证据，不是远程生产连接 |
+| `19-R4-005` 服务端 MCP 边界与 required/optional | ✅ | `services/demo/mcp_services/demo/loader.py`；`runtime/resolver.py:reject_untrusted_configurable` | required 不可用稳定失败、optional 返回空集合、URL/command/headers/token/Tool 注入拒绝 | 无真实凭据存储、超时、取消或远程重连证据 |
 | `19-R4-006` 写 Tool 审批、幂等和恢复 | ❌ | 无 | 无 | 当前仅有虚拟 Workspace 文件写入；不把它伪装成外部副作用生产方案 |
-| `19-R4-007` 非 Sandbox Tool 收缩 | ✅ | `deep_agent_demo/agent.py`；`backend_demo/agent.py` | 真 graph Tool surface；伪造调用失败 | `execute` 始终不可见；backend 的默认 `task` 已关闭 |
+| `19-R4-007` 非 Sandbox Tool 收缩 | ✅ | `deep_agent_services/demo/agent.py`；`backend_services/demo/agent.py` | 真 graph Tool surface；伪造调用失败 | `execute` 始终不可见；backend 的默认 `task` 已关闭 |
 | `19-R4-008` 客户端资源/凭据注入 | ✅ | `runtime/resolver.py`；三个 R4 Service | 参数化拒绝 `backend`、MCP、Skill、Subagent、Tool、token | 未知业务 configurable 不构成资源能力；资源字段 fail-closed |
 
 本轮状态：`R4 tool/mcp local-complete`；生产 MCP 与所有真实副作用能力仍为 `deferred`。

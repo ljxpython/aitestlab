@@ -6,9 +6,9 @@ import json
 import pytest
 from runtime_service.runtime import RuntimePrincipal, RuntimeResolutionError
 from runtime_service.runtime.resolver import runtime_context_hash
-from runtime_service.services.backend_demo import agent as backend_agent
-from runtime_service.services.mcp_demo import loader as mcp_loader
-from runtime_service.services.mcp_demo.loader import load_mcp_tools
+from runtime_service.services.demo.backend_demo import agent as backend_agent
+from runtime_service.services.demo.mcp_demo import loader as mcp_loader
+from runtime_service.services.demo.mcp_demo.loader import load_mcp_tools
 
 
 def _principal() -> RuntimePrincipal:

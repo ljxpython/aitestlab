@@ -25,7 +25,7 @@ from runtime_service.runtime import (
 )
 from runtime_service.runtime.auth import VerifiedDelegation
 from runtime_service.runtime.errors import RuntimeAuthError
-from runtime_service.services.failure_demo.tools import slow_tool, unrecoverable_tool
+from runtime_service.services.demo.failure_demo.tools import slow_tool, unrecoverable_tool
 
 
 class _ToolCallingChatModel(FakeMessagesListChatModel):

@@ -5,7 +5,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.pregel import Pregel
 
 from runtime_service.observability import with_langfuse_tracing
-from runtime_service.services.workflow_demo.workflow import builder
+from runtime_service.services.demo.workflow_demo.workflow import builder
 
 _AGENT = builder.compile(checkpointer=InMemorySaver())
 

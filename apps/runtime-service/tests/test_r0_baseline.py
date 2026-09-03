@@ -142,15 +142,18 @@ def test_host_infra_compose_uses_external_postgres_and_redis() -> None:
 
 
 def test_r0_services_have_readme_and_dedicated_tests() -> None:
-    for service_name in ("reference_agent", "workflow_demo"):
-        service_root = PROJECT_ROOT / "src/runtime_service/services" / service_name
-        test_root = PROJECT_ROOT / "tests/services" / service_name
+    for package_root, package_name in (
+        (PROJECT_ROOT / "src/runtime_service/services", "reference_agent"),
+        (PROJECT_ROOT / "src/runtime_service/services/demo", "workflow_demo"),
+    ):
+        service_root = package_root / package_name
+        test_root = PROJECT_ROOT / "tests/services" / package_name
 
         assert (service_root / "README.md").is_file()
         assert any(test_root.glob("test_*.py"))
 
 
-def test_services_do_not_import_each_other() -> None:
+def test_production_services_do_not_import_each_other() -> None:
     services_root = PROJECT_ROOT / "src/runtime_service/services"
     service_names = {
         path.name

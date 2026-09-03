@@ -241,10 +241,10 @@ P1 deferred
 | Requirement | 是否实现 | 实现位置 | 测试/验证位置 | 证据与未覆盖边界 |
 | --- | --- | --- | --- | --- |
 | Tool Policy 同时约束模型可见与执行前调用 | ✅ | `src/runtime_service/middlewares/runtime_config.py`；R4 三个 Service `agent.py` | `tests/services/test_r4_capability_demos.py` | `44 passed`；伪造 `execute/task` 被拒绝 |
-| MCP 显式加载、名称冲突、required/optional 失败 | ✅ | `services/mcp_demo/loader.py` | `tests/services/test_r4_capability_demos.py` | 本地 stdio fake；无远程凭据、重连、取消证据 |
-| Bundled Skill 只读 | ✅ | `services/deep_agent_demo/agent.py` | `test_deep_agent_rejects_skill_write_before_backend_execution` | `/skills/**` 写入在 handler 前失败；未实现 User/Organization Skill |
-| Thread Workspace 本地隔离与 graph rebuild | ✅ | `services/backend_demo/agent.py` | `test_backend_workspace_survives_graph_rebuild_for_same_thread`；`test_backend_workspace_isolated_between_threads` | `InMemorySaver` 仅证明本地协议，不证明 Worker/服务重启恢复 |
-| Subagent 实际缩权委派 | ✅ | `deep_agent_demo/agent.py` 显式 `tools=[]`、`permissions` 和 `summarizer` | `tests/services/test_r4_capability_demos.py::test_deep_agent_performs_explicit_subagent_delegation`：`1 passed` | 官方 `task` 调用返回子 Agent 结果；父 Agent 仍仅暴露显式工具集合 |
+| MCP 显式加载、名称冲突、required/optional 失败 | ✅ | `services/demo/mcp_services/demo/loader.py` | `tests/services/test_r4_capability_demos.py` | 本地 stdio fake；无远程凭据、重连、取消证据 |
+| Bundled Skill 只读 | ✅ | `services/demo/deep_agent_services/demo/agent.py` | `test_deep_agent_rejects_skill_write_before_backend_execution` | `/skills/**` 写入在 handler 前失败；未实现 User/Organization Skill |
+| Thread Workspace 本地隔离与 graph rebuild | ✅ | `services/demo/backend_services/demo/agent.py` | `test_backend_workspace_survives_graph_rebuild_for_same_thread`；`test_backend_workspace_isolated_between_threads` | `InMemorySaver` 仅证明本地协议，不证明 Worker/服务重启恢复 |
+| Subagent 实际缩权委派 | ✅ | `deep_agent_services/demo/agent.py` 显式 `tools=[]`、`permissions` 和 `summarizer` | `tests/services/test_r4_capability_demos.py::test_deep_agent_performs_explicit_subagent_delegation`：`1 passed` | 官方 `task` 调用返回子 Agent 结果；父 Agent 仍仅暴露显式工具集合 |
 | Backend scope mismatch、资源清理、跨 Worker Durable | ❌ | 尚无生产资源 binding/cleanup 实现 | OpenSpec `5.4/5.5/5.6` 未执行 | Agent Server entitlement、PostgreSQL/Redis、Sandbox 前置条件缺失，状态为 `blocked/not-executed` |
 
 结论：R4 为 `local-complete / production-resource-hardening-deferred`；R6 已有 Durable Core formal evidence，

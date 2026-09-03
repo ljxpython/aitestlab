@@ -35,7 +35,8 @@
 
 目标结构遵循五条规则：
 
-1. `langgraph.json -> graphs/<graph_id>.py -> services/<service>/agent.py` 是唯一部署链路。
+1. `langgraph.json -> graphs/<graph_id>.py -> services/<service>/agent.py | services/demo/<demo>/agent.py`
+   是唯一部署链路。
 2. `runtime/` 只放所有 Agent Service 共用的运行时契约和纯决议逻辑。
 3. `middlewares/` 只放真正跨 Service 的运行时横切能力。
 4. Tool、Skill、Subagent、MCP、Backend 和业务 Integration 默认归所属 Service。
@@ -84,13 +85,13 @@ apps/runtime-service/
 │   └── services/
 │       ├── reference_agent/
 │       │   └── test_agent.py
-│       ├── workflow_demo/
+│       ├── workflow_services/demo/
 │       │   └── test_agent.py
-│       ├── deep_agent_demo/
+│       ├── deep_agent_services/demo/
 │       │   └── test_agent.py
-│       ├── mcp_demo/
+│       ├── mcp_services/demo/
 │       │   └── test_agent.py
-│       └── backend_demo/
+│       └── backend_services/demo/
 │           └── test_agent.py
 └── src/
     └── runtime_service/
@@ -118,22 +119,24 @@ apps/runtime-service/
         │   └── langfuse.py            # Callback、metadata、脱敏和生命周期
         └── services/
             ├── __init__.py
-            ├── reference_agent/       # create_agent 基准示例
+            ├── reference_agent/       # 唯一生产/参考 Agent
             │   ├── __init__.py
             │   ├── agent.py    # 唯一组合根，导出 get_agent
             │   ├── prompts.py
             │   ├── schemas.py
             │   ├── tools.py
             │   └── README.md
-            ├── workflow_demo/         # StateGraph 示例
-            │   ├── __init__.py
-            │   ├── agent.py
-            │   ├── workflow.py
-            │   ├── schemas.py
-            │   └── README.md
-            ├── deep_agent_demo/       # create_deep_agent 示例
-            ├── mcp_demo/              # MCP 和副作用隔离示例
-            └── backend_demo/          # Backend/Workspace 生命周期示例
+            └── services/demo/                  # 学习和受控验收 Demo
+                ├── __init__.py
+                ├── workflow_services/demo/     # StateGraph 示例
+                │   ├── __init__.py
+                │   ├── agent.py
+                │   ├── workflow.py
+                │   ├── schemas.py
+                │   └── README.md
+                ├── deep_agent_services/demo/   # create_deep_agent 示例
+                ├── mcp_services/demo/          # MCP 和副作用隔离示例
+                └── backend_services/demo/      # Backend/Workspace 生命周期示例
 ```
 
 这是一棵职责地图，不是空目录生成清单。Git 不跟踪空目录，不为占位创建 `.gitkeep`；目录
@@ -150,7 +153,8 @@ apps/runtime-service/
 | `src/runtime_service/runtime/` | 定义公共运行时契约并生成有效配置 | 业务流程、Service 私有参数、外部 API client |
 | `src/runtime_service/middlewares/` | 在执行期把有效配置绑定到模型、Prompt 和工具 | 存放仅一个 Service 使用的业务逻辑 |
 | `src/runtime_service/observability/` | 接入 Langfuse Agent Trace，并执行采集和脱敏策略 | Run 状态、SSE、Audit、通用 Provider 框架 |
-| `src/runtime_service/services/` | 每个业务能力的唯一所有权边界 | Service 之间互相导入私有实现 |
+| `src/runtime_service/services/` | 生产/参考 Agent 及其受控 Demo 的唯一所有权边界 | Service 之间互相导入私有实现；Demo 不得成为生产业务能力 |
+| `src/runtime_service/services/demo/` | 学习和受控验收 Demo 的隔离边界 | 进入生产 `langgraph.json`；被其他 Demo 作为公共库 |
 | `tests/` | 公共 Runtime、Middleware、Graph、集成、Durable、Contract 和 Service 测试 | 混合旧目录、复制生产实现、为不存在的能力预建测试 |
 | `scripts/` | 人工开发辅助、可复现验收和受控运维入口 | 被生产包导入；持有生产 secret；用它替代生产 API/Worker |
 
@@ -177,6 +181,7 @@ apps/runtime-service/
 | 路径 | 准入规则 | 当前判定 |
 | --- | --- | --- |
 | `src/runtime_service/services/` | 唯一的生产 Service 所有权边界；每个目录由 Graph 稳定入口和 Service 测试证明 | 保留 |
+| `src/runtime_service/services/demo/` | 学习或受控验收图的实现边界；仍经 `graphs/` 稳定导出，但不进入生产 `langgraph.json` | 保留 |
 | 应用根 `services/` | 不得存放生产实现或说明副本；避免与 `src/runtime_service/services/` 形成双真源 | 禁止 |
 | `scripts/` | 只能是人工调用的开发、验收或受控运维入口；不得被生产包导入，必须从环境读取 secret | 允许 |
 | `spikes/<name>/` | 必须与生产 package/import/deploy 隔离，并有 owner、OpenSpec 结论和退出日期 | 仅限有活跃评估的短期实验；结论为不采用时先归档证据再删除 |
@@ -272,9 +277,9 @@ RuntimePrincipal
 首期只有 Langfuse 一个后端，因此不创建 `provider.py`、`registry.py`、`builder.py` 或
 `ObservabilityMiddleware`。详细契约见 `16-runtime-observability-and-langfuse-design.md`。
 
-## 5. Agent Service 目录
+## 5. Agent Service 与 Demo 目录
 
-每个 Service 仍按 11 号文档执行：
+生产 Service 按 11 号文档执行：
 
 ```text
 src/runtime_service/services/<service_name>/
@@ -287,6 +292,9 @@ src/runtime_service/services/<service_name>/
 tests/services/<service_name>/
     └── test_agent.py
 ```
+
+Demo 使用等价的私有文件形状，但根目录为 `src/runtime_service/services/demo/<demo_name>/`；测试仍可按
+现有 `tests/services/` 分类，避免测试目录移动本身成为一次语义变更。
 
 只有存在真实能力时才增加：
 

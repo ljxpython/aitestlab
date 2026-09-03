@@ -19,10 +19,10 @@ from runtime_service.runtime import (
     RuntimeContext,
     RuntimeResolutionError,
 )
-from runtime_service.services.backend_demo import agent as backend_server
-from runtime_service.services.deep_agent_demo import agent as deep_agent_server
-from runtime_service.services.mcp_demo import loader as mcp_loader
-from runtime_service.services.mcp_demo.loader import load_mcp_tools
+from runtime_service.services.demo.backend_demo import agent as backend_server
+from runtime_service.services.demo.deep_agent_demo import agent as deep_agent_server
+from runtime_service.services.demo.mcp_demo import loader as mcp_loader
+from runtime_service.services.demo.mcp_demo.loader import load_mcp_tools
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 

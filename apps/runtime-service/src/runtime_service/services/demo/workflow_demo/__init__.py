@@ -1,4 +1,4 @@
-"""LangGraph entrypoint for the deterministic workflow demo."""
+"""Minimal StateGraph reference service."""
 
 from runtime_service.services.demo.workflow_demo.agent import get_agent
 

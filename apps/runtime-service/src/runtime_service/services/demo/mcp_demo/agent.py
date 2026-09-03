@@ -27,7 +27,7 @@ from runtime_service.runtime import (
     verified_delegation_from_user,
 )
 from runtime_service.runtime.auth import VerifiedDelegation
-from runtime_service.services.mcp_demo.loader import load_mcp_tools
+from runtime_service.services.demo.mcp_demo.loader import load_mcp_tools
 
 
 class _DemoChatModel(FakeListChatModel):

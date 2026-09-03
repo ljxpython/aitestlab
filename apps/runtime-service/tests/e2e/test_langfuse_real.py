@@ -10,7 +10,7 @@ import pytest
 from dotenv import dotenv_values
 
 from runtime_service.observability import langfuse
-from runtime_service.services.workflow_demo.agent import get_agent
+from runtime_service.services.demo.workflow_demo.agent import get_agent
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]

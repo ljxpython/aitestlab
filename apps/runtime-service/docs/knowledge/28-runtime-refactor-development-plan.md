@@ -80,7 +80,7 @@ R0～R6 完成前不改 Platform 业务代码。P1 不是 Runtime 的前置条�
 - `apps/runtime-service/src/runtime_service/` 新包；
 - `graphs/<graph_id>.py`、`agent.py`、`prompts.py`、`schemas.py`、`tools.py` 等 Service
   目录；
-- `services/reference_agent/`、`services/workflow_demo/` 的第一批参考实现骨架；
+- `services/reference_agent/`、`services/demo/workflow_services/demo/` 的第一批参考实现骨架；
 - `langgraph.demo.json` 的本地 Demo 注册配置；
 - 根目录 `langgraph.json`，R0 只注册新 Graph；Auth 延后到 R1；
 - 固定的 `pyproject.toml`、锁文件、容器启动命令和 `.env.example`；
@@ -473,10 +473,10 @@ apps/runtime-service/src/runtime_service/
 │   └── backend_demo.py
 └── services/
     ├── reference_agent/
-    ├── workflow_demo/
-    ├── deep_agent_demo/
-    ├── mcp_demo/
-    └── backend_demo/
+    ├── workflow_services/demo/
+    ├── deep_agent_services/demo/
+    ├── mcp_services/demo/
+    └── backend_services/demo/
 ```
 
 生产和学习使用不同配置：
@@ -570,11 +570,11 @@ Server、PostgreSQL/Redis、跨 Worker 重建和真实 Sandbox Provider 时，�
 
 | 边界 | 是否实现 | 实现与验证位置 | 证据结论 |
 | --- | --- | --- | --- |
-| Tool Policy 与 Deep Agents 内置 Tool 收缩 | ✅ | `services/{deep_agent_demo,mcp_demo,backend_demo}/agent.py`；`tests/services/test_r4_capability_demos.py` | `44 passed`；模型可见面和 handler 前均拒绝未授权 Tool |
-| MCP Service 私有加载、冲突和 required/optional 语义 | ✅ | `services/mcp_demo/loader.py`；同上测试 | 本地 stdio fake graph 闭环；不等于远程生产 MCP |
-| Skill 只读和 Backend fail-closed | ✅ | `deep_agent_demo/agent.py`、`backend_demo/agent.py`；同上测试 | 写 Skill、伪造 `execute/task`、Backend 初始化失败均拒绝 |
-| Thread Workspace 本地协议 | ✅ | `backend_demo/agent.py`；`test_backend_workspace_survives_graph_rebuild_for_same_thread`、`test_backend_workspace_isolated_between_threads` | 同 Thread 重建可读、不同 Thread 隔离；仅 `InMemorySaver` 证据 |
-| Subagent 实际委派缩权 | ✅ | `deep_agent_demo/agent.py` 的 `summarizer` Subagent | `test_deep_agent_performs_explicit_subagent_delegation`、`test_deep_agent_streams_subagent_namespace_and_projection`；OpenSpec `3.4` 已有真实证据 |
+| Tool Policy 与 Deep Agents 内置 Tool 收缩 | ✅ | `services/demo/{deep_agent_demo,mcp_demo,backend_demo}/agent.py`；`tests/services/test_r4_capability_demos.py` | `44 passed`；模型可见面和 handler 前均拒绝未授权 Tool |
+| MCP Service 私有加载、冲突和 required/optional 语义 | ✅ | `services/demo/mcp_services/demo/loader.py`；同上测试 | 本地 stdio fake graph 闭环；不等于远程生产 MCP |
+| Skill 只读和 Backend fail-closed | ✅ | `services/demo/deep_agent_services/demo/agent.py`、`services/demo/backend_services/demo/agent.py`；同上测试 | 写 Skill、伪造 `execute/task`、Backend 初始化失败均拒绝 |
+| Thread Workspace 本地协议 | ✅ | `services/demo/backend_services/demo/agent.py`；`test_backend_workspace_survives_graph_rebuild_for_same_thread`、`test_backend_workspace_isolated_between_threads` | 同 Thread 重建可读、不同 Thread 隔离；仅 `InMemorySaver` 证据 |
+| Subagent 实际委派缩权 | ✅ | `services/demo/deep_agent_services/demo/agent.py` 的 `summarizer` Subagent | `test_deep_agent_performs_explicit_subagent_delegation`、`test_deep_agent_streams_subagent_namespace_and_projection`；OpenSpec `3.4` 已有真实证据 |
 | Durable Workspace、跨 Worker/服务重启、清理 | ❌ | `workspace_demo`、`scripts/r6_workspace_acceptance.py`、`scripts/r6_workspace_cleanup.py` | R4 本地表不承诺 Durable；后续 R6 的 `post20` 已证明 Thread Workspace、API restart 和隔离链路；生产 Backend/Sandbox provider 清理、配额和完整资源矩阵按 owner 决策 `deferred` |
 
 R4 当前状态：`local-complete / production-resource-hardening-deferred`。本节覆盖并更新 19、20 号文档中的
@@ -589,8 +589,8 @@ R4 当前状态：`local-complete / production-resource-hardening-deferred`。�
 | ID | 要求 | 实现位置 | 测试/检查 | 验证记录 | 状态 | 是否实现 | 结论 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `28-R0-001` | 新 `src/runtime_service` 包可安装导入 | `pyproject.toml`；`src/runtime_service/` | `tests/test_r0_baseline.py:test_installed_package_imports_without_test_path` | `uv run --frozen python` 直接 import 和临时 wheel 安装后的独立 venv import 均通过 | `implemented-local` | ✅ | 已完成本地安装基线 |
-| `28-R0-002` | `reference_agent` 和 `workflow_demo` 骨架、稳定导出和 `get_agent` | `src/runtime_service/graphs/*.py`；`services/*/agent.py` | `tests/test_r0_baseline.py:test_service_entrypoints_return_pregel`；`test_r0_services_have_readme_and_dedicated_tests` | R0 基线 `14 passed` | `implemented-local` | ✅ | 已完成本地基线 |
-| `28-R0-003` | fake model 和 Typed StateGraph 最小执行 | `services/reference_agent/agent.py`；`workflow_demo/workflow.py` | `tests/test_r0_baseline.py:test_reference_agent_uses_deterministic_fake_model`；`test_workflow_demo_has_deterministic_state_transition` | R0 基线 `14 passed` | `implemented-local` | ✅ | 已完成最小执行，不等于 R2 完整 Workflow |
+| `28-R0-002` | `reference_agent` 和 `workflow_demo` 骨架、稳定导出和 `get_agent` | `src/runtime_service/graphs/*.py`；`services/reference_agent/agent.py`；`services/demo/workflow_services/demo/agent.py` | `tests/test_r0_baseline.py:test_service_entrypoints_return_pregel`；`test_r0_services_have_readme_and_dedicated_tests` | R0 基线 `14 passed` | `implemented-local` | ✅ | 已完成本地基线 |
+| `28-R0-003` | fake model 和 Typed StateGraph 最小执行 | `services/reference_agent/agent.py`；`services/demo/workflow_services/demo/workflow.py` | `tests/test_r0_baseline.py:test_reference_agent_uses_deterministic_fake_model`；`test_workflow_demo_has_deterministic_state_transition` | R0 基线 `14 passed` | `implemented-local` | ✅ | 已完成最小执行，不等于 R2 完整 Workflow |
 | `28-R0-004` | 生产配置只注册 `reference_agent` | `langgraph.json:5-10` | `tests/test_r0_baseline.py:28-34` | JSON 检查通过 | `implemented-local` | ✅ | 已完成 |
 | `28-R0-005` | R0 基线与 R4 Demo 配置、测试相互独立 | `langgraph.demo.json:5-25`；R0/R4 测试文件 | `tests/test_r0_baseline.py`；`tests/services/test_r4_capability_demos.py:test_demo_config_registers_all_r4_capability_graphs` | R0 `14 passed`；R4 `10 passed` | `implemented-local` | ✅ | R4 的三个能力 Graph 由 R4 测试负责，R0 不再依赖其存在 |
 | `28-R0-006` | `langgraph dev` 启动、`/info` introspection 成功 | 根配置；稳定 Graph 入口 | `curl -fsS http://127.0.0.1:8123/info` | 本轮启动成功，返回 LangGraph API `0.13.0`、Python `1.2.11` | `implemented-local` | ✅ | 只证明 local_dev/in-memory |
@@ -644,11 +644,11 @@ Auth 接线已具备本地与 GraphHarbor Durable 证据，`temperature=0` Conte
 
 | ID | 要求 | 实现/测试位置 | 验证记录 | 状态 | 是否实现 | 结论 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `28-R2-001` | Service 组合根、稳定 Graph 导出和显式依赖装配 | `src/runtime_service/services/*/agent.py`；`src/runtime_service/graphs/*.py` | `uv run --frozen pytest tests/services/workflow_demo tests/services/reference_agent tests/test_r0_baseline.py -q`：`38 passed` | `implemented-local` | ✅ | reference/workflow 基础组合根已成立 |
+| `28-R2-001` | Service/Demo 组合根、稳定 Graph 导出和显式依赖装配 | `src/runtime_service/services/reference_agent/agent.py`；`src/runtime_service/services/demo/workflow_services/demo/agent.py`；`src/runtime_service/graphs/*.py` | `uv run --frozen pytest tests/services/workflow_demo tests/services/reference_agent tests/test_r0_baseline.py -q`：`38 passed` | `implemented-local` | ✅ | reference/workflow 基础组合根已成立 |
 | `28-R2-002` | `reference_agent` 使用 `create_agent`、RuntimeContext、Resolver、显式 Middleware 和 Tool | `services/reference_agent/agent.py`；`prompts.py`；`tools.py` | reference 专项既有 `16 passed`；本次 GraphHarbor Durable 真实模型链 `3 passed` | `implemented-chain` | ✅ | Platform 正式签发链不属于 R2 |
-| `28-R2-003` | `workflow_demo` 使用 Typed StateGraph 并实现条件边、人工确认或恢复点 | `services/workflow_demo/workflow.py`；`workflow_demo/agent.py` | `tests/services/workflow_demo/test_agent.py` | 条件分支、Interrupt/Resume 和不重复执行测试通过 | `implemented-local` | ✅ | R2 本地证据；真实 Durable 仍由 R6 验证 |
-| `28-R2-004` | 静态 Graph 重复调用拓扑一致；动态构图只用于 Thread/Run 资源 | `workflow_demo/agent.py:_AGENT`；`reference_agent/agent.py:get_agent` | `test_workflow_demo_static_topology_is_stable`、`test_reference_agent_topology_is_stable_across_runtime_bindings`；本地 R2/R0：`38 passed`；reference 不同绑定的 nodes、edges、schema 结构一致但实例不同 | `partial` | ❌ | 测试已证明拓扑稳定；仍需收敛 reference 生命周期，或记录并批准运行时模型绑定导致的 factory 例外 |
-| `28-R2-005` | 两个 R2 Demo 均有独立 README、fake/确定性测试和标准 demo 配置 | `services/*/README.md`；`langgraph.demo.json` | `tests/test_r0_baseline.py`；`tests/services/workflow_demo/test_agent.py` | README、demo 配置和 Workflow 专属测试通过 | `implemented-local` | ✅ | R6 运行手册仍单独维护 |
+| `28-R2-003` | `workflow_demo` 使用 Typed StateGraph 并实现条件边、人工确认或恢复点 | `services/demo/workflow_services/demo/workflow.py`；`services/demo/workflow_services/demo/agent.py` | `tests/services/workflow_services/demo/test_agent.py` | 条件分支、Interrupt/Resume 和不重复执行测试通过 | `implemented-local` | ✅ | R2 本地证据；真实 Durable 仍由 R6 验证 |
+| `28-R2-004` | 静态 Graph 重复调用拓扑一致；动态构图只用于 Thread/Run 资源 | `workflow_services/demo/agent.py:_AGENT`；`reference_agent/agent.py:get_agent` | `test_workflow_demo_static_topology_is_stable`、`test_reference_agent_topology_is_stable_across_runtime_bindings`；本地 R2/R0：`38 passed`；reference 不同绑定的 nodes、edges、schema 结构一致但实例不同 | `partial` | ❌ | 测试已证明拓扑稳定；仍需收敛 reference 生命周期，或记录并批准运行时模型绑定导致的 factory 例外 |
+| `28-R2-005` | 两个 R2 Demo 均有独立 README、fake/确定性测试和标准 demo 配置 | `services/reference_agent/README.md`；`services/demo/workflow_services/demo/README.md`；`langgraph.demo.json` | `tests/test_r0_baseline.py`；`tests/services/workflow_services/demo/test_agent.py` | README、demo 配置和 Workflow 专属测试通过 | `implemented-local` | ✅ | R6 运行手册仍单独维护 |
 | `28-R2-006` | introspection 不创建 Sandbox/MCP/数据库等外部资源，入口无外部副作用 | `graphs/*.py`；两个 Service `agent.py` | R0 基线、Workflow Server `/info` 和加载执行测试 | local Agent Server 加载/执行通过；无外部资源初始化 | `implemented-local` | ✅ | 仍缺独立静态依赖方向门禁 |
 | `28-R2-007` | R2 两个 Demo 的 Agent Server 标准加载/执行链成立 | `langgraph.demo.json`；`tests/integration/test_agent_server_auth.py`；`test_workflow_demo_agent_server.py` | reference GraphHarbor Durable 测试 `3 passed`；workflow 需要独立的 `RUNTIME_DURABLE_DEMO_URL`，本轮未执行 | 两个 Demo 的同一条 Agent Server chain 尚未有当前有效证据 | `not-executed` | ❌ | 提供注册 `workflow_demo` 的 GraphHarbor 服务后单独验收，不能恢复旧 `langgraph dev` fixture |
 | `28-R2-008` | R2 目标设计与 active spec 的能力范围一致，并为归档冲突保留迁移记录 | 11 号文档；`openspec/specs/runtime-agent-service-integration/spec.md`；归档 R2 文件 | `openspec validate runtime-agent-service-integration --strict --no-interactive` | 返回 `Specification 'runtime-agent-service-integration' is valid`；owner 已批准；active spec 已 sync；归档文件保留历史并有迁移记录 | `implemented-local` | ✅ | 后续以 active spec 为准 |
