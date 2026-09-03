@@ -17,7 +17,7 @@ from runtime_service.runtime import (
     resolve_resource_binding,
     verified_delegation_from_user,
 )
-from runtime_service.services.workspace_policy import (
+from runtime_service.services.workspace_demo.policy import (
     WorkspaceLimits,
     resolve_workspace_path,
     validate_workspace_write,

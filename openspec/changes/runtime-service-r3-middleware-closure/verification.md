@@ -18,7 +18,7 @@
 | `git diff --check` | passed |
 | `openspec validate runtime-service-r3-middleware-closure --strict --no-interactive` | passed |
 | `graphify update .` | passed；图谱已更新 |
-| `RUNTIME_E2E=1 uv run pytest -q` | `100 passed, 23 skipped, 1 failed`；失败位于现有 `spikes/aegra/tests/test_platform_context.py`，fixture 缺少 `scope` claim，与本次 R3 文件无关 |
+| `RUNTIME_E2E=1 uv run pytest -q` | `100 passed, 23 skipped, 1 failed`；失败位于当时的 Aegra Spike `test_platform_context`，fixture 缺少 `scope` claim，与本次 R3 文件无关；该 Spike 后续已以 `Abandoned` 归档并删除源码 |
 | `uv run ruff check ...` | 未执行；当前 `pyproject.toml` 未声明 ruff，环境中无该可执行文件 |
 
 ## Residual Risk

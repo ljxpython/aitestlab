@@ -1,8 +1,9 @@
 # Verification
 
-- Status：In progress
-- Disposition：Pending acceptance
-- Pre-apply review：Approved
+- Harness verification schema: v1
+- Status: Complete
+- Disposition: Abandoned
+- Pre-apply review: Approved
 - Change：`runtime-service-aegra-r6-replacement-evaluation`
 - Locus：`apps/runtime-service`
 - Chain：Runtime Service -> Aegra -> PostgreSQL/Redis/Langfuse -> Platform gateway
@@ -57,3 +58,13 @@ exporter 故障仍为 blocked；Langfuse 关联/脱敏门槛为 fail。详细结
 
 本评估完成后更新 Spike 报告和 Aegra 调研文档。若通过，后续独立生产切换 change 必须补充
 部署、迁移、灰度、回滚、数据保留和运维 Runbook；若不通过，只记录缺口和下一轮最小实验。
+
+## Abandonment Decision
+
+- Owner decision：2026-09-03，GraphHarbor 已确定为当前 R6 路线；Aegra 不再保留为并行
+  Durable Server 候选。
+- Disposition：`Abandoned`，不是 `Accepted`；当前的 `not_ready` 及未完成门槛仅保留为
+  选型历史，不触发下一轮补测或生产切换。
+- Spec sync：不执行。该 delta spec 定义的是已放弃的替换评估，不能成为当前能力规范。
+- Source cleanup：归档后删除 `apps/runtime-service/spikes/aegra/`；选型事实保留在归档
+  artifacts 和 30 号调研文档。

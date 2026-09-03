@@ -63,7 +63,7 @@ apps/runtime-service/
 │   ├── knowledge/
 │   ├── runbooks/
 │   └── archive/
-├── scripts/
+├── scripts/                            # 开发辅助、可复现验收和受控运维入口
 │   └── issue_local_delegation.py       # 本地短期 JWT 签发器，仅开发使用
 ├── tests/
 │   ├── conftest.py
@@ -152,7 +152,7 @@ apps/runtime-service/
 | `src/runtime_service/observability/` | 接入 Langfuse Agent Trace，并执行采集和脱敏策略 | Run 状态、SSE、Audit、通用 Provider 框架 |
 | `src/runtime_service/services/` | 每个业务能力的唯一所有权边界 | Service 之间互相导入私有实现 |
 | `tests/` | 公共 Runtime、Middleware、Graph、集成、Durable、Contract 和 Service 测试 | 混合旧目录、复制生产实现、为不存在的能力预建测试 |
-| `scripts/` | 人工执行的本地开发辅助 | 被生产包导入；持有生产 secret |
+| `scripts/` | 人工开发辅助、可复现验收和受控运维入口 | 被生产包导入；持有生产 secret；用它替代生产 API/Worker |
 
 目标树首期不创建这些顶层目录：
 
@@ -168,6 +168,22 @@ apps/runtime-service/
 
 它们不是永远禁止，而是当前没有公共职责证明其必须存在。后续只有出现真实的跨 Service
 复用或非 LangGraph HTTP 能力时，才通过单独架构讨论重新引入。
+
+### 3.1 目录准入与实验退出
+
+目标树是 R0 的最小实现图，不是对后续 R6 验收脚本和已批准 Service 的禁止清单。目录是否
+保留必须以职责、导入边界和可复现证据判断：
+
+| 路径 | 准入规则 | 当前判定 |
+| --- | --- | --- |
+| `src/runtime_service/services/` | 唯一的生产 Service 所有权边界；每个目录由 Graph 稳定入口和 Service 测试证明 | 保留 |
+| 应用根 `services/` | 不得存放生产实现或说明副本；避免与 `src/runtime_service/services/` 形成双真源 | 禁止 |
+| `scripts/` | 只能是人工调用的开发、验收或受控运维入口；不得被生产包导入，必须从环境读取 secret | 允许 |
+| `spikes/<name>/` | 必须与生产 package/import/deploy 隔离，并有 owner、OpenSpec 结论和退出日期 | 仅限有活跃评估的短期实验；结论为不采用时先归档证据再删除 |
+
+本轮已选定 GraphHarbor，Aegra 实验的 OpenSpec 以 `Abandoned` 归档，
+`spikes/aegra/` 不再保留在活动工作树。正式 GraphHarbor 包已由 `pyproject.toml` 和
+`uv.lock` 固定；本地 wheel 构建/安装脚本不再是受支持路径。
 
 测试目录以 25 号文档为准：公共 Runtime、Middleware、Graph、Integration、Durable 和
 Contract 测试按领域放置；每个 Service 的装配、工具和 Subagent 测试放在

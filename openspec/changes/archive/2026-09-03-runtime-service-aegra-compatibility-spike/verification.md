@@ -1,6 +1,9 @@
 # Verification
 
-- 状态：Owner approved，进入 apply
+- Harness verification schema: v1
+- Status: Complete
+- Disposition: Abandoned
+- Pre-apply review: Approved
 - Change：`runtime-service-aegra-compatibility-spike`
 - Locus：`apps/runtime-service`
 - 最短验证链：Runtime Agent -> Aegra Server -> PostgreSQL/Redis/Langfuse
@@ -113,3 +116,13 @@ Workspace/Backend、Subagent namespace、RuntimeContext worker 恢复和 Langfus
 
 实施完成后更新 30 号调研文档和本文件；若决定引入 Aegra，必须创建新的生产替换 OpenSpec，
 补充依赖、迁移、部署、回滚和运维 Runbook。
+
+## Abandonment Decision
+
+- Owner decision：2026-09-03，选定 GraphHarbor 作为当前 R6 Agent Server，停止 Aegra 并行评估。
+- Disposition：`Abandoned`，不是 `Accepted`；未完成的终态竞争、DeepAgent 跨 Worker 隔离、
+  Context 恢复和 exporter 故障门槛不再补测。
+- Spec sync：不执行。该 change 的 delta spec 是已放弃候选的评估要求，不应写入当前
+  `openspec/specs/`。
+- Source cleanup：归档本 change 后删除 `apps/runtime-service/spikes/aegra/`；本文件、
+  `spike-report.md` 与 30 号调研文档保留为历史决策证据。

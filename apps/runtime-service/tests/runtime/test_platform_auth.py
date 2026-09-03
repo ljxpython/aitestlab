@@ -61,6 +61,7 @@ def test_platform_auth_returns_runtime_facts_without_token(monkeypatch: pytest.M
 def test_platform_auth_rejects_missing_or_invalid_authorization(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PLATFORM_RUNTIME_DELEGATION_SECRET", SECRET)
     monkeypatch.setenv("PLATFORM_RUNTIME_DELEGATION_ISSUER", "runtime-test")
+    monkeypatch.setenv("PLATFORM_RUNTIME_DELEGATION_AUDIENCE", "runtime-service")
     with pytest.raises(Auth.exceptions.HTTPException) as missing:
         asyncio.run(authenticate(authorization=None))
     assert missing.value.status_code == 401

@@ -140,7 +140,6 @@ R2 的范围已由 owner 批准为：Workflow 条件分支和本地 Interrupt/Re
 | `26-runtime-custom-routes-and-model-config-design.md` | 不建设 Custom Route；Platform 管模型目录和快照，Runtime 只做本地能力校验与 Model 构造。 | 没有 Custom Route，符合“不建设”；Runtime 本地 Modeling 已实现。Platform 管理、快照绑定和正式 Gateway 尚未开始，属于 P1 前置缺口。 | **按设计不建设 Custom Route；整条配置链未完成** | ❌ |
 | `27-platform-runtime-integration-phased-design.md` | 先完成独立 Runtime，再通过 Gateway/Token/快照进入 Platform 阶段。 | Runtime 尚未通过 R6；没有进入 Platform Gateway 实施。文档的分阶段方向正确，但前置条件未满足。 | **未完成，按计划后置** | ❌ |
 | `28-runtime-refactor-development-plan.md` | 每阶段有最小门槛；只有真实证据通过才能进入下一阶段；R0-R5 已归档、R6 收口后再进入后续阶段。 | R6 已记录 GraphHarbor `post20` Durable Core、Worker、Workspace、MCP、API restart 和修复后 bridge SSE 真实证据；生产 hardening 按 owner 决策 `deferred`，切流保持 `not_ready`。 | **R6 formal acceptance 通过，生产 hardening deferred** | ❌ |
-| `29-runtime-service-demo-examples-design.md` | 内容并入 28 号文档，不再产生第二份规范。 | 已明确只保留跳转说明，没有产生额外实现要求。 | **已正确收口** | ✅ |
 | `30-agent-server-replacement-research.md` | 替换 Agent Server 只能按完整 R6 硬门槛验证；候选替换不能用 SDK 连接或 mock 冒充 Durable。 | GraphHarbor 已选定并新增第 12 节原子 Harness；`post20` 通用 Durable Core、Runtime Thread Workspace chain 和修复后 bridge SSE 有真实进程证据；Runtime 其他资源、观测、发布、性能和灰度按 owner 决策 `deferred`。 | **R6 formal acceptance 通过，生产 hardening deferred** | ❌ |
 
 ## 4. 当前真正已经实现的能力

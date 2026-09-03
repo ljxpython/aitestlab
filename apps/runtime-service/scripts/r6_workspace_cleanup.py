@@ -8,7 +8,7 @@ import json
 import os
 from pathlib import Path
 
-from runtime_service.services.workspace_policy import (
+from runtime_service.services.workspace_demo.policy import (
     cleanup_expired_workspace_threads,
     expired_workspace_threads,
 )

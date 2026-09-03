@@ -49,10 +49,6 @@
     "mcp_probe": {
       "path": "./src/runtime_service/graphs/mcp_probe.py:get_agent",
       "description": "R6 deterministic Streamable HTTP MCP recovery probe."
-    },
-    "sandbox_demo": {
-      "path": "./src/runtime_service/graphs/sandbox_demo.py:get_agent",
-      "description": "R6-only Sandbox reconnect probe."
     }
   },
   "env": ".env",

@@ -43,6 +43,9 @@ Aegra 曾作为官方 `langgraph-api` Durable Server 的候选进行调研，但
   worker 恢复和 Langfuse 服务端字段查询仍为阻塞项。
 
 因此结论是：**Aegra 的 Spike 结果不转化为当前实现承诺；当前部署不使用 Aegra。**
+2026-09-03 已按 owner 确认将两项 Aegra OpenSpec 以 `Abandoned` 归档，并删除
+`apps/runtime-service/spikes/aegra/`。本节和归档 change 保留研究结论，不再提供可执行的
+Aegra 本地环境或把它列作并行实施路线。
 
 ### 1.2 GraphHarbor
 

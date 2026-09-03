@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from runtime_service.services.workspace_policy import (
+from runtime_service.services.workspace_demo.policy import (
     WorkspaceLimits,
     cleanup_expired_workspace_threads,
     resolve_workspace_path,
