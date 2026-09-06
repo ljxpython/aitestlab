@@ -1,3 +1,4 @@
-from app.modules.assistants.infra.sqlalchemy.repository import SqlAlchemyAssistantsRepository
+"""Deprecated compatibility imports; use :mod:`app.modules.agents.infra`."""
 
-__all__ = ["SqlAlchemyAssistantsRepository"]
+from app.modules.agents.infra import *  # noqa: F401,F403
+

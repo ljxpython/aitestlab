@@ -404,7 +404,8 @@ function openAssistantChat() {
     query: {
       targetType: 'assistant',
       assistantId: targetAssistantId,
-      assistantName: item.value.name || targetAssistantId
+      assistantName: item.value.name || targetAssistantId,
+      startNew: '1'
     }
   })
 }
@@ -429,9 +430,9 @@ watch([configPropertyDefs, editConfig], () => {
 <template>
   <section class="pw-page-shell">
     <PageHeader
-      eyebrow="Assistants"
-      :title="item?.name || '助手详情'"
-      description="查看助手档案、参数 schema 和运行配置。这里是旧版 assistant detail 的正式 Vue 承接页。"
+      eyebrow="Agents"
+      :title="item?.name || 'Agent 详情'"
+      description="查看 Agent 档案、参数 schema 和运行配置。旧 Assistant 路由仅作为兼容入口。"
     >
       <template #actions>
         <BaseButton

@@ -12,7 +12,7 @@
     },
     "workflow_demo": {
       "path": "./src/runtime_service/graphs/workflow_demo.py:get_agent",
-      "description": "R2 deterministic Typed StateGraph with conditional routing and local interrupt/resume."
+      "description": "Model-backed workflow Agent with conditional routing and local interrupt/resume."
     },
     "deep_agent_demo": {
       "path": "./src/runtime_service/graphs/deep_agent_demo.py:get_agent",

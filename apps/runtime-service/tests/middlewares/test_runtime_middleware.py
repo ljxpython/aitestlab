@@ -125,7 +125,7 @@ def test_runtime_middleware_filters_unknown_tools_before_model_visibility() -> N
     assert [item.name for item in called[0].tools] == ["read_tool"]
 
 
-def _server_runtime(*, context_hash: str | None = None) -> Runtime:
+def _server_runtime(*, context_hash: str | None = None, operation: str | None = "run-create") -> Runtime:
     user = {
         "runtime_principal": {
             "user_id": "server-user",
@@ -139,7 +139,11 @@ def _server_runtime(*, context_hash: str | None = None) -> Runtime:
             "allowed_model_ids": ["test:model"],
             "allowed_tool_names": ["read_tool"],
         },
-        "runtime_scope": {"tenant_id": "server-tenant", "project_id": "server-project"},
+        "runtime_scope": {
+            "tenant_id": "server-tenant",
+            "project_id": "server-project",
+            "operation": operation,
+        },
         "runtime_context_hash": context_hash or runtime_context_hash(None),
     }
     return Runtime(
@@ -187,6 +191,34 @@ def test_runtime_middleware_rejects_context_hash_mismatch() -> None:
     with pytest.raises(RuntimeAuthError) as error:
         asyncio.run(middleware.awrap_model_call(request, handler))
     assert error.value.code == "runtime.auth.context_hash_mismatch"
+
+
+def test_runtime_middleware_rejects_read_delegation_before_handler() -> None:
+    middleware = RuntimeConfigMiddleware(
+        principal=RuntimePrincipal("constructor-user", "t", "p", "developer", ()),
+        policy=RuntimePolicy("constructor-policy", ("test:model",), ()),
+        defaults=AgentDefaults("test:model", "prompt", "v1"),
+        base_model=FakeListChatModel(responses=["ok"]),
+        local_fallback=False,
+    )
+    request = ModelRequest(
+        model=FakeListChatModel(responses=["ok"]),
+        messages=[HumanMessage(content="hello")],
+        runtime=_server_runtime(operation="read"),
+    )
+    called = False
+
+    async def handler(_request: ModelRequest):
+        nonlocal called
+        called = True
+        return "response"
+
+    with pytest.raises(RuntimeAuthError) as error:
+        asyncio.run(middleware.awrap_model_call(request, handler))
+
+    assert error.value.code == "runtime.auth.invalid_principal"
+    assert error.value.field == "operation"
+    assert called is False
 
 
 def test_model_call_timeout_propagates_timeout() -> None:

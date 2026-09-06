@@ -34,7 +34,7 @@ export async function listAssistantsPage(
     return { items: [], total: 0 }
   }
 
-  const response = await platformHttpClient.get(`/api/projects/${projectId}/assistants`, {
+  const response = await platformHttpClient.get(`/api/projects/${projectId}/agents`, {
     params: {
       limit: options?.limit ?? 50,
       offset: options?.offset ?? 0,
@@ -51,7 +51,7 @@ export async function createAssistant(
   payload: AssistantRuntimePayload
 ): Promise<ManagementAssistant> {
   const response = await platformHttpClient.post(
-    `/api/projects/${projectId}/assistants`,
+    `/api/projects/${projectId}/agents`,
     normalizeAssistantRuntimePayload(payload)
   )
   return response.data as ManagementAssistant
@@ -61,7 +61,7 @@ export async function getAssistant(
   assistantId: string,
   projectId?: string
 ): Promise<ManagementAssistant> {
-  const response = await platformHttpClient.get(`/api/assistants/${assistantId}`, {
+  const response = await platformHttpClient.get(`/api/agents/${assistantId}`, {
     headers: getProjectHeaders(projectId)
   })
 
@@ -74,7 +74,7 @@ export async function updateAssistant(
   projectId?: string
 ): Promise<ManagementAssistant> {
   const response = await platformHttpClient.patch(
-    `/api/assistants/${assistantId}`,
+    `/api/agents/${assistantId}`,
     normalizeAssistantRuntimePayload(payload),
     {
       headers: getProjectHeaders(projectId)
@@ -89,7 +89,7 @@ export async function resyncAssistant(
   projectId?: string
 ): Promise<ManagementAssistant> {
   const response = await platformHttpClient.post(
-    `/api/assistants/${assistantId}/resync`,
+    `/api/agents/${assistantId}/resync`,
     {},
     {
       headers: getProjectHeaders(projectId)
@@ -128,7 +128,7 @@ export async function deleteAssistant(
   },
   projectId?: string
 ): Promise<{ ok: boolean }> {
-  const response = await platformHttpClient.delete(`/api/assistants/${assistantId}`, {
+  const response = await platformHttpClient.delete(`/api/agents/${assistantId}`, {
     params: {
       delete_runtime: options?.deleteRuntime || undefined,
       delete_threads: options?.deleteThreads || undefined
@@ -179,3 +179,13 @@ export async function findAssistantByTargetId(
     }) || null
   )
 }
+
+// Product-facing aliases. Keep the module path and wire format stable while
+// the historical Assistant API is retired.
+export const listAgentsPage = listAssistantsPage
+export const createAgent = createAssistant
+export const getAgent = getAssistant
+export const updateAgent = updateAssistant
+export const resyncAgent = resyncAssistant
+export const deleteAgent = deleteAssistant
+export const findAgentByTargetId = findAssistantByTargetId

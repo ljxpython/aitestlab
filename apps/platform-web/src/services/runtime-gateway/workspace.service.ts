@@ -9,6 +9,7 @@ export type RuntimeGatewayErrorKind =
   | 'unauthorized'
   | 'forbidden'
   | 'not_found'
+  | 'conflict'
   | 'bad_request'
   | 'server_error'
   | 'unknown'
@@ -114,6 +115,14 @@ function extractErrorStatus(error: unknown): number | null {
     if (typeof statusCode === 'number') {
       return statusCode
     }
+
+    const message = (error as { message?: unknown }).message
+    if (typeof message === 'string') {
+      const protocolStatus = message.match(/(?:Protocol request failed|HTTP)\s*:?\s*(\d{3})/i)
+      if (protocolStatus) {
+        return Number(protocolStatus[1])
+      }
+    }
   }
 
   return null
@@ -125,10 +134,28 @@ function extractErrorCode(error: unknown): string {
     if (data && typeof data === 'object' && typeof (data as { code?: unknown }).code === 'string') {
       return ((data as { code?: string }).code || '').trim()
     }
+    if (
+      data &&
+      typeof data === 'object' &&
+      (data as { error?: unknown }).error &&
+      typeof (data as { error: unknown }).error === 'object'
+    ) {
+      const code = ((data as { error: { code?: unknown } }).error.code)
+      if (typeof code === 'string' && code.trim()) {
+        return code.trim()
+      }
+    }
   }
 
   if (error && typeof error === 'object' && typeof (error as { code?: unknown }).code === 'string') {
     return ((error as { code?: string }).code || '').trim()
+  }
+
+  if (error && typeof error === 'object') {
+    const nested = (error as { error?: unknown }).error
+    if (nested && typeof nested === 'object' && typeof (nested as { code?: unknown }).code === 'string') {
+      return ((nested as { code: string }).code || '').trim()
+    }
   }
 
   return ''
@@ -142,6 +169,13 @@ function extractErrorMessage(error: unknown, fallback: string): string {
         const candidate = (data as Record<string, unknown>)[key]
         if (typeof candidate === 'string' && candidate.trim()) {
           return candidate.trim()
+        }
+      }
+      const nested = (data as { error?: unknown }).error
+      if (nested && typeof nested === 'object') {
+        const message = (nested as { message?: unknown }).message
+        if (typeof message === 'string' && message.trim()) {
+          return message.trim()
         }
       }
     }
@@ -160,6 +194,13 @@ function extractErrorMessage(error: unknown, fallback: string): string {
       const candidate = (error as Record<string, unknown>)[key]
       if (typeof candidate === 'string' && candidate.trim()) {
         return candidate.trim()
+      }
+    }
+    const nested = (error as { error?: unknown }).error
+    if (nested && typeof nested === 'object') {
+      const message = (nested as { message?: unknown }).message
+      if (typeof message === 'string' && message.trim()) {
+        return message.trim()
       }
     }
   }
@@ -192,6 +233,9 @@ function resolveRuntimeGatewayErrorKind(status: number | null): RuntimeGatewayEr
   if (status === 404) {
     return 'not_found'
   }
+  if (status === 409) {
+    return 'conflict'
+  }
   if (status === 400 || status === 422) {
     return 'bad_request'
   }
@@ -206,11 +250,26 @@ export function normalizeRuntimeGatewayError(
   fallbackMessage: string
 ): RuntimeGatewayErrorMeta {
   const status = extractErrorStatus(error)
+  const code = extractErrorCode(error)
+  const rawMessage = extractErrorMessage(error, fallbackMessage)
+  let message = normalizeRuntimeGatewayMessage(error, rawMessage)
+  if (code === 'thread_active_run_conflict') {
+    message = '当前线程已有运行中的任务，请先处理待确认事项或点击“停止生成”后再发送。'
+  } else if (code === 'run_start_in_progress') {
+    message = '上一条消息仍在启动中，页面正在同步线程状态，请稍候。'
+  } else if (code === 'idempotency_key_conflict') {
+    message = '请求标识已被其他消息使用，请重新发送。'
+  } else if (
+    status === 409 &&
+    (!message.trim() || /^protocol request failed:/i.test(message))
+  ) {
+    message = '当前线程已有运行中的任务，请先处理待确认事项或点击“停止生成”后再发送。'
+  }
   return {
     kind: resolveRuntimeGatewayErrorKind(status),
     status,
-    code: extractErrorCode(error),
-    message: normalizeRuntimeGatewayMessage(error, extractErrorMessage(error, fallbackMessage))
+    code,
+    message
   }
 }
 
@@ -468,6 +527,16 @@ export async function cancelRuntimeRun(
 ): Promise<void> {
   const client = createLanggraphClient(projectId)
   await client.runs.cancel(threadId, runId, false, 'interrupt')
+}
+
+export async function getRuntimeRunStatus(
+  projectId: string,
+  threadId: string,
+  runId: string
+): Promise<string> {
+  const client = createLanggraphClient(projectId)
+  const run = await client.runs.get(threadId, runId) as { status?: unknown }
+  return typeof run.status === 'string' ? run.status : ''
 }
 
 export async function updateRuntimeThreadState(

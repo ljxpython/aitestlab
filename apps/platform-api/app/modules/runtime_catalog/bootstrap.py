@@ -14,6 +14,7 @@ def build_runtime_catalog_service(
     settings: Settings,
     session_factory: sessionmaker[Session] | None,
     forwarded_headers: Mapping[str, str] | None = None,
+    tenant_id: str = "__default",
 ) -> RuntimeCatalogService:
     upstream = LangGraphRuntimeClient(
         base_url=settings.langgraph_upstream_url,
@@ -25,4 +26,6 @@ def build_runtime_catalog_service(
         session_factory=session_factory,
         upstream=upstream,
         runtime_base_url=settings.langgraph_upstream_url,
+        settings=settings,
+        tenant_id=tenant_id,
     )

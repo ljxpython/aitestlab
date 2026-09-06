@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.context.models import ActorContext
-from app.modules.assistants.application import AssistantsService
+from app.modules.agents.application import AssistantsService
 from app.modules.operations.application.artifacts import LocalOperationArtifactStore
 from app.modules.operations.application.ports import (
     OperationExecutionResult,

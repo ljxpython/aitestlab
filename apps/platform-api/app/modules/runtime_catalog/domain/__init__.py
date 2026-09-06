@@ -4,6 +4,8 @@ from app.modules.runtime_catalog.domain.models import (
     RuntimeGraphCatalogList,
     RuntimeModelCatalogItem,
     RuntimeModelCatalogList,
+    RuntimeModelCreate,
+    RuntimeModelUpdate,
     RuntimeToolCatalogItem,
     RuntimeToolCatalogList,
 )
@@ -14,6 +16,8 @@ __all__ = [
     "RuntimeGraphCatalogList",
     "RuntimeModelCatalogItem",
     "RuntimeModelCatalogList",
+    "RuntimeModelCreate",
+    "RuntimeModelUpdate",
     "RuntimeToolCatalogItem",
     "RuntimeToolCatalogList",
 ]

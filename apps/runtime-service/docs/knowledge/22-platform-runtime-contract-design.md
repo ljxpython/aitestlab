@@ -2,7 +2,13 @@
 
 > 文档类型：Draft
 >
-> 状态：讨论结论，暂不替代 `docs/standards/` 下的现行规范
+> 生命周期：Superseded（2026-09-03）
+>
+> 状态：仅保留历史推理，不得作为 P1 新实现依据。新的讨论入口见
+> [`Platform Runtime Integration 专项`](./platform-runtime-integration/README.md)，
+> 规范与执行真源见
+> [`redesign-platform-runtime-integration`](../../../../openspec/changes/redesign-platform-runtime-integration/)。
+> owner 批准退役矩阵后再物理归档本文。
 >
 > 关联文档：`10-production-agent-platform-roadmap.md`、
 > `12-runtime-context-and-local-debug-architecture.md`、

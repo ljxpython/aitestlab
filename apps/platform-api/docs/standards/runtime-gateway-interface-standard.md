@@ -39,6 +39,16 @@
 
 ## 2. 核心边界
 
+### 2.0 Agent Server 与产品 Agent 分离
+
+Platform 的产品对象统一称为 Agent，稳定执行键为 `agent_key = graph_id`。GraphHarbor 是通用
+LangGraph-compatible Agent Server，只持有 Thread/Run/Checkpoint/Event 执行事实；Platform API
+不通过创建、更新或删除 upstream Assistant 来同步产品数据。历史 `assistant` 字段和 URL 仅在有
+characterization fixture 的读取兼容边界保留。
+
+Runtime delegation 的 `scope.operation` 只允许 `read` 或 `run-create`，按请求边界签发；缺失、
+未知或越权 scope 必须在 Runtime Auth 处 fail closed。
+
 ### 2.1 control plane 负责治理，不吞 runtime 执行
 
 `platform-api` 负责：
@@ -96,6 +106,17 @@ platform-web -> platform-api -> runtime-service
    - 或 `platform-api -> runtime-service`
    - 或 `platform-api -> interaction-data-service`
 3. 只有当公开 managed interface 本身被改动时，才要求正式平台链路验证
+
+### 2.6 模型配置与运行目标
+
+模型管理只提供七个字段：`provider`、`display_name`、`base_url`、`protocol`、`model`、
+`api_key`、`enabled`。`api_key` 只写不读，由 Platform API 使用部署级 master key 加密；列表和
+详情只返回 `credential_configured`。Gateway 只把已启用且有项目权限的逻辑 `model` 写入标准
+Run `context`，不向浏览器、GraphHarbor、日志或审计详情暴露连接密钥，也不引入独立模型代理、
+`execution_model_id` 或 Secret Store 编排。
+
+运行目标统一使用 Agent 的 `agent_key = graph_id`。SDK 需要的 `assistant_id` 只是标准协议字段，
+由 Gateway 从已校验的 Agent key 填充；Platform 不创建或同步 upstream Assistant。
 
 ---
 
@@ -165,3 +186,7 @@ platform-web -> platform-api -> runtime-service
 - `../delivery/runtime-contract-manual-integration-checklist.md`
 
 这些文档提供现行决策与验收事实，但不替代本文 current-standard 的角色。
+
+模型连接配置由 Platform Catalog 唯一持有。Run 创建时 Gateway 只向 Agent Server 传递短期 opaque
+`_runtime_model_ref`；Runtime 通过受控内部端点按项目校验引用并读取解密连接。API key 不得进入浏览器响应、Run
+快照、GraphHarbor 持久化或普通日志。

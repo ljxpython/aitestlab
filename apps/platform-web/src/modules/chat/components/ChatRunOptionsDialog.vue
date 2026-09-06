@@ -3,23 +3,17 @@ import BaseButton from '@/components/base/BaseButton.vue'
 import BaseDialog from '@/components/base/BaseDialog.vue'
 import BaseSelect from '@/components/base/BaseSelect.vue'
 import type { ChatRunOptions } from '../types'
-import type { RuntimeModelItem, RuntimeToolItem } from '@/types/management'
+import type { RuntimeModelItem } from '@/types/management'
 
 const props = defineProps<{
   show: boolean
-  selectedToolsLabel: string
   draftRunOptions: ChatRunOptions
   runtimeModels: RuntimeModelItem[]
-  runtimeTools: RuntimeToolItem[]
-  loadingRuntime: boolean
 }>()
 
 const emit = defineEmits<{
   close: []
   'update:model-id': [value: string]
-  'update:system-prompt': [value: string]
-  'update:enable-tools': [value: boolean]
-  'toggle-tool': [toolKey: string]
   'update:temperature': [value: string]
   'update:max-tokens': [value: string]
   restore: []
@@ -30,9 +24,6 @@ function getInputValue(event: Event) {
   return (event.target as HTMLInputElement | HTMLSelectElement | null)?.value || ''
 }
 
-function getCheckedValue(event: Event) {
-  return Boolean((event.target as HTMLInputElement | null)?.checked)
-}
 </script>
 
 <template>
@@ -56,14 +47,6 @@ function getCheckedValue(event: Event) {
             {{ props.draftRunOptions.modelId || '默认模型' }}
           </div>
         </div>
-        <div class="pw-panel-muted p-4">
-          <div class="text-xs text-gray-400 dark:text-dark-400">
-            工具策略
-          </div>
-          <div class="mt-2 text-sm font-semibold text-gray-900 dark:text-white">
-            {{ selectedToolsLabel }}
-          </div>
-        </div>
       </div>
 
       <label class="block">
@@ -85,74 +68,6 @@ function getCheckedValue(event: Event) {
         </BaseSelect>
       </label>
 
-      <label class="block">
-        <span class="pw-input-label">System Prompt</span>
-        <textarea
-          :value="props.draftRunOptions.systemPrompt"
-          rows="5"
-          class="pw-input min-h-[132px] resize-y text-sm leading-7"
-          @input="emit('update:system-prompt', getInputValue($event))"
-        />
-      </label>
-
-      <div class="pw-panel p-4">
-        <label class="flex items-center justify-between gap-3">
-          <div>
-            <div class="text-sm font-semibold text-gray-900 dark:text-white">
-              工具开关
-            </div>
-            <div class="mt-1 text-xs leading-6 text-gray-500 dark:text-dark-300">
-              {{ selectedToolsLabel }}
-            </div>
-          </div>
-          <input
-            :checked="props.draftRunOptions.enableTools"
-            type="checkbox"
-            class="pw-table-checkbox"
-            @change="emit('update:enable-tools', getCheckedValue($event))"
-          >
-        </label>
-
-        <div
-          v-if="props.draftRunOptions.enableTools"
-          class="mt-4 max-h-72 space-y-2 overflow-y-auto"
-        >
-          <label
-            v-for="tool in props.runtimeTools"
-            :key="tool.id"
-            class="pw-panel-muted flex items-start gap-3 px-3 py-3 text-sm"
-          >
-            <input
-              :checked="props.draftRunOptions.toolNames.includes(tool.tool_key)"
-              type="checkbox"
-              class="pw-table-checkbox mt-1"
-              @change="emit('toggle-tool', tool.tool_key)"
-            >
-            <div class="min-w-0">
-              <div class="font-semibold text-gray-900 dark:text-white">
-                {{ tool.name || tool.tool_key }}
-              </div>
-              <div class="mt-1 text-xs leading-6 text-gray-500 dark:text-dark-300">
-                {{ tool.description || tool.source || '暂无描述' }}
-              </div>
-            </div>
-          </label>
-
-          <div
-            v-if="props.loadingRuntime"
-            class="text-xs leading-6 text-gray-400 dark:text-dark-400"
-          >
-            正在加载运行时目录...
-          </div>
-
-          <div
-            v-else-if="props.runtimeTools.length === 0"
-            class="text-xs leading-6 text-gray-400 dark:text-dark-400"
-          >
-            当前没有可选工具目录。
-          </div>
-        </div>
-      </div>
 
       <div class="grid gap-4 md:grid-cols-2">
         <label class="block">

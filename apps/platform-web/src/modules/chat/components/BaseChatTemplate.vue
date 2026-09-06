@@ -43,6 +43,7 @@ const props = withDefaults(
     display: ChatWorkspaceDisplay
     features?: ChatWorkspaceFeatures
     initialThreadId?: string
+    startNewThreadOnLoad?: boolean
     sourceNote?: string
     contextNotice?: string
     allowResetTarget?: boolean
@@ -50,6 +51,7 @@ const props = withDefaults(
   {
     features: () => ({}),
     initialThreadId: '',
+    startNewThreadOnLoad: false,
     sourceNote: '',
     contextNotice: '',
     allowResetTarget: false
@@ -103,7 +105,8 @@ const draftRunOptions = reactive({
 const workspace = useChatWorkspace({
   projectId: computed(() => activeProjectId.value || ''),
   target: computed(() => props.target),
-  initialThreadId: computed(() => props.initialThreadId?.trim() || '')
+  initialThreadId: computed(() => props.initialThreadId?.trim() || ''),
+  startNewThreadOnLoad: computed(() => props.startNewThreadOnLoad)
 })
 const attachmentState = useChatAttachments()
 
@@ -150,15 +153,6 @@ const canSendFreshMessage = computed(
     hasComposerContent.value
 )
 const isInspectingMessageMeta = computed(() => expandedMessageMetaIds.value.length > 0)
-const selectedToolsLabel = computed(() => {
-  if (!draftRunOptions.enableTools) {
-    return '已关闭'
-  }
-  if (draftRunOptions.toolNames.length === 0) {
-    return '全部按默认策略'
-  }
-  return `${draftRunOptions.toolNames.length} 个工具`
-})
 const liveFollowView = computed(() =>
   buildChatLiveFollowView({
     autoFollowEnabled: autoFollowEnabled.value,
@@ -839,9 +833,6 @@ function handleResetTarget() {
 
 function syncDraftRunOptions() {
   draftRunOptions.modelId = workspace.runOptions.modelId
-  draftRunOptions.systemPrompt = workspace.runOptions.systemPrompt
-  draftRunOptions.enableTools = workspace.runOptions.enableTools
-  draftRunOptions.toolNames = [...workspace.runOptions.toolNames]
   draftRunOptions.temperature = workspace.runOptions.temperature
   draftRunOptions.maxTokens = workspace.runOptions.maxTokens
 }
@@ -856,27 +847,12 @@ function openInspectorDrawer(tab: InspectorTabKey = 'overview') {
   contextDrawerOpen.value = true
 }
 
-function toggleDraftTool(toolKey: string) {
-  const normalizedToolKey = toolKey.trim()
-  if (!normalizedToolKey) {
-    return
-  }
-
-  const exists = draftRunOptions.toolNames.includes(normalizedToolKey)
-  draftRunOptions.toolNames = exists
-    ? draftRunOptions.toolNames.filter((item) => item !== normalizedToolKey)
-    : [...draftRunOptions.toolNames, normalizedToolKey]
-}
-
 function restoreDraftRunOptions() {
   syncDraftRunOptions()
 }
 
 function applyDraftRunOptions() {
   workspace.runOptions.modelId = draftRunOptions.modelId || workspace.defaultModelId.value
-  workspace.runOptions.systemPrompt = draftRunOptions.systemPrompt
-  workspace.runOptions.enableTools = draftRunOptions.enableTools
-  workspace.runOptions.toolNames = [...draftRunOptions.toolNames]
   workspace.runOptions.temperature = draftRunOptions.temperature
   workspace.runOptions.maxTokens = draftRunOptions.maxTokens
   runtimeOptionsDialogOpen.value = false
@@ -912,6 +888,14 @@ function handleMessageMetaExpandedChange(messageId: string, expanded: boolean) {
 
 async function handleCancelRun() {
   await workspace.cancelActiveRun()
+}
+
+async function handleStartNewThread() {
+  const started = await workspace.startNewThread()
+  if (started) {
+    // Clear the route in the same tick so a stale initialThreadId cannot be restored.
+    syncThreadIdToRoute('')
+  }
 }
 </script>
 
@@ -956,7 +940,7 @@ async function handleCancelRun() {
 
     <PageHeader
       v-if="!isFocusMode"
-      :eyebrow="props.target?.targetType === 'graph' ? 'Graph Chat' : 'Assistant Chat'"
+      :eyebrow="props.target?.targetType === 'graph' ? 'Graph Chat' : 'Agent Chat'"
       :title="display.title"
       :description="display.description"
       :compact="isSurfaceCompact"
@@ -1031,7 +1015,7 @@ async function handleCancelRun() {
       v-else-if="!target"
       icon="chat"
       title="请先选择聊天目标"
-      description="当前页已经是聊天工作台，但没有明确 assistant 或 graph，先从入口页选一个真实目标再进来。"
+      description="当前页已经是聊天工作台，但没有明确 Agent 或 Graph，先从入口页选一个真实目标再进来。"
     />
 
     <EmptyState
@@ -1148,7 +1132,7 @@ async function handleCancelRun() {
               <BaseButton
                 class="h-8 px-3 text-xs"
                 :disabled="!workspace.canStartThread.value"
-                @click="workspace.startNewThread"
+                @click="handleStartNewThread"
               >
                 <BaseIcon
                   name="chat"
@@ -1321,7 +1305,7 @@ async function handleCancelRun() {
         :focus-mode="isFocusMode"
         @send="handleSend"
         @cancel="handleCancelRun"
-        @new-thread="workspace.startNewThread"
+        @new-thread="handleStartNewThread"
         @file-input-change="attachmentState.handleInputChange"
         @composer-paste="attachmentState.handlePaste"
         @remove-attachment="attachmentState.removeAttachment"
@@ -1346,7 +1330,7 @@ async function handleCancelRun() {
       @close="threadsDrawerOpen = false"
       @update:search="threadSearch = $event"
       @update:status-filter="threadStatusFilter = $event"
-      @start-new-thread="workspace.startNewThread"
+      @start-new-thread="handleStartNewThread"
       @select-thread="handleSelectThread"
       @delete-thread="handleDeleteThread"
     />
@@ -1380,16 +1364,10 @@ async function handleCancelRun() {
 
     <ChatRunOptionsDialog
       :show="runtimeOptionsDialogOpen"
-      :selected-tools-label="selectedToolsLabel"
       :draft-run-options="draftRunOptions"
       :runtime-models="workspace.runtimeModels.value"
-      :runtime-tools="workspace.runtimeTools.value"
-      :loading-runtime="workspace.loadingRuntime.value"
       @close="runtimeOptionsDialogOpen = false"
       @update:model-id="draftRunOptions.modelId = $event"
-      @update:system-prompt="draftRunOptions.systemPrompt = $event"
-      @update:enable-tools="draftRunOptions.enableTools = $event"
-      @toggle-tool="toggleDraftTool"
       @update:temperature="draftRunOptions.temperature = $event"
       @update:max-tokens="draftRunOptions.maxTokens = $event"
       @restore="restoreDraftRunOptions"

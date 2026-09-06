@@ -11,7 +11,7 @@ def import_core_models() -> None:
     import app.modules.identity.infra.sqlalchemy.models  # noqa: F401
     import app.modules.projects.infra.sqlalchemy.models  # noqa: F401
     import app.modules.announcements.infra.sqlalchemy.models  # noqa: F401
-    import app.modules.assistants.infra.sqlalchemy.models  # noqa: F401
+    import app.modules.agents.infra.sqlalchemy.models  # noqa: F401
     import app.modules.audit.infra.sqlalchemy.models  # noqa: F401
     import app.modules.operations.infra.sqlalchemy.models  # noqa: F401
     import app.modules.runtime_catalog.infra.sqlalchemy.models  # noqa: F401

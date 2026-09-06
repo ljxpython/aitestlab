@@ -1,22 +1,16 @@
 from __future__ import annotations
 
-import time
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-
-from app.core.context.models import ActorContext, PlatformRequestContext, ProjectContext, RequestContext, TenantContext
 from app.core.errors import PlatformApiError
 from app.adapters.langgraph.runs_sdk_adapter import LangGraphRunsSdkAdapter
 from app.adapters.langgraph.runtime_client import LangGraphRuntimeClient
 from app.adapters.langgraph.runtime_gateway_upstream import LangGraphRuntimeGatewayUpstream
 from app.adapters.langgraph.threads_sdk_adapter import LangGraphThreadsSdkAdapter
-from app.entrypoints.http.dependencies import get_actor_context
-from app.modules.runtime_gateway.presentation.http import get_runtime_gateway_service, router
+from app.modules.runtime_gateway.presentation.http import router
 
 
 async def _collect_chunks(stream):
@@ -100,6 +94,28 @@ class RuntimeGatewaySdkAdaptersTest(unittest.IsolatedAsyncioTestCase):
         body = b"".join(chunks).decode("utf-8")
         self.assertIn("event: tasks", body)
         self.assertIn('data: {"current":"step-1"}', body)
+        fake_client.runs.join_stream.assert_called_once_with(
+            "thread-1",
+            "run-1",
+            stream_mode="values",
+            cancel_on_disconnect=False,
+        )
+
+    async def test_runs_join_stream_rejects_disconnect_cancellation(self) -> None:
+        fake_client = SimpleNamespace(runs=SimpleNamespace(join_stream=Mock()))
+        with patch(
+            "app.adapters.langgraph.runs_sdk_adapter.get_langgraph_client",
+            return_value=fake_client,
+        ):
+            adapter = LangGraphRunsSdkAdapter(base_url="http://example.com")
+            with self.assertRaisesRegex(ValueError, "cancel_on_disconnect=true"):
+                await adapter.join_stream(
+                    "thread-1",
+                    "run-1",
+                    {"cancel_on_disconnect": True},
+                )
+
+        fake_client.runs.join_stream.assert_not_called()
 
     async def test_runs_cancel_many_passthrough_none(self) -> None:
         fake_client = SimpleNamespace(
@@ -162,46 +178,33 @@ class RuntimeGatewaySdkAdaptersTest(unittest.IsolatedAsyncioTestCase):
 
 
 class RuntimeGatewayRouterSmokeTest(unittest.TestCase):
-    def test_cancel_route_normalizes_none_to_ack(self) -> None:
-        project_id = "05077df4-3cb6-4266-ac0a-def112643292"
-        actor = ActorContext(
-            user_id="user-1",
-            platform_roles=("platform_super_admin",),
-            project_roles={project_id: ("project_admin",)},
-        )
+    def test_global_run_surface_is_not_public(self) -> None:
+        paths = {route.path for route in router.routes}
+        self.assertNotIn("/api/langgraph/runs", paths)
+        self.assertNotIn("/api/langgraph/runs/cancel", paths)
 
-        class _FakeService:
-            async def cancel_runs(self, *, actor, project_id, payload):  # type: ignore[no-untyped-def]
-                return None
-
-        app = FastAPI()
-
-        @app.middleware("http")
-        async def inject_platform_context(request, call_next):  # type: ignore[no-untyped-def]
-            request.state.request_id = "test-request"
-            request.state.platform_context = PlatformRequestContext(
-                request=RequestContext(
-                    request_id="test-request",
-                    trace_id="test-trace",
-                    method=request.method,
-                    path=request.url.path,
-                    started_at=time.time(),
-                ),
-                tenant=TenantContext(tenant_id=None),
-                project=ProjectContext(project_id=project_id, requested_by_header=True),
-                actor=actor,
-            )
-            return await call_next(request)
-
-        app.dependency_overrides[get_actor_context] = lambda: actor
-        app.dependency_overrides[get_runtime_gateway_service] = lambda: _FakeService()
-        app.include_router(router)
-
-        client = TestClient(app)
-        response = client.post("/api/langgraph/runs/cancel", json={"status": "pending"})
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"ok": True})
+    def test_chat_allowlist_keeps_thread_run_and_protocol_surfaces(self) -> None:
+        paths = {route.path for route in router.routes}
+        for path in (
+            "/api/langgraph/info",
+            "/api/langgraph/graphs/search",
+            "/api/langgraph/graphs/count",
+            "/api/langgraph/threads",
+            "/api/langgraph/threads/search",
+            "/api/langgraph/threads/count",
+            "/api/langgraph/threads/{thread_id}",
+            "/api/langgraph/threads/{thread_id}/state",
+            "/api/langgraph/threads/{thread_id}/history",
+            "/api/langgraph/threads/{thread_id}/runs",
+            "/api/langgraph/threads/{thread_id}/runs/stream",
+            "/api/langgraph/threads/{thread_id}/commands",
+            "/api/langgraph/threads/{thread_id}/stream/events",
+            "/api/langgraph/threads/{thread_id}/runs/{run_id}",
+            "/api/langgraph/threads/{thread_id}/runs/{run_id}/join",
+            "/api/langgraph/threads/{thread_id}/runs/{run_id}/stream",
+            "/api/langgraph/threads/{thread_id}/runs/{run_id}/cancel",
+        ):
+            self.assertIn(path, paths)
 
 
 class RuntimeGatewayErrorMappingTest(unittest.IsolatedAsyncioTestCase):

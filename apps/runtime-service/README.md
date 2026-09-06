@@ -14,11 +14,11 @@ apps/runtime-service/src/runtime_service/
 
 R0 当前提供两个参考入口：
 
-- `reference_agent`：`create_agent` + fake model
-- `workflow_demo`：Typed `StateGraph` + 确定性节点
+- `reference_agent`：`create_agent` + Runtime 模型解析
+- `workflow_demo`：真实模型 `create_agent` + Typed `StateGraph` 条件路由/HITL
 
-生产配置 `langgraph.json` 只注册 `reference_agent`；本地学习配置
-`langgraph.demo.json` 注册两个 Demo。每个 Service 的正式入口都是：
+生产配置 `langgraph.json` 注册 `reference_agent` 和真实模型驱动的 `workflow_demo`；本地学习配置
+`langgraph.demo.json` 额外注册能力 Demo。每个 Service 的正式入口都是：
 
 ```python
 async def get_agent(config: RunnableConfig) -> Pregel:
@@ -41,12 +41,13 @@ uv run --frozen graphharbor --version
 安装和启动使用 `.venv/bin/...` 或 `uv run --frozen ...`，不依赖相邻 GraphHarbor 源码仓库、
 本地 wheel 或 `tool.uv.sources` override。
 
-真实模型 E2E 使用项目根 `.env`。该文件已加入 Git 忽略，变量从本机
-`~/.my_best/.env` 注入：
+直接 Runtime Provider smoke 使用项目根 `.env`。正式 Platform Run 不读取这些变量，而是使用
+Platform Models 目录签发的短期引用，并通过 `PLATFORM_RUNTIME_MODEL_CONFIG_URL` 获取连接配置。
+该文件已加入 Git 忽略，变量从本机 `~/.my_best/.env` 注入：
 
 - `DEEPSEEK_PROXY_URL`、`DEEPSEEK_PROXY_API_KEY`、`DEEPSEEK_PROXY_DEFAULT_MODEL`：文本模型
 - `GPT_PROXY_URL`、`GPT_PROXY_API_KEY`、`GPT_PROXY_DEFAULT_MODEL`：多模态模型
-- `RUNTIME_E2E=1`：显式开启真实模型 E2E
+- Provider smoke 使用 `tests/e2e` 的 `e2e` marker 选择，不依赖启动开关
 
 不要把 API Key 写入 `.env.example`、测试 fixture、日志或 OpenSpec。缺少真实模型凭据时，
 真实 E2E 必须报告未执行或失败，不能自动降级为 fake model。
@@ -80,6 +81,28 @@ RUNTIME_R5=1 uv run pytest tests/e2e/test_langfuse_real.py -m e2e -q
 
 ## GraphHarbor 启动
 
+### 本地进程模式
+
+需要同时启动 Runtime 和 Platform 时，从仓库根目录执行：
+
+```bash
+bash "./scripts/local-stack.sh" doctor
+bash "./scripts/local-stack.sh" start
+```
+
+停止和查看状态：
+
+```bash
+bash "./scripts/local-stack.sh" status
+bash "./scripts/local-stack.sh" stop
+```
+
+该脚本使用本机 PostgreSQL/Redis，直接管理 GraphHarbor API、Worker、Platform API、Platform Worker
+和 Platform Web 的本地进程；它不影响旧的 `platform-web-demo-*` 脚本。GraphHarbor 本身没有前端，
+平台前端是 `platform-web`。`doctor` 会校验 Runtime 配置、本机 PostgreSQL/Redis、Platform upstream、
+Delegation secret 和端口；`start` 会先执行数据库迁移，再启动进程并等待 Runtime `/ready` 和 Platform API 健康检查。
+项目脚本不会自动删除 PostgreSQL 数据目录中的 `postmaster.pid`；检测到失效锁时只给出人工确认后的修复提示。
+
 从本目录执行：
 
 ```bash
@@ -99,8 +122,9 @@ uv run --frozen graphharbor serve --host 127.0.0.1 --port 8124 --config ./langgr
 curl http://127.0.0.1:8123/info
 ```
 
-R0 的 fake model 只说明 Service 可以脱离 Provider 执行；GraphHarbor 仍需要隔离 PostgreSQL 和
-Redis。当前 R3 已接入 Runtime 配置、调用上限、Tool Error/Retry 和单次 Model timeout；生产
+测试 fake model 只说明 Service 可以脱离 Provider 执行；正式 `reference_agent` 和 `workflow_demo`
+使用 Runtime 模型解析调用 Provider。GraphHarbor 仍需要隔离 PostgreSQL 和 Redis。当前 R3 已接入
+Runtime 配置、调用上限、Tool Error/Retry 和单次 Model timeout；生产
 Provider fallback/retry 和 Platform Gateway 仍按 28 号计划单独验收。
 
 ## R4 能力 Demo（已完成）
@@ -108,7 +132,7 @@ Provider fallback/retry 和 Platform Gateway 仍按 28 号计划单独验收。
 `langgraph.demo.json` 注册五个可学习 Graph：
 
 - `reference_agent`：`create_agent`、RuntimeContext、Middleware 和显式只读 Tool；
-- `workflow_demo`：Typed `StateGraph`；
+- `workflow_demo`：真实模型驱动的 `create_agent`，外层保留 Typed `StateGraph` 条件路由和 HITL；
 - `deep_agent_demo`：`create_deep_agent`、`StateBackend`、Bundled Skill、缩权 Subagent；
 - `mcp_demo`：Service 私有 stdio fake MCP（`MultiServerMCPClient.get_tools()`）、名称冲突和 allowlist；
 - `backend_demo`：Thread-scoped `StateBackend`。
@@ -157,7 +181,7 @@ uv run pytest tests/test_r0_baseline.py -q
 真实文本模型 E2E：
 
 ```bash
-RUNTIME_E2E=1 uv run pytest tests/e2e/test_reference_agent_real_model.py -m e2e -q
+uv run pytest tests/e2e/test_reference_agent_real_model.py -m e2e -q
 ```
 
 真实模型 E2E 必须使用 DeepSeek 文本中转；后续多模态 E2E 使用 GPT 中转。测试分层和跨服务

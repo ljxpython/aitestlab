@@ -17,6 +17,7 @@ class StoredDurableRun:
     id: str
     project_id: str
     thread_id: str
+    agent_key: str
     idempotency_key: str
     request_digest: str
     run_id: str | None
@@ -25,6 +26,9 @@ class StoredDurableRun:
     active: bool
     created_at: datetime
     updated_at: datetime
+    context_hash: str | None = None
+    context_snapshot: dict | None = None
+    policy_version: str | None = None
 
 
 def _to_stored(record: DurableRunRecord) -> StoredDurableRun:
@@ -32,6 +36,7 @@ def _to_stored(record: DurableRunRecord) -> StoredDurableRun:
         id=str(record.id),
         project_id=record.project_id,
         thread_id=record.thread_id,
+        agent_key=record.agent_key,
         idempotency_key=record.idempotency_key,
         request_digest=record.request_digest,
         run_id=record.run_id,
@@ -40,6 +45,9 @@ def _to_stored(record: DurableRunRecord) -> StoredDurableRun:
         active=record.active_key is not None,
         created_at=record.created_at,
         updated_at=record.updated_at,
+        context_hash=record.context_hash,
+        context_snapshot=record.context_snapshot,
+        policy_version=record.policy_version,
     )
 
 
@@ -69,6 +77,18 @@ class SqlAlchemyDurableRunsRepository:
         )
         return _to_stored(record) if record is not None else None
 
+    def get_bound_agent_key(self, *, project_id: str, thread_id: str) -> str | None:
+        record = self.session.scalar(
+            select(DurableRunRecord)
+            .where(
+                DurableRunRecord.project_id == project_id,
+                DurableRunRecord.thread_id == thread_id,
+                DurableRunRecord.agent_key != "",
+            )
+            .order_by(DurableRunRecord.created_at.asc())
+        )
+        return record.agent_key if record is not None else None
+
     def get_by_run_id(
         self, *, project_id: str, thread_id: str, run_id: str
     ) -> StoredDurableRun | None:
@@ -81,20 +101,66 @@ class SqlAlchemyDurableRunsRepository:
         )
         return _to_stored(record) if record is not None else None
 
+    def replace_active_run_id(
+        self, *, project_id: str, thread_id: str, run_id: str, next_run_id: str
+    ) -> StoredDurableRun | None:
+        record = self.session.scalar(
+            select(DurableRunRecord).where(
+                DurableRunRecord.project_id == project_id,
+                DurableRunRecord.thread_id == thread_id,
+                DurableRunRecord.run_id == run_id,
+                DurableRunRecord.active_key.is_not(None),
+            )
+        )
+        if record is None:
+            return None
+        record.run_id = next_run_id
+        self.session.flush()
+        return _to_stored(record)
+
+    def get_any_by_run_id(self, *, thread_id: str, run_id: str) -> StoredDurableRun | None:
+        record = self.session.scalar(
+            select(DurableRunRecord).where(
+                DurableRunRecord.thread_id == thread_id,
+                DurableRunRecord.run_id == run_id,
+            )
+        )
+        return _to_stored(record) if record is not None else None
+
+    def get_by_operation_id(self, operation_id: str) -> StoredDurableRun | None:
+        from uuid import UUID
+
+        try:
+            operation_uuid = UUID(operation_id)
+        except ValueError:
+            return None
+        record = self.session.scalar(
+            select(DurableRunRecord).where(DurableRunRecord.operation_id == operation_uuid)
+        )
+        return _to_stored(record) if record is not None else None
+
     def create(
         self,
         *,
         project_id: str,
         thread_id: str,
+        agent_key: str,
         idempotency_key: str,
         request_digest: str,
         operation_id: str,
+        context_hash: str | None = None,
+        context_snapshot: dict | None = None,
+        policy_version: str | None = None,
     ) -> StoredDurableRun:
         from uuid import UUID
 
         record = DurableRunRecord(
             project_id=project_id,
             thread_id=thread_id,
+            agent_key=agent_key,
+            context_hash=context_hash,
+            context_snapshot=context_snapshot,
+            policy_version=policy_version,
             idempotency_key=idempotency_key,
             request_digest=request_digest,
             operation_id=UUID(operation_id),
@@ -114,6 +180,17 @@ class SqlAlchemyDurableRunsRepository:
             return None
         record.run_id = run_id
         record.status = "running"
+        self.session.flush()
+        self.session.refresh(record)
+        return _to_stored(record)
+
+    def mark_unknown(self, *, durable_run_id: str) -> StoredDurableRun | None:
+        from uuid import UUID
+
+        record = self.session.get(DurableRunRecord, UUID(durable_run_id))
+        if record is None:
+            return None
+        record.status = "run_start_unknown"
         self.session.flush()
         self.session.refresh(record)
         return _to_stored(record)

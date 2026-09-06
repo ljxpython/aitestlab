@@ -308,7 +308,8 @@ function openAssistantChat(assistant: ManagementAssistant) {
     query: {
       targetType: 'assistant',
       assistantId,
-      assistantName: assistant.name || assistantId
+      assistantName: assistant.name || assistantId,
+      startNew: '1'
     }
   })
 }
@@ -418,8 +419,8 @@ watch([() => pagination.page.value, () => pagination.pageSize.value], () => {
 <template>
   <section class="pw-page-shell">
     <PageHeader
-      eyebrow="Assistants"
-      title="助手管理"
+      eyebrow="Agents"
+      title="Agent 管理"
       description="Agent 是汇报里的重点，所以这页先把项目上下文、助手列表和同步状态做成像样的后台页。"
     >
       <template #actions>
@@ -431,7 +432,7 @@ watch([() => pagination.page.value, () => pagination.pageSize.value], () => {
             name="assistant"
             size="sm"
           />
-          {{ canManageAssistants ? '新建助手' : '当前账号只读' }}
+          {{ canManageAssistants ? '新建 Agent' : '当前账号只读' }}
         </BaseButton>
         <BaseButton
           variant="secondary"
@@ -449,7 +450,7 @@ watch([() => pagination.page.value, () => pagination.pageSize.value], () => {
 
     <StateBanner
       v-if="error"
-      title="助手列表加载失败"
+      title="Agent 列表加载失败"
       :description="error"
       variant="danger"
     />

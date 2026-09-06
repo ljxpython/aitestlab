@@ -1,6 +1,6 @@
 import { computed, reactive, ref, watch, type ComputedRef, type Ref } from 'vue'
 import { listRuntimeModelPolicies } from '@/services/runtime-policies/runtime-policies.service'
-import { listRuntimeModels, listRuntimeTools } from '@/services/runtime/runtime.service'
+import { listRuntimeModels } from '@/services/runtime/runtime.service'
 import {
   normalizeRuntimeGatewayError,
   resolveRuntimePermissionDescription,
@@ -18,10 +18,14 @@ type UseChatWorkspaceOptions = {
   projectId: ComputedRef<string>
   target: ComputedRef<ChatResolvedTarget | null>
   initialThreadId: Ref<string>
+  startNewThreadOnLoad?: Ref<boolean>
 }
 
 export function useChatWorkspace(options: UseChatWorkspaceOptions) {
-  const activeThreadId = ref(options.initialThreadId.value.trim())
+  // Validate the URL thread against the project thread list before handing it to
+  // useStream. Otherwise a stale/deleted URL thread makes the SDK issue 404
+  // state/stream requests before the list loader can select a valid thread.
+  const activeThreadId = ref('')
   const activeThread = ref<ManagementThread | null>(null)
   const selectedBranch = ref('')
   const historyItems = ref<Record<string, unknown>[]>([])
@@ -37,7 +41,6 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions) {
     maxTokens: ''
   })
   const runtimeModels = ref(awaitableEmptyModels())
-  const runtimeTools = ref(awaitableEmptyTools())
 
   const streamState = usePlatformChatStream({
     projectId: computed(() => options.projectId.value),
@@ -82,7 +85,6 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions) {
     const projectId = options.projectId.value.trim()
     if (!projectId) {
       runtimeModels.value = awaitableEmptyModels()
-      runtimeTools.value = awaitableEmptyTools()
       defaultModelId.value = ''
       runtimeError.value = ''
       return
@@ -92,13 +94,11 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions) {
     runtimeError.value = ''
 
     try {
-      const [modelsPayload, toolsPayload, modelPoliciesPayload] = await Promise.all([
+      const [modelsPayload, modelPoliciesPayload] = await Promise.all([
         listRuntimeModels(projectId),
-        listRuntimeTools(projectId),
         listRuntimeModelPolicies(projectId).catch(() => null)
       ])
       runtimeModels.value = Array.isArray(modelsPayload.models) ? modelsPayload.models : awaitableEmptyModels()
-      runtimeTools.value = Array.isArray(toolsPayload.tools) ? toolsPayload.tools : awaitableEmptyTools()
       const modelPolicies = Array.isArray(modelPoliciesPayload?.items) ? modelPoliciesPayload.items : []
       defaultModelId.value = resolveChatDefaultModelId(runtimeModels.value, modelPolicies)
 
@@ -108,7 +108,6 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions) {
     } catch (loadError) {
       const normalizedError = normalizeRuntimeGatewayError(loadError, '运行时目录加载失败')
       runtimeModels.value = awaitableEmptyModels()
-      runtimeTools.value = awaitableEmptyTools()
       defaultModelId.value = ''
       runtimeError.value = normalizedError.message
     } finally {
@@ -129,28 +128,25 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions) {
     return true
   }
 
-  function toggleTool(toolKey: string) {
-    const normalizedToolKey = toolKey.trim()
-    if (!normalizedToolKey) {
-      return
-    }
-
-    const exists = runOptions.toolNames.includes(normalizedToolKey)
-    runOptions.toolNames = exists
-      ? runOptions.toolNames.filter((item) => item !== normalizedToolKey)
-      : [...runOptions.toolNames, normalizedToolKey]
-  }
-
   function selectBranch(branch: string) {
     threadWorkspace.stageSelectedBranch(branch)
     streamState.selectBranch(selectedBranch.value)
   }
 
   watch(
-    [() => options.projectId.value, () => options.target.value?.resolvedTargetId],
+    [
+      () => options.projectId.value,
+      () => options.target.value?.resolvedTargetId,
+      () => options.startNewThreadOnLoad?.value ?? false
+    ],
     async () => {
-      threadWorkspace.resetForContextChange(options.initialThreadId.value)
-      await Promise.all([loadRuntimeCatalog(), threadWorkspace.loadThreadList(options.initialThreadId.value)])
+      const startNewThread = options.startNewThreadOnLoad?.value ?? false
+      const initialThreadId = startNewThread ? '' : options.initialThreadId.value
+      threadWorkspace.resetForContextChange('')
+      await Promise.all([
+        loadRuntimeCatalog(),
+        threadWorkspace.loadThreadList(initialThreadId, { selectLatest: !startNewThread })
+      ])
     },
     { immediate: true }
   )
@@ -159,7 +155,14 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions) {
     () => options.initialThreadId.value,
     async (nextThreadId) => {
       const normalizedThreadId = nextThreadId.trim()
-      if (!normalizedThreadId || normalizedThreadId === activeThreadId.value) {
+      if (!normalizedThreadId) {
+        if (activeThreadId.value) {
+          threadWorkspace.clearActiveThreadState()
+        }
+        return
+      }
+
+      if (normalizedThreadId === activeThreadId.value) {
         return
       }
 
@@ -214,7 +217,6 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions) {
     runOptions,
     runtimeError,
     runtimeModels,
-    runtimeTools,
     cancelling: streamState.cancelling,
     selectedBranch,
     selectBranch,
@@ -226,7 +228,6 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions) {
     threadFailureMessage: streamState.threadFailureMessage,
     threadItems: threadWorkspace.threadItems,
     threadSummary: threadWorkspace.threadSummary,
-    toggleTool,
     resumeInterruptedRun: streamState.resumeInterruptedRun,
     resumeAllInterruptedRuns: streamState.resumeAllInterruptedRuns,
     streamHandle: streamState.streamHandle,
@@ -243,8 +244,4 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions) {
 
 function awaitableEmptyModels() {
   return [] as Awaited<ReturnType<typeof listRuntimeModels>>['models']
-}
-
-function awaitableEmptyTools() {
-  return [] as Awaited<ReturnType<typeof listRuntimeTools>>['tools']
 }

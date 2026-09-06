@@ -33,7 +33,7 @@ action 统一使用：
 - `identity.session.created`
 - `identity.password.changed`
 - `project.member.removed`
-- `assistant.updated`
+- `agent.updated`；历史 `assistant.updated` 仅作为旧审计记录的读取兼容
 - `catalog.graph.refresh_requested`
 - `runtime.thread.cancelled`
 - `user.credentials.reset`

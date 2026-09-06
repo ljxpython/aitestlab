@@ -1,5 +1,13 @@
 # Verification
 
+## Lifecycle disposition
+
+- Harness verification schema: v1
+- Status: Complete
+- Disposition: Rejected
+- Pre-apply review: Approved for isolated PoC only
+- Owner decision: 2026-09-05；不 sync delta spec，未来 archive without sync。
+
 ## Status
 
 Rejected - owner UAT rejected the Agent Web product implementation (2026-08-26)

@@ -33,6 +33,10 @@ from app.modules.runtime_policies.domain import (
 from app.modules.runtime_policies.infra import SqlAlchemyRuntimePolicyRepository
 
 
+_DELEGATION_TOOL_PERMISSIONS = {"read_reference": "runtime.tool.read"}
+_NO_ENABLED_MODEL_SENTINEL = "platform:no-enabled-model"
+
+
 class RuntimePolicyOverlayService:
     def __init__(
         self,
@@ -73,12 +77,16 @@ class RuntimePolicyOverlayService:
             allowed_model_ids = sorted(
                 item.model_key
                 for item in models
-                if item.sync_status == "ready"
+                if item.sync_status == "ready" and item.enabled
                 and (
                     str(item.id) not in model_policies
                     or model_policies[str(item.id)].is_enabled
                 )
             )
+            # Keep the delegation structurally valid when every model is disabled;
+            # the Gateway still rejects any run before contacting the upstream.
+            if not allowed_model_ids:
+                allowed_model_ids = [_NO_ENABLED_MODEL_SENTINEL]
             allowed_tool_names = sorted(
                 item.tool_key
                 for item in tools
@@ -87,12 +95,6 @@ class RuntimePolicyOverlayService:
                     str(item.id) not in tool_policies
                     or tool_policies[str(item.id)].is_enabled
                 )
-            )
-
-        if not allowed_model_ids:
-            raise ServiceUnavailableError(
-                code="runtime_policy_not_configured",
-                message="No enabled runtime model is available for this project",
             )
 
         revision_payload = {
@@ -107,6 +109,13 @@ class RuntimePolicyOverlayService:
             "version": revision,
             "allowed_model_ids": allowed_model_ids,
             "allowed_tool_names": allowed_tool_names,
+            "runtime_permissions": sorted(
+                {
+                    _DELEGATION_TOOL_PERMISSIONS[tool_name]
+                    for tool_name in allowed_tool_names
+                    if tool_name in _DELEGATION_TOOL_PERMISSIONS
+                }
+            ),
         }
 
     def _require_project_access(

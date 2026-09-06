@@ -1,4 +1,4 @@
-"""Verify resumable SSE from an independent network namespace."""
+"""Verify resumable SSE from an independent or local network namespace."""
 
 from __future__ import annotations
 
@@ -110,9 +110,9 @@ async def _worker_readiness_probe(client: Any, args: argparse.Namespace) -> None
 
 async def _run(args: argparse.Namespace) -> dict[str, Any]:
     parsed = urlparse(args.url)
-    if parsed.hostname in {None, "127.0.0.1", "localhost", "::1"}:
+    if parsed.hostname in {None, "127.0.0.1", "localhost", "::1"} and not args.allow_loopback:
         raise ValueError(
-            "--url must be reachable outside the caller loopback namespace"
+            "--url must be reachable outside the caller loopback namespace (or pass --allow-loopback)"
         )
 
     secret = os.getenv(
@@ -181,7 +181,7 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
             )
         return {
             "status": "passed",
-            "network_namespace": "independent-docker-bridge",
+            "network_namespace": "local-loopback" if args.allow_loopback else "external",
             "api_readiness": "passed",
             "worker_readiness": "passed",
             "initial_cursor": initial_ids[-1],
@@ -223,6 +223,12 @@ def main() -> int:
         default=float(os.getenv("R6_SSE_STREAM_TIMEOUT", "120")),
     )
     parser.add_argument("--disconnect-after", type=int, default=2)
+    parser.add_argument(
+        "--allow-loopback",
+        action="store_true",
+        default=os.getenv("R6_ALLOW_LOOPBACK") == "1",
+        help="allow localhost URLs for the all-local acceptance path",
+    )
     args = parser.parse_args()
     if (
         args.disconnect_after < 1

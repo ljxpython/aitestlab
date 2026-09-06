@@ -446,6 +446,12 @@ export type RuntimeModelItem = {
   sync_status: string
   last_seen_at: string | null
   last_synced_at: string | null
+  provider?: string | null
+  base_url?: string | null
+  protocol?: string | null
+  model?: string | null
+  enabled?: boolean
+  credential_configured?: boolean
 }
 
 export type RuntimeModelsResponse = {

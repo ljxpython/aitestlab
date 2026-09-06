@@ -218,6 +218,25 @@ scripts/dev-down.sh
 - `scripts/platform-web-demo-health.sh`
 - `scripts/platform-web-demo-down.sh`
 
+### 本地 Runtime + Platform 进程模式
+
+如果本机已经运行 PostgreSQL 和 Redis，使用新的本地进程脚本，不会修改或调用上面的旧演示脚本：
+
+```bash
+bash "./scripts/local-stack.sh" doctor
+bash "./scripts/local-stack.sh" start
+bash "./scripts/local-stack.sh" status
+bash "./scripts/local-stack.sh" stop
+```
+
+该脚本直接启动 GraphHarbor API、GraphHarbor Worker、Platform API、Platform Worker 和 Platform Web；
+数据库迁移使用 `migrate` 子命令执行，日志和 PID 文件放在系统临时目录。它不会停止或删除本机
+PostgreSQL、Redis，也不会按端口杀掉不属于自己的进程。启动前会检查 `DATABASE_URI` 对应的 PostgreSQL
+和 `REDIS_URI`，发现失效 PostgreSQL 锁文件时不会自动删除。Runtime 使用
+`apps/runtime-service/.env`，Platform API 使用 `apps/platform-api/.env`。
+首次使用时，分别从对应的 `.env.example` 创建本地 `.env`，填入真实模型凭据和本机 PostgreSQL
+账号；不要覆盖已有 `.env`，也不要提交真实值。
+
 ### Docker / Docker Compose
 
 如果你希望直接用容器方式启动，当前有 3 种常见用法：

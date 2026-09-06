@@ -222,7 +222,9 @@ def test_exporter_failure_preserves_workflow_interrupt(monkeypatch) -> None:
     from runtime_service.services.demo.workflow_demo.agent import get_agent
 
     monkeypatch.setattr(langfuse, "_new_callback", _failing_exporter)
-    graph = asyncio.run(get_agent({}))
+    graph = asyncio.run(
+        get_agent({"configurable": {"_runtime_model": BindableFakeChatModel(responses=["ok"])}})
+    )
     paused = graph.invoke(
         {"message": "hello", "requires_confirmation": True},
         {"configurable": {"thread_id": "r5-interrupt"}},

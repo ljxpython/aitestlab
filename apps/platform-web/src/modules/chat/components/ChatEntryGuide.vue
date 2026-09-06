@@ -35,17 +35,17 @@ defineProps<{
               size="sm"
               class="text-primary-500"
             />
-            从 Assistants 进入
+            从 Agents 进入
           </div>
           <p class="mt-3 text-sm leading-7 text-gray-500 dark:text-dark-300">
-            适合已经确认具体 assistant 的场景。这里会把 `langgraph_assistant_id` 作为聊天目标保存下来。
+            适合已经确认具体 Agent 的场景。这里会把 `agent_key` 作为聊天目标保存下来。
           </p>
           <div class="mt-4">
             <router-link
               class="pw-btn pw-btn-secondary"
               to="/workspace/assistants"
             >
-              去选 Assistant
+              去选 Agent
             </router-link>
           </div>
         </div>

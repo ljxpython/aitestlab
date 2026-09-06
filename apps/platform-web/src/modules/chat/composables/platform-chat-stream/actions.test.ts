@@ -91,6 +91,28 @@ describe('platform chat stream actions', () => {
     expect(deps.detailError.value).toContain('submit failed')
   })
 
+  it('refreshes a thread after an active-run conflict and surfaces the HITL state', async () => {
+    const refresh = vi.fn().mockResolvedValue(undefined)
+    const deps = createDeps(
+      vi.fn().mockRejectedValue({
+        status: 409,
+        error: {
+          code: 'thread_active_run_conflict',
+          message: 'The thread already has an active Durable Run'
+        }
+      })
+    )
+    deps.options.onRefreshThread = refresh
+    deps.interruptPayload = computed(() => ({ id: 'interrupt-1' }))
+    const actions = createPlatformChatStreamActions(deps)
+
+    await expect(actions.sendMessage('hello')).resolves.toBe(false)
+
+    expect(refresh).toHaveBeenCalledWith('thread-1', { preserveInfo: true })
+    expect(deps.detailInfo.value).toContain('待处理事项')
+    expect(deps.detailError.value).toContain('当前线程已有运行中的任务')
+  })
+
   it('cancels the server run through the SDK stream', async () => {
     const deps = createDeps()
     deps.commandPending.value = true
@@ -100,6 +122,7 @@ describe('platform chat stream actions', () => {
 
     expect(deps.stream.stop).toHaveBeenCalledOnce()
     expect(deps.cancelling.value).toBe(false)
+    expect(deps.detailInfo.value).toBe('已请求停止，正在同步运行状态。')
   })
 
   it('creates a project-scoped thread before the first v2 submit', async () => {
@@ -136,11 +159,7 @@ describe('platform chat stream actions', () => {
       undefined,
       expect.objectContaining({
         forkFrom: 'checkpoint-parent',
-        config: {
-          configurable: {
-            platform_runtime: { enable_tools: false }
-          }
-        }
+        config: {}
       })
     )
 

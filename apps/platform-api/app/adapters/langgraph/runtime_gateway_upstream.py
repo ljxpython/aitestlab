@@ -19,6 +19,10 @@ class LangGraphRuntimeGatewayUpstream:
         api_key: str | None = None,
         forwarded_headers: Mapping[str, str] | None = None,
     ) -> None:
+        self._base_url = base_url
+        self._api_key = api_key
+        self._timeout_seconds = timeout_seconds
+        self._forwarded_headers = dict(forwarded_headers or {})
         self._http = LangGraphRuntimeClient(
             base_url=base_url,
             timeout_seconds=timeout_seconds,
@@ -42,6 +46,19 @@ class LangGraphRuntimeGatewayUpstream:
             api_key=api_key,
             timeout_seconds=timeout_seconds,
             forwarded_headers=forwarded_headers,
+        )
+
+    def with_forwarded_headers(
+        self, forwarded_headers: Mapping[str, str]
+    ) -> "LangGraphRuntimeGatewayUpstream":
+        """Return a request-scoped upstream with a freshly minted delegation."""
+        headers = dict(self._forwarded_headers)
+        headers.update(forwarded_headers)
+        return LangGraphRuntimeGatewayUpstream(
+            base_url=self._base_url,
+            api_key=self._api_key,
+            timeout_seconds=self._timeout_seconds,
+            forwarded_headers=headers,
         )
 
     async def get_info(self) -> dict[str, Any]:

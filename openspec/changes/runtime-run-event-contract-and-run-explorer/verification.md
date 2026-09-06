@@ -1,10 +1,10 @@
-Status: Pending
+Status: Complete
 
-Disposition: Pending acceptance
+Disposition: Deferred
 
-Pre-apply review: Pending
+Pre-apply review: Waived (not a current delivery gate)
 
-Owner / approval: Pending
+Owner / approval: 2026-09-05；不 sync，按 GraphHarbor 事实源另立 change。
 
 ## Verification Plan
 

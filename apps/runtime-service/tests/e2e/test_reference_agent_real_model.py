@@ -39,9 +39,6 @@ def _auth_user() -> dict[str, object]:
 
 
 def test_reference_agent_real_deepseek_e2e(monkeypatch: pytest.MonkeyPatch) -> None:
-    if os.getenv("RUNTIME_E2E") != "1":
-        pytest.skip("set RUNTIME_E2E=1 to run real-model E2E")
-
     settings = {**dotenv_values(PROJECT_ROOT / ".env"), **os.environ}
     required = (
         "DEEPSEEK_PROXY_API_KEY",

@@ -17,12 +17,15 @@ import StateBanner from '@/components/platform/StateBanner.vue'
 import StatusPill from '@/components/platform/StatusPill.vue'
 import type { ActionMenuItem, DataTableColumn } from '@/components/platform/data-table'
 import {
+  createRuntimeModel,
   listRuntimeModels,
   submitRuntimeRefreshOperation,
+  updateRuntimeModel,
   waitForRuntimeRefreshOperation
 } from '@/services/runtime/runtime.service'
+import { listRuntimeModelPolicies, updateRuntimeModelPolicy } from '@/services/runtime-policies/runtime-policies.service'
 import { useUiStore } from '@/stores/ui'
-import type { RuntimeModelItem } from '@/types/management'
+import type { RuntimeModelItem, RuntimeModelPolicyValue } from '@/types/management'
 import { copyText } from '@/utils/clipboard'
 import { formatDateTime, shortId } from '@/utils/format'
 
@@ -40,12 +43,17 @@ function getSyncTone(status: string): 'neutral' | 'success' | 'warning' | 'dange
 }
 
 const items = ref<RuntimeModelItem[]>([])
+const policies = ref<Record<string, RuntimeModelPolicyValue>>({})
 const queryInput = ref('')
 const query = ref('')
 const loading = ref(false)
 const refreshing = ref(false)
 const error = ref('')
 const notice = ref('')
+const editorOpen = ref(false)
+const editingModelId = ref('')
+const saving = ref(false)
+const form = ref({ provider: '', display_name: '', base_url: '', protocol: 'openai-compatible', model: '', api_key: '', enabled: true })
 const lastSyncedAt = ref<string | null>(null)
 const { activeProjectId } = useWorkspaceProjectContext()
 const uiStore = useUiStore()
@@ -57,6 +65,7 @@ const pagination = usePagination({
 const canRefreshCatalog = computed(() =>
   authorization.can('platform.catalog.refresh') || authorization.currentProjectCan('project.runtime.write')
 )
+const canManageModels = computed(() => authorization.currentProjectCan('project.runtime.write'))
 const modelRows = computed(() => filteredItems.value as unknown as Record<string, unknown>[])
 const columns = computed<DataTableColumn[]>(() => [
   {
@@ -89,7 +98,19 @@ const columns = computed<DataTableColumn[]>(() => [
     key: 'sync_status',
     label: '同步状态',
     sortable: true,
-    sortValue: (row) => row.sync_status || ''
+      sortValue: (row) => row.sync_status || ''
+  },
+  {
+    key: 'enabled',
+    label: '状态',
+    sortable: true,
+    sortValue: (row) => (row.enabled === false ? 0 : 1)
+  },
+  {
+    key: 'credential_configured',
+    label: '凭据',
+    sortable: true,
+    sortValue: (row) => (row.credential_configured ? 1 : 0)
   }
 ])
 
@@ -148,8 +169,17 @@ async function loadModels() {
   error.value = ''
 
   try {
-    const payload = await listRuntimeModels(projectId)
-    items.value = Array.isArray(payload.models) ? payload.models : []
+    const [payload, policyPayload] = await Promise.all([
+      listRuntimeModels(projectId),
+      listRuntimeModelPolicies(projectId).catch(() => ({ items: [], total: 0 }))
+    ])
+    policies.value = Object.fromEntries(
+      (policyPayload.items || []).map((item) => [item.catalog_id, item.policy])
+    )
+    items.value = (Array.isArray(payload.models) ? payload.models : []).map((item) => ({
+      ...item,
+      is_default: policies.value[item.id]?.is_default_for_project ?? item.is_default
+    }))
     lastSyncedAt.value = payload.last_synced_at
   } catch (loadError) {
     items.value = []
@@ -227,8 +257,56 @@ function handlePendingAction(message: string) {
   })
 }
 
+function openCreateModel() {
+  editingModelId.value = ''
+  form.value = { provider: '', display_name: '', base_url: '', protocol: 'openai-compatible', model: '', api_key: '', enabled: true }
+  editorOpen.value = true
+}
+
+function openEditModel(model: RuntimeModelItem) {
+  editingModelId.value = model.id
+  form.value = {
+    provider: model.provider || '',
+    display_name: model.display_name || '',
+    base_url: model.base_url || '',
+    protocol: model.protocol || 'openai-compatible',
+    model: model.model || model.model_id,
+    api_key: '',
+    enabled: model.enabled !== false
+  }
+  editorOpen.value = true
+}
+
+async function saveModel() {
+  if (!canManageModels.value || saving.value) return
+  const values = { ...form.value }
+  if (!values.provider.trim() || !values.display_name.trim() || !values.base_url.trim() || !values.protocol.trim() || !values.model.trim() || (!editingModelId.value && !values.api_key.trim())) {
+    error.value = '请填写完整的模型连接信息；编辑时 API key 可留空。'
+    return
+  }
+  saving.value = true
+  error.value = ''
+  try {
+    if (editingModelId.value) {
+      const { api_key, ...rest } = values
+      await updateRuntimeModel(activeProjectId.value, editingModelId.value, api_key.trim() ? values : rest)
+      notice.value = '模型配置已更新'
+    } else {
+      await createRuntimeModel(activeProjectId.value, values)
+      notice.value = '模型配置已创建'
+    }
+    editorOpen.value = false
+    await loadModels()
+  } catch (saveError) {
+    error.value = saveError instanceof Error ? saveError.message : '模型配置保存失败'
+  } finally {
+    saving.value = false
+  }
+}
+
 function modelActions(model: RuntimeModelItem): ActionMenuItem[] {
-  return [
+  const policy = policies.value[model.id]
+  const actions: ActionMenuItem[] = [
     {
       key: 'copy-model-id',
       label: '复制 Model ID',
@@ -248,6 +326,36 @@ function modelActions(model: RuntimeModelItem): ActionMenuItem[] {
       onSelect: () => handlePendingAction(`模型 ${model.display_name || model.model_id} 的详情页暂未开放，请先查看当前目录信息。`)
     }
   ]
+  if (canManageModels.value) {
+    actions.unshift({ key: 'edit', label: '编辑模型', icon: 'edit', onSelect: () => openEditModel(model) })
+    actions.push({
+      key: 'default',
+      label: policy?.is_default_for_project ? '取消项目默认' : '设为项目默认',
+      icon: policy?.is_default_for_project ? 'close' : 'check',
+      onSelect: async () => {
+        try {
+          await updateRuntimeModelPolicy(activeProjectId.value, model.id, {
+            is_enabled: policy?.is_enabled !== false,
+            is_default_for_project: !policy?.is_default_for_project
+          })
+          await loadModels()
+        } catch (policyError) {
+          error.value = policyError instanceof Error ? policyError.message : '项目默认模型更新失败'
+        }
+      }
+    })
+    actions.push({
+      key: 'toggle',
+      label: model.enabled === false ? '启用模型' : '停用模型',
+      icon: model.enabled === false ? 'check' : 'pause',
+      onSelect: async () => {
+        await updateRuntimeModel(activeProjectId.value, model.id, { enabled: model.enabled === false }).then(loadModels).catch((toggleError) => {
+          error.value = toggleError instanceof Error ? toggleError.message : '模型状态更新失败'
+        })
+      }
+    })
+  }
+  return actions
 }
 
 onMounted(() => {
@@ -284,12 +392,6 @@ watch(
         >
           返回 Runtime
         </router-link>
-        <router-link
-          class="pw-btn pw-btn-secondary"
-          to="/workspace/runtime/tools"
-        >
-          工具目录
-        </router-link>
         <BaseButton
           variant="secondary"
           :disabled="refreshing || !canRefreshCatalog"
@@ -301,8 +403,44 @@ watch(
           />
           {{ canRefreshCatalog ? (refreshing ? '刷新中...' : '刷新目录') : '当前账号只读' }}
         </BaseButton>
+        <BaseButton
+          v-if="canManageModels"
+          @click="openCreateModel"
+        >
+          新增模型
+        </BaseButton>
       </template>
     </PageHeader>
+
+    <section
+      v-if="editorOpen"
+      class="pw-panel space-y-4 p-4"
+    >
+      <div class="flex items-center justify-between gap-3">
+        <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
+          {{ editingModelId ? '编辑模型' : '新增模型' }}
+        </h2>
+        <BaseButton
+          variant="ghost"
+          :disabled="saving"
+          @click="editorOpen = false"
+        >
+          取消
+        </BaseButton>
+      </div>
+      <div class="grid gap-4 md:grid-cols-2">
+        <label class="block"><span class="pw-input-label">Provider</span><input v-model="form.provider" class="pw-input"></label>
+        <label class="block"><span class="pw-input-label">Display Name</span><input v-model="form.display_name" class="pw-input"></label>
+        <label class="block md:col-span-2"><span class="pw-input-label">Base URL</span><input v-model="form.base_url" class="pw-input" inputmode="url"></label>
+        <label class="block"><span class="pw-input-label">Protocol</span><select v-model="form.protocol" class="pw-input"><option value="openai-compatible">openai-compatible</option><option value="openai">openai</option><option value="deepseek">deepseek</option></select></label>
+        <label class="block"><span class="pw-input-label">Model</span><input v-model="form.model" class="pw-input"></label>
+        <label class="block md:col-span-2"><span class="pw-input-label">API key {{ editingModelId ? '(留空表示不变)' : '' }}</span><input v-model="form.api_key" class="pw-input" type="password" autocomplete="new-password"></label>
+        <label class="flex items-center gap-2 text-sm"><input v-model="form.enabled" type="checkbox" class="pw-table-checkbox">启用模型</label>
+      </div>
+      <div class="flex justify-end">
+        <BaseButton :disabled="saving" @click="saveModel">{{ saving ? '保存中...' : '保存模型' }}</BaseButton>
+      </div>
+    </section>
 
     <StateBanner
       v-if="error"
@@ -402,6 +540,18 @@ watch(
                 {{ formatDateTime(modelFromRow(row).last_synced_at) }}
               </div>
             </div>
+          </template>
+
+          <template #cell-enabled="{ row }">
+            <StatusPill :tone="modelFromRow(row).enabled === false ? 'danger' : 'success'">
+              {{ modelFromRow(row).enabled === false ? 'disabled' : 'enabled' }}
+            </StatusPill>
+          </template>
+
+          <template #cell-credential_configured="{ row }">
+            <StatusPill :tone="modelFromRow(row).credential_configured ? 'success' : 'warning'">
+              {{ modelFromRow(row).credential_configured ? 'configured' : 'missing' }}
+            </StatusPill>
           </template>
 
           <template #cell-actions="{ row }">

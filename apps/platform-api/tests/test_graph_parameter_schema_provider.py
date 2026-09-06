@@ -32,10 +32,10 @@ class GraphParameterSchemaProviderTest(unittest.TestCase):
         )
         provider = GraphParameterSchemaProvider(settings)
 
-        schema = provider.build_schema("assistant")
+        schema = provider.build_schema("reference_agent")
         sections = _section_map(schema)
 
-        self.assertEqual(schema["graph_id"], "assistant")
+        self.assertEqual(schema["graph_id"], "reference_agent")
         self.assertEqual(schema["schema_version"], "dynamic-v2")
         self.assertTrue(schema["dynamic"])
         self.assertEqual(list(sections.keys()), ["config", "context", "configurable"])
@@ -46,7 +46,7 @@ class GraphParameterSchemaProviderTest(unittest.TestCase):
         )
         provider = GraphParameterSchemaProvider(settings)
 
-        schema = provider.build_schema("assistant")
+        schema = provider.build_schema("reference_agent")
         sections = _section_map(schema)
         config_properties = sections["config"]["properties"]
         context_properties = sections["context"]["properties"]
@@ -62,18 +62,14 @@ class GraphParameterSchemaProviderTest(unittest.TestCase):
         self.assertNotIn("enable_local_mcp", config_properties)
         self.assertNotIn("mcp_servers", config_properties)
 
-        for key in ("user_id", "tenant_id", "role", "permissions", "project_id"):
+        for key in ("model_id", "temperature", "max_tokens", "top_p", "tools"):
             self.assertIn(key, context_properties)
 
-        for key in (
-            "model_id",
-            "system_prompt",
-            "temperature",
-            "max_tokens",
-            "top_p",
-            "enable_tools",
-            "tools",
-        ):
+        for key in ("model_id", "temperature", "max_tokens", "top_p", "tools"):
+            self.assertIn(key, context_properties)
+            self.assertIn(key, runtime_option_properties)
+
+        for key in ("system_prompt", "enable_tools"):
             self.assertNotIn(key, context_properties)
             self.assertIn(key, runtime_option_properties)
 
@@ -88,7 +84,7 @@ class GraphParameterSchemaProviderTest(unittest.TestCase):
         )
         provider = GraphParameterSchemaProvider(settings)
 
-        schema = provider.build_schema("test_case_agent")
+        schema = provider.build_schema("reference_agent")
         sections = _section_map(schema)
         configurable_properties = sections["configurable"]["properties"]
 
@@ -98,13 +94,12 @@ class GraphParameterSchemaProviderTest(unittest.TestCase):
             "assistant_id",
             "graph_id",
             "platform_runtime",
-            "test_case_multimodal_parser_model_id",
-            "test_case_default_model_id",
-            "test_case_knowledge_mcp_enabled",
         ):
             self.assertIn(key, configurable_properties)
 
         self.assertNotIn("__pregel_scratchpad", configurable_properties)
+        self.assertNotIn("langgraph_auth_user", configurable_properties)
+        self.assertNotIn("_runtime_model", configurable_properties)
 
     def test_fallback_schema_keeps_new_contract_shape(self) -> None:
         settings = Settings(

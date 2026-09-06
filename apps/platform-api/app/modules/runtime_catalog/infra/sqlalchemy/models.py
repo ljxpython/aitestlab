@@ -27,6 +27,12 @@ class RuntimeCatalogModelRecord(Base):
     runtime_id: Mapped[str] = mapped_column(String(255), nullable=False)
     model_key: Mapped[str] = mapped_column(String(255), nullable=False)
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    base_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    protocol: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    model_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    api_key_ciphertext: Mapped[str | None] = mapped_column(Text, nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     is_default_runtime: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,

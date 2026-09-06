@@ -62,7 +62,10 @@ export async function getOperationDetail(operationId: string): Promise<Managemen
 }
 
 export async function submitOperation(payload: SubmitOperationPayload): Promise<ManagementOperation> {
-  const response = await platformHttpClient.post('/api/operations', payload)
+  const projectId = payload.project_id?.trim()
+  const response = await platformHttpClient.post('/api/operations', payload, {
+    headers: projectId ? { 'x-project-id': projectId } : undefined
+  })
   return response.data as ManagementOperation
 }
 

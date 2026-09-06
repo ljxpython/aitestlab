@@ -73,6 +73,7 @@ async def authenticate(authorization: str | None = None) -> Auth.types.MinimalUs
             "project_id": verified.scope.project_id,
             "assistant_id": verified.scope.assistant_id,
             "thread_id": verified.scope.thread_id,
+            "operation": verified.scope.operation,
         },
         "runtime_context_hash": verified.context_hash,
         "request_id": verified.request_id,

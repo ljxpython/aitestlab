@@ -1,13 +1,4 @@
-from app.modules.assistants.domain.models import (
-    AssistantItem,
-    AssistantPage,
-    AssistantStatus,
-    AssistantSyncStatus,
-)
+"""Deprecated compatibility imports; use :mod:`app.modules.agents.domain`."""
 
-__all__ = [
-    "AssistantItem",
-    "AssistantPage",
-    "AssistantStatus",
-    "AssistantSyncStatus",
-]
+from app.modules.agents.domain import *  # noqa: F401,F403
+

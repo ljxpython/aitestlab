@@ -53,7 +53,10 @@ class RuntimeGatewayNormalizationRegressionTest(unittest.IsolatedAsyncioTestCase
         )
 
     async def test_thread_run_allows_legacy_graph_thread_without_graph_id(self) -> None:
-        upstream = SimpleNamespace(stream_thread_run=AsyncMock(return_value={"ok": True}))
+        upstream = SimpleNamespace(
+            create_thread_run=AsyncMock(return_value={"run_id": "run-1"}),
+            join_thread_run_stream=AsyncMock(return_value={"ok": True}),
+        )
         service = RuntimeGatewayService(
             session_factory=None,
             upstream=upstream,
@@ -70,7 +73,19 @@ class RuntimeGatewayNormalizationRegressionTest(unittest.IsolatedAsyncioTestCase
         )
         service._project_default_model_id = AsyncMock(return_value=None)  # type: ignore[method-assign]
         service._inject_project_scope = lambda project_id, payload: payload or {}  # type: ignore[assignment]
+        service._validate_run_options = AsyncMock()  # type: ignore[method-assign]
         service._assert_runtime_target_allowed = AsyncMock()  # type: ignore[method-assign]
+        service._reserve_durable_run = AsyncMock(  # type: ignore[method-assign]
+            return_value=SimpleNamespace(
+                run_id=None,
+                status="submitted",
+                id="durable-1",
+                operation_id="operation-1",
+                thread_id="thread-1",
+                idempotency_key="standard:key",
+            )
+        )
+        service._mark_durable_run_started = AsyncMock()  # type: ignore[method-assign]
 
         payload = await service.stream_thread_run(
             actor=SimpleNamespace(),
@@ -101,6 +116,7 @@ class RuntimeGatewayNormalizationRegressionTest(unittest.IsolatedAsyncioTestCase
         )
         service._prepare_project_scope = AsyncMock()  # type: ignore[method-assign]
         service._project_default_model_id = AsyncMock(return_value=None)  # type: ignore[method-assign]
+        service._validate_run_options = AsyncMock()  # type: ignore[method-assign]
         service._assert_runtime_target_allowed = AsyncMock()  # type: ignore[method-assign]
 
         payload = await service.create_global_run(

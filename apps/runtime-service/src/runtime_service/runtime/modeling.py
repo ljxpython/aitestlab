@@ -37,6 +37,7 @@ def build_model(
     config: ResolvedRuntimeConfig,
     *,
     env: Mapping[str, str] | None = None,
+    connection: Mapping[str, str] | None = None,
 ) -> BaseChatModel:
     """Build a model from a resolved ID; never accepts raw request config."""
 
@@ -45,21 +46,24 @@ def build_model(
     settings = os.environ if env is None else env
     provider, separator, model_name = config.model_id.partition(":")
     model_name = model_name if separator else config.model_id
+    if connection is not None:
+        provider = connection.get("provider", provider)
+        model_name = connection.get("model", model_name)
     kwargs = _generation_kwargs(config)
 
     try:
         if provider == "deepseek":
             return ChatDeepSeek(
                 model=model_name,
-                api_key=_required(settings, "DEEPSEEK_PROXY_API_KEY"),
-                base_url=_required(settings, "DEEPSEEK_PROXY_URL"),
+                api_key=connection.get("api_key") if connection is not None else _required(settings, "DEEPSEEK_PROXY_API_KEY"),
+                base_url=connection.get("base_url") if connection is not None else _required(settings, "DEEPSEEK_PROXY_URL"),
                 **kwargs,
             )
         if provider == "openai":
             return ChatOpenAI(
                 model=model_name,
-                api_key=_required(settings, "GPT_PROXY_API_KEY"),
-                base_url=_required(settings, "GPT_PROXY_URL"),
+                api_key=connection.get("api_key") if connection is not None else _required(settings, "GPT_PROXY_API_KEY"),
+                base_url=connection.get("base_url") if connection is not None else _required(settings, "GPT_PROXY_URL"),
                 **kwargs,
             )
         return init_chat_model(config.model_id, **kwargs)

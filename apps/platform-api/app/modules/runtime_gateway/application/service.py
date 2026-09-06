@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import AsyncIterator, Callable, Mapping
 from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
@@ -16,6 +17,7 @@ from app.core.errors import (
     ConflictError,
     ForbiddenError,
     NotFoundError,
+    PlatformApiError,
     ServiceUnavailableError,
     UpstreamServiceError,
 )
@@ -27,32 +29,82 @@ from app.core.runtime_contract import (
     normalize_protocol_v2_event_request,
     normalize_runtime_payload,
     strip_keys,
+    validate_runtime_option_values,
 )
-from app.modules.assistants.infra.sqlalchemy.repository import SqlAlchemyAssistantsRepository
+from app.modules.agents.infra.sqlalchemy.repository import SqlAlchemyAssistantsRepository
 from app.modules.audit.domain import AuditResult
 from app.modules.iam.application import AuthorizationRequest, IamPolicyEngine, PermissionCode
 from app.modules.operations.application.audit import write_operation_audit_event
+from app.modules.operations.application.ports import OperationDispatcherProtocol
 from app.modules.operations.domain import OperationStatus
 from app.modules.operations.infra.sqlalchemy.repository import SqlAlchemyOperationsRepository
 from app.modules.projects.infra.sqlalchemy.repository import SqlAlchemyProjectsRepository
 from app.modules.runtime_catalog.infra.sqlalchemy.repository import (
     SqlAlchemyRuntimeCatalogRepository,
 )
+from app.modules.runtime_catalog.application.model_connection import create_model_reference
 from app.modules.runtime_gateway.application.ports import RuntimeGatewayUpstreamProtocol
 from app.modules.runtime_gateway.infra.sqlalchemy.repository import (
     SqlAlchemyDurableRunsRepository,
     StoredDurableRun,
 )
 from app.modules.runtime_policies.infra import SqlAlchemyRuntimePolicyRepository
+from app.modules.runtime_policies.application import RuntimePolicyOverlayService
 
 _THREAD_PROJECT_ID_KEYS = PROJECT_SCOPE_ALIAS_KEYS
 _THREAD_GRAPH_ID_KEYS = ("graph_id", "graphId")
 _DURABLE_RUN_OPERATION_KIND = "runtime.durable_run"
+_SDK_LIFECYCLE_EVENTS = {
+    "started": "running",
+    "success": "completed",
+    "error": "failed",
+}
 
 
 def _request_digest(command: dict[str, Any]) -> str:
     encoded = json.dumps(command, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
     return hashlib.sha256(encoded.encode()).hexdigest()
+
+
+def _runtime_context_snapshot(command: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    params = ensure_dict(command.get("params"))
+    config = ensure_dict(params.get("config"))
+    configurable = ensure_dict(config.get("configurable"))
+    runtime_options = ensure_dict(configurable.get("platform_runtime"))
+    context = ensure_dict(params.get("context"))
+    # Protocol promotion applies platform_runtime over the submitted context.
+    merged = {**context, **runtime_options}
+    tools = merged.get("tools")
+    if tools is not None:
+        tools = sorted(tools)
+    snapshot = {
+        "model_id": merged.get("model_id"),
+        "temperature": (
+            float(merged["temperature"])
+            if isinstance(merged.get("temperature"), (int, float))
+            and not isinstance(merged.get("temperature"), bool)
+            else merged.get("temperature")
+        ),
+        "max_tokens": merged.get("max_tokens"),
+        "top_p": (
+            float(merged["top_p"])
+            if isinstance(merged.get("top_p"), (int, float))
+            and not isinstance(merged.get("top_p"), bool)
+            else merged.get("top_p")
+        ),
+        "tools": tools,
+    }
+    encoded = json.dumps(
+        {"schema": "runtime-context/v1", **snapshot},
+        ensure_ascii=False,
+        allow_nan=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    persisted_snapshot = {
+        key: value for key, value in snapshot.items() if value is not None
+    }
+    return "sha256:" + hashlib.sha256(encoded.encode("utf-8")).hexdigest(), persisted_snapshot
 
 
 def _normalize_idempotency_key(value: str | None) -> str:
@@ -79,6 +131,64 @@ def _run_id_from_command_result(result: Any) -> str | None:
     return clean_str(candidate)
 
 
+def _run_items(result: Any) -> list[dict[str, Any]]:
+    if isinstance(result, list):
+        return [item for item in result if isinstance(item, dict)]
+    if not isinstance(result, dict):
+        return []
+    for key in ("runs", "data", "items"):
+        value = result.get(key)
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+    return []
+
+
+def _promote_protocol_run_start(params: dict[str, Any]) -> dict[str, Any]:
+    """Convert Platform's v2 candidate envelope into a standard Runs payload."""
+    config = ensure_dict(params.get("config"))
+    configurable = ensure_dict(config.get("configurable"))
+    runtime_options = ensure_dict(configurable.get("platform_runtime"))
+    next_configurable = dict(configurable)
+    next_configurable.pop("platform_runtime", None)
+    next_config = dict(config)
+    if next_configurable:
+        next_config["configurable"] = next_configurable
+    else:
+        next_config.pop("configurable", None)
+
+    context = ensure_dict(params.get("context"))
+    context.update(runtime_options)
+    promoted = {
+        key: params[key]
+        for key in (
+            "assistant_id",
+            "input",
+            "command",
+            "stream_mode",
+            "stream_subgraphs",
+            "stream_resumable",
+            "metadata",
+            "context",
+            "checkpoint",
+            "checkpoint_id",
+            "checkpoint_during",
+            "interrupt_before",
+            "interrupt_after",
+            "webhook",
+            "multitask_strategy",
+            "if_not_exists",
+            "on_completion",
+            "after_seconds",
+            "durability",
+        )
+        if key in params
+    }
+    promoted["context"] = context
+    if next_config:
+        promoted["config"] = next_config
+    return promoted
+
+
 def _terminal_operation_status(snapshot: Any) -> OperationStatus | None:
     if not isinstance(snapshot, dict):
         return None
@@ -87,14 +197,61 @@ def _terminal_operation_status(snapshot: Any) -> OperationStatus | None:
         return OperationStatus.SUCCEEDED
     if status in {"error", "failed", "timeout"}:
         return OperationStatus.FAILED
-    if status in {"cancelled", "canceled", "interrupted"}:
+    if status in {"cancelled", "canceled"}:
         return OperationStatus.CANCELLED
     return None
+
+
+def _normalize_protocol_lifecycle_frame(frame: bytes) -> tuple[bytes, dict[str, str] | None]:
+    """Bridge GraphHarbor lifecycle labels to the locked frontend SDK contract."""
+    try:
+        lines = frame.decode("utf-8").split("\n")
+    except UnicodeDecodeError:
+        return frame, None
+    data_positions = [index for index, line in enumerate(lines) if line.startswith("data:")]
+    if not data_positions:
+        return frame, None
+    try:
+        payload = json.loads("\n".join(lines[index][5:].lstrip() for index in data_positions))
+    except ValueError:
+        return frame, None
+    if not isinstance(payload, dict) or payload.get("method") != "lifecycle":
+        return frame, None
+    params = ensure_dict(payload.get("params"))
+    data = ensure_dict(params.get("data"))
+    event = clean_str(data.get("event"))
+    normalized_event = _SDK_LIFECYCLE_EVENTS.get(event, event)
+    if normalized_event != event:
+        payload["params"] = {**params, "data": {**data, "event": normalized_event}}
+        encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        first_data_position = data_positions[0]
+        lines = [
+            f"data: {encoded}" if index == first_data_position else line
+            for index, line in enumerate(lines)
+            if index not in data_positions[1:]
+        ]
+        frame = "\n".join(lines).encode("utf-8")
+    run_id = clean_str(params.get("run_id"))
+    status = clean_str(data.get("status"))
+    if not run_id or _terminal_operation_status({"status": status}) is None:
+        return frame, None
+    return frame, {"run_id": run_id, "status": status}
 
 
 def _interrupt_ids(state: Any) -> set[str]:
     if not isinstance(state, dict):
         return set()
+    interrupts = state.get("interrupts")
+    if isinstance(interrupts, dict):
+        return {interrupt_id for interrupt_id in (clean_str(key) for key in interrupts) if interrupt_id}
+    if isinstance(interrupts, list):
+        return {
+            interrupt_id
+            for interrupt in interrupts
+            if isinstance(interrupt, dict)
+            for interrupt_id in [clean_str(interrupt.get("id") or interrupt.get("interrupt_id"))]
+            if interrupt_id
+        }
     tasks = state.get("tasks")
     if not isinstance(tasks, list):
         return set()
@@ -160,6 +317,18 @@ def _promote_thread_graph_id(payload: dict[str, Any]) -> dict[str, Any]:
     return next_payload
 
 
+def _merge_runtime_context(
+    *,
+    project_default_model: str | None,
+    agent_defaults: dict[str, Any],
+    requested: dict[str, Any],
+) -> dict[str, Any]:
+    defaults = dict(agent_defaults)
+    if project_default_model and "model_id" not in defaults:
+        defaults["model_id"] = project_default_model
+    return {**defaults, **requested}
+
+
 class RuntimeGatewayService:
     def __init__(
         self,
@@ -168,11 +337,19 @@ class RuntimeGatewayService:
         upstream: RuntimeGatewayUpstreamProtocol,
         runtime_base_url: str = "",
         policy_engine: IamPolicyEngine | None = None,
+        operation_dispatcher: OperationDispatcherProtocol | None = None,
+        delegation_headers_factory: Callable[..., Mapping[str, str]] | None = None,
+        runtime_model_config_secret: str | None = None,
+        runtime_model_config_ttl_seconds: int = 60,
     ) -> None:
         self._session_factory = session_factory
         self._upstream = upstream
         self._runtime_id = runtime_base_url.rstrip("/")
         self._policy_engine = policy_engine or IamPolicyEngine()
+        self._operation_dispatcher = operation_dispatcher
+        self._delegation_headers_factory = delegation_headers_factory
+        self._runtime_model_config_secret = runtime_model_config_secret
+        self._runtime_model_config_ttl_seconds = runtime_model_config_ttl_seconds
 
     def _require_session_factory(self) -> sessionmaker[Session]:
         if self._session_factory is None:
@@ -253,15 +430,42 @@ class RuntimeGatewayService:
         default_model_id: str | None = None,
     ) -> dict[str, Any]:
         context = ensure_dict(payload.get("context"))
-        if clean_str(context.get("model_id")):
-            return payload
-        if default_model_id is None:
-            default_model_id = await self._project_default_model_id(project_id=project_id)
-        if not default_model_id:
-            return payload
+        assistant_id = clean_str(payload.get("assistant_id"))
+        profile_defaults: dict[str, Any] = {}
+        if assistant_id and self._session_factory is not None:
+            try:
+                project_uuid = parse_uuid(project_id, code="invalid_project_id")
+            except PlatformApiError:
+                project_uuid = None
+            if project_uuid is not None:
+                async with SqlAlchemyUnitOfWork(self._session_factory) as uow:
+                    agent = SqlAlchemyAssistantsRepository(uow.session).get_by_project_and_graph_id(
+                        project_id=project_uuid,
+                        graph_id=assistant_id,
+                    )
+                    if agent is None:
+                        agent = SqlAlchemyAssistantsRepository(uow.session).get_by_project_and_langgraph_assistant_id(
+                            project_id=project_uuid,
+                            langgraph_assistant_id=assistant_id,
+                        )
+                    if agent is not None:
+                        profile_defaults = {
+                            key: agent.context[key]
+                            for key in ("model_id", "temperature", "max_tokens", "top_p", "tools")
+                            if key in agent.context
+                        }
 
+        if default_model_id is None and not clean_str(context.get("model_id")):
+            default_model_id = await self._project_default_model_id(project_id=project_id)
+        merged = _merge_runtime_context(
+            project_default_model=default_model_id,
+            agent_defaults=profile_defaults,
+            requested=context,
+        )
+        if merged == context:
+            return payload
         next_payload = dict(payload)
-        next_payload["context"] = {**context, "model_id": default_model_id}
+        next_payload["context"] = merged
         return next_payload
 
     async def _project_default_model_id(self, *, project_id: str) -> str | None:
@@ -295,8 +499,10 @@ class RuntimeGatewayService:
             allowed_models = {
                 item.model_key
                 for item in catalog_repository.list_models(runtime_id=self._runtime_id)
-                if str(item.id) not in model_policies
+                if item.enabled
+                and (str(item.id) not in model_policies
                 or model_policies[str(item.id)].is_enabled
+                )
             }
             requested_model = clean_str(options.get("model_id"))
             if requested_model and requested_model not in allowed_models:
@@ -330,6 +536,55 @@ class RuntimeGatewayService:
                     code="runtime_tools_denied",
                     message="Requested runtime tools are not enabled for this project",
                 )
+
+    async def _validate_run_options(self, *, project_id: str, payload: dict[str, Any]) -> None:
+        context = ensure_dict(payload.get("context"))
+        config = ensure_dict(payload.get("config"))
+        configurable = ensure_dict(config.get("configurable"))
+        options = {**ensure_dict(configurable.get("platform_runtime")), **context}
+        try:
+            validate_runtime_option_values(options)
+        except ValueError as exc:
+            raise BadRequestError(
+                code="invalid_runtime_options",
+                message=str(exc),
+            ) from exc
+        await self._assert_runtime_options_allowed(project_id=project_id, options=options)
+
+    async def _attach_runtime_model_reference(
+        self,
+        *,
+        project_id: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Pass only a short-lived model capability through the generic Agent Server."""
+        if not self._runtime_model_config_secret:
+            return payload
+        model_id = clean_str(ensure_dict(payload.get("context")).get("model_id"))
+        if not model_id:
+            return payload
+        session_factory = self._require_session_factory()
+        async with SqlAlchemyUnitOfWork(session_factory) as uow:
+            item = SqlAlchemyRuntimeCatalogRepository(uow.session).get_model_by_key(
+                runtime_id=self._runtime_id,
+                model_key=model_id,
+            )
+            if item is None or not item.enabled:
+                raise ForbiddenError(code="runtime_model_denied", message="Requested runtime model is not enabled")
+        reference = create_model_reference(
+            project_id=project_id,
+            model_id=model_id,
+            secret=self._runtime_model_config_secret,
+            ttl_seconds=self._runtime_model_config_ttl_seconds,
+        )
+        config = ensure_dict(payload.get("config"))
+        configurable = dict(ensure_dict(config.get("configurable")))
+        configurable["_runtime_model_ref"] = reference
+        next_config = dict(config)
+        next_config["configurable"] = configurable
+        next_payload = dict(payload)
+        next_payload["config"] = next_config
+        return next_payload
 
     def _assert_thread_project_scope(
         self,
@@ -367,10 +622,16 @@ class RuntimeGatewayService:
         async with SqlAlchemyUnitOfWork(session_factory) as uow:
             project_uuid = self._require_project_exists(uow=uow, project_id=project_id)
             repository = SqlAlchemyAssistantsRepository(uow.session)
-            item = repository.get_by_project_and_langgraph_assistant_id(
+            item = repository.get_by_project_and_graph_id(
                 project_id=project_uuid,
-                langgraph_assistant_id=assistant_id,
+                graph_id=assistant_id,
             )
+            if item is None:
+                # Read-only compatibility for historical rows; new runs use graph_id.
+                item = repository.get_by_project_and_langgraph_assistant_id(
+                    project_id=project_uuid,
+                    langgraph_assistant_id=assistant_id,
+                )
             return item is not None
 
     async def _assert_runtime_target_allowed(
@@ -412,9 +673,33 @@ class RuntimeGatewayService:
     ) -> StoredDurableRun:
         session_factory = self._require_session_factory()
         digest = _request_digest(command)
+        context_hash, context_snapshot = _runtime_context_snapshot(command)
+        agent_key = clean_str(command["params"].get("assistant_id")) or ""
+        policy_version: str | None = None
+        if self._session_factory is not None:
+            try:
+                policy_version = str(
+                    RuntimePolicyOverlayService(
+                        session_factory=self._session_factory,
+                        runtime_base_url=self._runtime_id,
+                    ).build_delegation_policy(project_id=project_id)["version"]
+                )
+            except PlatformApiError:
+                policy_version = None
+        if not agent_key:
+            raise BadRequestError(code="agent_key_required", message="agent_key is required")
         try:
             async with SqlAlchemyUnitOfWork(session_factory) as uow:
                 runs = SqlAlchemyDurableRunsRepository(uow.session)
+                bound_agent_key = runs.get_bound_agent_key(
+                    project_id=project_id,
+                    thread_id=thread_id,
+                )
+                if bound_agent_key and bound_agent_key != agent_key:
+                    raise ConflictError(
+                        code="agent_thread_mismatch",
+                        message="The thread is already bound to a different agent",
+                    )
                 existing = runs.get_by_idempotency_key(
                     project_id=project_id,
                     thread_id=thread_id,
@@ -454,6 +739,10 @@ class RuntimeGatewayService:
                 durable_run = runs.create(
                     project_id=project_id,
                     thread_id=thread_id,
+                    agent_key=agent_key,
+                    context_hash=context_hash,
+                    context_snapshot=context_snapshot,
+                    policy_version=policy_version,
                     idempotency_key=idempotency_key,
                     request_digest=digest,
                     operation_id=operation.id,
@@ -493,10 +782,118 @@ class RuntimeGatewayService:
             )
         if existing.run_id:
             return existing
+        if existing.status == "run_start_unknown":
+            return existing
         raise ConflictError(
             code="run_start_in_progress",
             message="The original run.start request is still being reconciled",
         )
+
+    async def _mark_durable_run_unknown(
+        self,
+        *,
+        actor: ActorContext,
+        durable_run: StoredDurableRun,
+    ) -> None:
+        session_factory = self._require_session_factory()
+        async with SqlAlchemyUnitOfWork(session_factory) as uow:
+            runs = SqlAlchemyDurableRunsRepository(uow.session)
+            unknown = runs.mark_unknown(durable_run_id=durable_run.id)
+            if unknown is None:
+                raise ServiceUnavailableError(
+                    code="durable_run_record_missing",
+                    message="Durable Run record disappeared during timeout handling",
+                )
+            operations = SqlAlchemyOperationsRepository(uow.session)
+            current_operation = operations.get_by_id(durable_run.operation_id)
+            metadata = dict(current_operation.metadata) if current_operation is not None else {}
+            metadata.update(
+                {
+                    "durable_run": True,
+                    "reconciliation": {
+                        "state": "run_start_unknown",
+                        "idempotency_key": durable_run.idempotency_key,
+                        "attempt_limit": 3,
+                    },
+                    "_retry_policy": {"max_attempts": 3},
+                }
+            )
+            operation = operations.update_status(
+                operation_id=durable_run.operation_id,
+                status=OperationStatus.SUBMITTED,
+                metadata=metadata,
+            )
+        if operation is not None:
+            write_operation_audit_event(
+                session_factory=session_factory,
+                action="runtime.run.start_unknown",
+                operation=operation,
+                actor=actor,
+                result=AuditResult.FAILED,
+                status_code=202,
+                metadata={"thread_id": durable_run.thread_id},
+            )
+            if self._operation_dispatcher is not None:
+                await self._operation_dispatcher.dispatch(operation=operation)
+
+    async def reconcile_durable_run(
+        self,
+        *,
+        actor: ActorContext,
+        durable_run: StoredDurableRun,
+    ) -> StoredDurableRun | None:
+        """Find a remotely-created Run without replaying the original input."""
+        if durable_run.run_id:
+            return durable_run
+        result = await self._upstream.list_thread_runs(
+            durable_run.thread_id,
+            {"limit": 100},
+        )
+        for item in _run_items(result):
+            metadata = ensure_dict(item.get("metadata"))
+            if metadata.get("platform_idempotency_key") != durable_run.idempotency_key:
+                continue
+            run_id = _run_id_from_command_result(item) or clean_str(item.get("id"))
+            if not run_id:
+                continue
+            await self._mark_durable_run_started(
+                actor=actor,
+                durable_run=durable_run,
+                run_id=run_id,
+            )
+            return StoredDurableRun(
+                id=durable_run.id,
+                project_id=durable_run.project_id,
+                thread_id=durable_run.thread_id,
+                agent_key=durable_run.agent_key,
+                idempotency_key=durable_run.idempotency_key,
+                request_digest=durable_run.request_digest,
+                run_id=run_id,
+                operation_id=durable_run.operation_id,
+                status="running",
+                active=True,
+                created_at=durable_run.created_at,
+                updated_at=durable_run.updated_at,
+            )
+        return None
+
+    async def reconcile_operation(self, *, operation_id: str, actor: ActorContext) -> bool:
+        session_factory = self._require_session_factory()
+        async with SqlAlchemyUnitOfWork(session_factory) as uow:
+            durable_run = SqlAlchemyDurableRunsRepository(uow.session).get_by_operation_id(operation_id)
+        if durable_run is None or durable_run.run_id:
+            return durable_run is not None
+        return await self.reconcile_durable_run(actor=actor, durable_run=durable_run) is not None
+
+    async def fail_reconciliation(self, *, operation_id: str) -> None:
+        session_factory = self._require_session_factory()
+        async with SqlAlchemyUnitOfWork(session_factory) as uow:
+            durable_run = SqlAlchemyDurableRunsRepository(uow.session).get_by_operation_id(operation_id)
+            if durable_run is not None and durable_run.active and not durable_run.run_id:
+                SqlAlchemyDurableRunsRepository(uow.session).mark_terminal(
+                    durable_run_id=durable_run.id,
+                    status="failed",
+                )
 
     async def _mark_durable_run_started(
         self,
@@ -531,6 +928,154 @@ class RuntimeGatewayService:
                 status_code=202,
                 metadata={"thread_id": durable_run.thread_id, "run_id": run_id},
             )
+
+    async def _launch_runtime_run(
+        self,
+        *,
+        actor: ActorContext,
+        project_id: str,
+        thread_id: str,
+        command: dict[str, Any],
+        upstream_payload: dict[str, Any],
+        idempotency_key: str,
+    ) -> tuple[StoredDurableRun, Any]:
+        """Reserve once, create upstream once, and reconcile timeout outcomes."""
+        await self._reconcile_active_durable_run_before_launch(
+            actor=actor,
+            project_id=project_id,
+            thread_id=thread_id,
+            idempotency_key=idempotency_key,
+        )
+        durable_run = await self._reserve_durable_run(
+            actor=actor,
+            project_id=project_id,
+            thread_id=thread_id,
+            command=command,
+            idempotency_key=idempotency_key,
+        )
+        if durable_run.run_id:
+            return durable_run, {"run_id": durable_run.run_id, "thread_id": thread_id}
+        if getattr(durable_run, "status", "") == "run_start_unknown":
+            reconciled = await self.reconcile_durable_run(actor=actor, durable_run=durable_run)
+            if reconciled is not None and reconciled.run_id:
+                return reconciled, {"run_id": reconciled.run_id, "thread_id": thread_id}
+            raise ConflictError(
+                code="run_start_in_progress",
+                message="The original run.start request is still being reconciled",
+            )
+
+        idempotency_marker = clean_str(getattr(durable_run, "idempotency_key", None))
+        if idempotency_marker:
+            promoted_metadata = ensure_dict(upstream_payload.get("metadata"))
+            upstream_payload = dict(upstream_payload)
+            upstream_payload["metadata"] = {
+                **promoted_metadata,
+                "platform_idempotency_key": idempotency_marker,
+            }
+        upstream = self._upstream
+        if self._delegation_headers_factory is not None and hasattr(
+            upstream, "with_forwarded_headers"
+        ):
+            context_hash, _ = _runtime_context_snapshot(command)
+            upstream = upstream.with_forwarded_headers(
+                self._delegation_headers_factory(
+                    project_id=project_id,
+                    agent_key=durable_run.agent_key,
+                    thread_id=thread_id,
+                    context_hash=context_hash,
+                )
+            )
+        try:
+            result = await upstream.create_thread_run(thread_id, upstream_payload)
+        except UpstreamServiceError as exc:
+            if exc.code == "langgraph_upstream_timeout":
+                await self._mark_durable_run_unknown(actor=actor, durable_run=durable_run)
+                raise UpstreamServiceError(
+                    code="run_start_unknown",
+                    message="Run creation outcome is unknown and is being reconciled",
+                    upstream="langgraph",
+                ) from exc
+            raise
+        run_id = _run_id_from_command_result(result)
+        if not run_id:
+            raise UpstreamServiceError(
+                code="protocol_run_id_missing",
+                message="Run creation response did not include run_id",
+                upstream="langgraph",
+            )
+        await self._mark_durable_run_started(
+            actor=actor,
+            durable_run=durable_run,
+            run_id=run_id,
+        )
+        return durable_run, result
+
+    async def _reconcile_active_durable_run_before_launch(
+        self,
+        *,
+        actor: ActorContext,
+        project_id: str,
+        thread_id: str,
+        idempotency_key: str,
+    ) -> None:
+        """Release an old ledger slot only when the Agent Server reports a terminal Run."""
+        if self._session_factory is None:
+            return
+        session_factory = self._require_session_factory()
+        async with SqlAlchemyUnitOfWork(session_factory) as uow:
+            runs = SqlAlchemyDurableRunsRepository(uow.session)
+            if runs.get_by_idempotency_key(
+                project_id=project_id,
+                thread_id=thread_id,
+                idempotency_key=idempotency_key,
+            ) is not None:
+                return
+            active_run = runs.get_active(project_id=project_id, thread_id=thread_id)
+            if active_run is not None:
+                operation = SqlAlchemyOperationsRepository(uow.session).get_by_id(
+                    active_run.operation_id
+                )
+                if operation is not None and operation.cancel_requested_at is not None:
+                    return
+
+        if active_run is None or not active_run.run_id:
+            return
+        try:
+            snapshot = await self._upstream.get_thread_run(thread_id, active_run.run_id)
+        except PlatformApiError:
+            # The ledger remains authoritative until an upstream terminal fact is available.
+            return
+        await self._sync_durable_run_terminal_state(
+            actor=actor,
+            project_id=project_id,
+            thread_id=thread_id,
+            run_id=active_run.run_id,
+            snapshot=snapshot,
+        )
+
+    async def launch_runtime_run(
+        self,
+        *,
+        actor: ActorContext,
+        project_id: str,
+        thread_id: str,
+        command: dict[str, Any],
+        upstream_payload: dict[str, Any],
+        idempotency_key: str,
+    ) -> tuple[StoredDurableRun, Any]:
+        """Single application entry point for every governed Run creation."""
+        upstream_payload = await self._attach_runtime_model_reference(
+            project_id=project_id,
+            payload=upstream_payload,
+        )
+        return await self._launch_runtime_run(
+            actor=actor,
+            project_id=project_id,
+            thread_id=thread_id,
+            command=command,
+            upstream_payload=upstream_payload,
+            idempotency_key=idempotency_key,
+        )
 
     async def _assert_active_interrupt(
         self,
@@ -575,6 +1120,32 @@ class RuntimeGatewayService:
                     message="The interrupt has already been resolved",
                 )
             return active_run.run_id
+
+    async def _assert_run_project_scope(
+        self,
+        *,
+        project_id: str,
+        thread_id: str,
+        run_id: str,
+    ) -> None:
+        """Reject known durable runs owned by another project.
+
+        Historical upstream runs may not have a Platform projection; those remain
+        readable after the thread ownership check for backwards compatibility.
+        """
+        if self._session_factory is None:
+            return
+        session_factory = self._require_session_factory()
+        async with SqlAlchemyUnitOfWork(session_factory) as uow:
+            durable_run = SqlAlchemyDurableRunsRepository(uow.session).get_any_by_run_id(
+                thread_id=thread_id,
+                run_id=run_id,
+            )
+        if durable_run is not None and durable_run.project_id != project_id:
+            raise ForbiddenError(
+                code="run_project_denied",
+                message="run_project_denied",
+            )
 
     async def _mark_interrupt_resolved(
         self,
@@ -905,6 +1476,7 @@ class RuntimeGatewayService:
             project_id=project_id,
             payload=next_payload,
         )
+        await self._validate_run_options(project_id=project_id, payload=next_payload)
         assistant_id = clean_str(next_payload.get("assistant_id"))
         await self._assert_runtime_target_allowed(
             project_id=project_id,
@@ -925,6 +1497,7 @@ class RuntimeGatewayService:
             project_id=project_id,
             payload=next_payload,
         )
+        await self._validate_run_options(project_id=project_id, payload=next_payload)
         assistant_id = clean_str(next_payload.get("assistant_id"))
         await self._assert_runtime_target_allowed(
             project_id=project_id,
@@ -945,6 +1518,7 @@ class RuntimeGatewayService:
             project_id=project_id,
             payload=next_payload,
         )
+        await self._validate_run_options(project_id=project_id, payload=next_payload)
         assistant_id = clean_str(next_payload.get("assistant_id"))
         await self._assert_runtime_target_allowed(
             project_id=project_id,
@@ -1010,6 +1584,7 @@ class RuntimeGatewayService:
             project_id=project_id,
             payload=next_payload,
         )
+        await self._validate_run_options(project_id=project_id, payload=next_payload)
         assistant_id = clean_str(next_payload.get("assistant_id"))
         await self._assert_runtime_target_allowed(
             project_id=project_id,
@@ -1051,6 +1626,7 @@ class RuntimeGatewayService:
             project_id=project_id,
             payload=next_payload,
         )
+        await self._validate_run_options(project_id=project_id, payload=next_payload)
         return await self._upstream.update_cron(cron_id, next_payload)
 
     async def delete_cron(
@@ -1082,13 +1658,24 @@ class RuntimeGatewayService:
             project_id=project_id,
             payload=next_payload,
         )
+        await self._validate_run_options(project_id=project_id, payload=next_payload)
         assistant_id = clean_str(next_payload.get("assistant_id"))
         await self._assert_runtime_target_allowed(
             project_id=project_id,
             assistant_id=assistant_id or "",
             thread=thread,
         )
-        return await self._upstream.create_thread_run(thread_id, next_payload)
+        command = {"id": "standard-run", "method": "run.start", "params": next_payload}
+        digest = _request_digest(command)
+        _, result = await self.launch_runtime_run(
+            actor=actor,
+            project_id=project_id,
+            thread_id=thread_id,
+            command=command,
+            upstream_payload=next_payload,
+            idempotency_key="standard:" + digest,
+        )
+        return result
 
     async def stream_thread_run(
         self,
@@ -1098,24 +1685,30 @@ class RuntimeGatewayService:
         thread_id: str,
         payload: dict[str, Any] | None,
     ) -> Any:
-        thread = await self._load_thread(
-            actor=actor,
-            project_id=project_id,
-            thread_id=thread_id,
-            write=True,
-        )
         next_payload = self._inject_project_scope(project_id=project_id, payload=payload)
         next_payload = await self._inject_project_default_model(
             project_id=project_id,
             payload=next_payload,
         )
-        assistant_id = clean_str(next_payload.get("assistant_id"))
-        await self._assert_runtime_target_allowed(
+        result = await self.create_thread_run(
+            actor=actor,
             project_id=project_id,
-            assistant_id=assistant_id or "",
-            thread=thread,
+            thread_id=thread_id,
+            payload=next_payload,
         )
-        return await self._upstream.stream_thread_run(thread_id, next_payload)
+        run_id = _run_id_from_command_result(result)
+        if not run_id:
+            raise UpstreamServiceError(
+                code="protocol_run_id_missing",
+                message="Run creation response did not include run_id",
+                upstream="langgraph",
+            )
+        stream_params = {
+            key: next_payload[key]
+            for key in ("stream_mode", "stream_subgraphs", "stream_resumable", "on_disconnect")
+            if key in next_payload
+        }
+        return await self._upstream.join_thread_run_stream(thread_id, run_id, stream_params)
 
     async def send_thread_command(
         self,
@@ -1132,10 +1725,18 @@ class RuntimeGatewayService:
             thread_id=thread_id,
             write=True,
         )
-        default_model_id = await self._project_default_model_id(project_id=project_id)
+        raw_payload = dict(payload)
+        raw_params = ensure_dict(raw_payload.get("params"))
+        if raw_payload.get("method") == "run.start":
+            raw_params = await self._inject_project_default_model(
+                project_id=project_id,
+                payload=raw_params,
+            )
+        raw_payload["params"] = raw_params
+        default_model_id = clean_str(ensure_dict(raw_params.get("context")).get("model_id"))
         try:
             command = normalize_protocol_v2_command(
-                payload=payload,
+                payload=raw_payload,
                 default_model_id=default_model_id,
             )
         except ValueError as exc:
@@ -1148,6 +1749,11 @@ class RuntimeGatewayService:
             config = ensure_dict(command["params"].get("config"))
             configurable = ensure_dict(config.get("configurable"))
             options = ensure_dict(configurable.get("platform_runtime"))
+            context = ensure_dict(command["params"].get("context"))
+            if "model_id" in context and "model_id" not in options:
+                options["model_id"] = context["model_id"]
+            if "tools" in context and "tools" not in options:
+                options["tools"] = context["tools"]
             await self._assert_runtime_options_allowed(
                 project_id=project_id,
                 options=options,
@@ -1158,33 +1764,21 @@ class RuntimeGatewayService:
                 assistant_id=assistant_id or "",
                 thread=thread,
             )
-            durable_run = await self._reserve_durable_run(
+            promoted_payload = _promote_protocol_run_start(command["params"])
+            _, result = await self.launch_runtime_run(
                 actor=actor,
                 project_id=project_id,
                 thread_id=thread_id,
                 command=command,
+                upstream_payload=promoted_payload,
                 idempotency_key=_normalize_idempotency_key(idempotency_key),
             )
-            if durable_run.run_id:
-                return {
-                    "type": "success",
-                    "id": command["id"],
-                    "result": {"run_id": durable_run.run_id},
-                }
-            result = await self._upstream.send_thread_command(thread_id, command)
             run_id = _run_id_from_command_result(result)
-            if not run_id:
-                raise UpstreamServiceError(
-                    code="protocol_run_id_missing",
-                    message="Protocol v2 run.start response did not include run_id",
-                    upstream="langgraph",
-                )
-            await self._mark_durable_run_started(
-                actor=actor,
-                durable_run=durable_run,
-                run_id=run_id,
-            )
-            return result
+            return {
+                "type": "success",
+                "id": command["id"],
+                "result": {"run_id": run_id, "thread_id": thread_id},
+            }
         if command["method"] == "input.respond":
             interrupt_id = clean_str(command["params"].get("interrupt_id"))
             if not interrupt_id:
@@ -1202,6 +1796,16 @@ class RuntimeGatewayService:
                 isinstance(result, dict)
                 and str(result.get("type") or "").lower() == "error"
             ):
+                resumed_run_id = _run_id_from_command_result(result)
+                if resumed_run_id and resumed_run_id != active_run_id:
+                    session_factory = self._require_session_factory()
+                    async with SqlAlchemyUnitOfWork(session_factory) as uow:
+                        SqlAlchemyDurableRunsRepository(uow.session).replace_active_run_id(
+                            project_id=project_id,
+                            thread_id=thread_id,
+                            run_id=active_run_id,
+                            next_run_id=resumed_run_id,
+                        )
                 await self._mark_interrupt_resolved(
                     project_id=project_id,
                     thread_id=thread_id,
@@ -1232,7 +1836,38 @@ class RuntimeGatewayService:
                 code="invalid_protocol_event_subscription",
                 message=str(exc),
             ) from exc
-        return await self._upstream.stream_thread_events(thread_id, subscription)
+        stream = await self._upstream.stream_thread_events(thread_id, subscription)
+
+        async def normalized_stream() -> AsyncIterator[bytes]:
+            buffer = b""
+            async for chunk in stream:
+                buffer += chunk.replace(b"\r\n", b"\n")
+                frames = buffer.split(b"\n\n")
+                buffer = frames.pop()
+                for frame in frames:
+                    normalized, terminal = _normalize_protocol_lifecycle_frame(frame)
+                    if terminal is not None:
+                        await self._sync_durable_run_terminal_state(
+                            actor=actor,
+                            project_id=project_id,
+                            thread_id=thread_id,
+                            run_id=terminal["run_id"],
+                            snapshot={"status": terminal["status"]},
+                        )
+                    yield normalized + b"\n\n"
+            if buffer:
+                normalized, terminal = _normalize_protocol_lifecycle_frame(buffer)
+                if terminal is not None:
+                    await self._sync_durable_run_terminal_state(
+                        actor=actor,
+                        project_id=project_id,
+                        thread_id=thread_id,
+                        run_id=terminal["run_id"],
+                        snapshot={"status": terminal["status"]},
+                    )
+                yield normalized
+
+        return normalized_stream()
 
     async def wait_thread_run(
         self,
@@ -1242,24 +1877,25 @@ class RuntimeGatewayService:
         thread_id: str,
         payload: dict[str, Any] | None,
     ) -> Any:
-        thread = await self._load_thread(
-            actor=actor,
-            project_id=project_id,
-            thread_id=thread_id,
-            write=True,
-        )
         next_payload = self._inject_project_scope(project_id=project_id, payload=payload)
         next_payload = await self._inject_project_default_model(
             project_id=project_id,
             payload=next_payload,
         )
-        assistant_id = clean_str(next_payload.get("assistant_id"))
-        await self._assert_runtime_target_allowed(
+        result = await self.create_thread_run(
             project_id=project_id,
-            assistant_id=assistant_id or "",
-            thread=thread,
+            actor=actor,
+            thread_id=thread_id,
+            payload=next_payload,
         )
-        return await self._upstream.wait_thread_run(thread_id, next_payload)
+        run_id = _run_id_from_command_result(result)
+        if not run_id:
+            raise UpstreamServiceError(
+                code="protocol_run_id_missing",
+                message="Run creation response did not include run_id",
+                upstream="langgraph",
+            )
+        return await self._upstream.join_thread_run(thread_id, run_id)
 
     async def get_thread_run(
         self,
@@ -1274,6 +1910,11 @@ class RuntimeGatewayService:
             project_id=project_id,
             thread_id=thread_id,
             write=False,
+        )
+        await self._assert_run_project_scope(
+            project_id=project_id,
+            thread_id=thread_id,
+            run_id=run_id,
         )
         snapshot = await self._upstream.get_thread_run(thread_id, run_id)
         await self._sync_durable_run_terminal_state(
@@ -1315,6 +1956,11 @@ class RuntimeGatewayService:
             thread_id=thread_id,
             write=True,
         )
+        await self._assert_run_project_scope(
+            project_id=project_id,
+            thread_id=thread_id,
+            run_id=run_id,
+        )
         return await self._upstream.delete_thread_run(thread_id, run_id)
 
     async def join_thread_run(
@@ -1330,6 +1976,11 @@ class RuntimeGatewayService:
             project_id=project_id,
             thread_id=thread_id,
             write=False,
+        )
+        await self._assert_run_project_scope(
+            project_id=project_id,
+            thread_id=thread_id,
+            run_id=run_id,
         )
         return await self._upstream.join_thread_run(thread_id, run_id)
 
@@ -1348,10 +1999,22 @@ class RuntimeGatewayService:
             thread_id=thread_id,
             write=False,
         )
+        await self._assert_run_project_scope(
+            project_id=project_id,
+            thread_id=thread_id,
+            run_id=run_id,
+        )
+        stream_params = _normalize_payload(params)
+        if stream_params.get("cancel_on_disconnect") is True:
+            raise BadRequestError(
+                code="cancel_on_disconnect_not_supported",
+                message="SSE disconnect must not cancel a run; use the explicit cancel endpoint",
+            )
+        stream_params["cancel_on_disconnect"] = False
         return await self._upstream.join_thread_run_stream(
             thread_id,
             run_id,
-            _normalize_payload(params),
+            stream_params,
         )
 
     async def create_thread_run_cron(
@@ -1395,6 +2058,11 @@ class RuntimeGatewayService:
             project_id=project_id,
             thread_id=thread_id,
             write=True,
+        )
+        await self._assert_run_project_scope(
+            project_id=project_id,
+            thread_id=thread_id,
+            run_id=run_id,
         )
         result = await self._upstream.cancel_thread_run(
             thread_id,

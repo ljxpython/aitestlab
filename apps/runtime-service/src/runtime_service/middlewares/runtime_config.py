@@ -95,6 +95,8 @@ class RuntimeConfigMiddleware(AgentMiddleware[object, RuntimeContext, object]):
             if facts.context_hash != runtime_context_hash(context):
                 raise RuntimeAuthError("runtime.auth.context_hash_mismatch", "context_hash")
             self._check_scope(runtime, facts)
+            if facts.scope.operation != "run-create":
+                raise RuntimeAuthError("runtime.auth.invalid_principal", "operation")
             principal, policy = facts.principal, facts.policy
         return resolve_runtime_config(
             principal=principal,

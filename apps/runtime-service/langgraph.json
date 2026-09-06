@@ -9,6 +9,10 @@
     "reference_agent": {
       "path": "./src/runtime_service/graphs/reference_agent.py:get_agent",
       "description": "R2 Runtime-aware create_agent reference service with explicit model resolution."
+    },
+    "workflow_demo": {
+      "path": "./src/runtime_service/graphs/workflow_demo.py:get_agent",
+      "description": "Model-backed workflow Agent with optional human confirmation interrupt."
     }
   },
   "env": ".env",

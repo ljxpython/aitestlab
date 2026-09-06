@@ -52,13 +52,13 @@ def test_new_package_is_loaded_from_src() -> None:
     assert Path(runtime_service.__file__).resolve().is_relative_to(PROJECT_ROOT / "src")
 
 
-def test_production_config_registers_only_reference_agent() -> None:
+def test_production_config_registers_model_backed_agents() -> None:
     config = _load_config("langgraph.json")
     graphs = config["graphs"]
 
-    assert list(graphs) == ["reference_agent"]
-    assert graphs["reference_agent"]["path"].startswith("./src/runtime_service/graphs/")
-    assert graphs["reference_agent"]["description"]
+    assert list(graphs) == ["reference_agent", "workflow_demo"]
+    assert all(item["path"].startswith("./src/runtime_service/graphs/") for item in graphs.values())
+    assert all(item["description"] for item in graphs.values())
 
 
 def test_production_config_registers_runtime_auth_adapter() -> None:
@@ -94,7 +94,7 @@ def test_docker_uses_graphharbor_production_config() -> None:
 
     assert 'ENTRYPOINT ["graphharbor"]' in dockerfile
     assert '"--config", "${RUNTIME_GRAPH_CONFIG:-/app/langgraph.json}"' in compose
-    assert list(config["graphs"]) == ["reference_agent"]
+    assert list(config["graphs"]) == ["reference_agent", "workflow_demo"]
 
 
 def test_docker_does_not_embed_stale_langgraph_api_registries() -> None:
@@ -238,8 +238,12 @@ def test_reference_agent_uses_deterministic_fake_model() -> None:
     assert result["messages"][-1].content == "reference agent response"
 
 
-def test_workflow_demo_has_deterministic_state_transition() -> None:
-    graph = asyncio.run(get_workflow_agent({}))
+def test_workflow_demo_calls_the_model_for_default_route() -> None:
+    graph = asyncio.run(
+        get_workflow_agent(
+            {"configurable": {"_runtime_model": BindableFakeChatModel(responses=["model response"])}}
+        )
+    )
     result = asyncio.run(
         graph.ainvoke(
             {"message": "hello"},
@@ -247,4 +251,4 @@ def test_workflow_demo_has_deterministic_state_transition() -> None:
         )
     )
 
-    assert result["response"] == "workflow response: hello"
+    assert result["response"] == "model response"

@@ -219,7 +219,7 @@ function inferResourceRoute(operation: ManagementOperation) {
     return '/workspace/runtime/models'
   }
   if (operation.kind === 'runtime.tools.refresh') {
-    return '/workspace/runtime/tools'
+    return '/workspace/runtime/models'
   }
   if (operation.kind === 'runtime.graphs.refresh') {
     return '/workspace/graphs'

@@ -1,3 +1,4 @@
-from app.modules.assistants.presentation.http import router
+"""Deprecated compatibility imports; use :mod:`app.modules.agents.presentation`."""
 
-__all__ = ["router"]
+from app.modules.agents.presentation import *  # noqa: F401,F403
+

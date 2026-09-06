@@ -4,7 +4,7 @@ from fastapi import APIRouter
 
 from app.entrypoints.http.system import router as system_router
 from app.modules.announcements.presentation import router as announcements_router
-from app.modules.assistants.presentation import router as assistants_router
+from app.modules.agents.presentation import router as assistants_router
 from app.modules.audit.presentation import router as audit_router
 from app.modules.identity.presentation import router as identity_router
 from app.modules.operations.presentation import router as operations_router

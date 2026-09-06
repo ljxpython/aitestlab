@@ -48,7 +48,7 @@ _ALLOWED_CLAIMS = frozenset(
     }
 )
 
-_SCOPE_FIELDS = frozenset({"tenant_id", "project_id", "assistant_id", "thread_id"})
+_SCOPE_FIELDS = frozenset({"tenant_id", "project_id", "assistant_id", "thread_id", "operation"})
 _HASH_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
@@ -58,6 +58,7 @@ class RuntimeScope:
     project_id: str
     assistant_id: str | None = None
     thread_id: str | None = None
+    operation: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,11 +93,14 @@ def _parse_scope(raw: object) -> RuntimeScope:
         if value is not None and (not isinstance(value, str) or not value or value != value.strip()):
             raise _invalid("runtime.auth.invalid_principal", field)
         values[field] = value
+    if values["operation"] is not None and values["operation"] not in {"read", "run-create"}:
+        raise _invalid("runtime.auth.invalid_principal", "operation")
     return RuntimeScope(
         tenant_id=values["tenant_id"] or "",
         project_id=values["project_id"] or "",
         assistant_id=values["assistant_id"],
         thread_id=values["thread_id"],
+        operation=values["operation"],
     )
 
 

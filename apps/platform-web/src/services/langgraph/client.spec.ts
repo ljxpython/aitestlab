@@ -96,4 +96,33 @@ describe('createLanggraphAuthorizedFetch', () => {
     expect(response.status).toBe(401)
     expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
+
+  it('flattens the platform error envelope for the protocol SDK', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: {
+            code: 'thread_active_run_conflict',
+            message: 'The thread already has an active Durable Run'
+          }
+        }),
+        { status: 409, statusText: 'Conflict' }
+      )
+    )
+    const authFetch = createLanggraphAuthorizedFetch({
+      fetchImpl,
+      getAccessToken: () => 'token',
+      refreshAccessToken: async () => ''
+    })
+
+    const response = await authFetch('http://example.com/api/langgraph/threads/thread-1/runs', {
+      method: 'POST'
+    })
+
+    expect(await response.json()).toMatchObject({
+      code: 'thread_active_run_conflict',
+      message: 'The thread already has an active Durable Run',
+      error: 'The thread already has an active Durable Run'
+    })
+  })
 })

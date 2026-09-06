@@ -91,7 +91,7 @@ const canRefreshRuntimeCatalog = computed(() =>
 const activeRefreshResource = computed<'models' | 'tools' | 'graphs'>(() => activeTab.value)
 const activeRefreshLabel = computed(() => {
   if (activeTab.value === 'tools') {
-    return '工具目录'
+    return '运行策略'
   }
   if (activeTab.value === 'graphs') {
     return '图目录'

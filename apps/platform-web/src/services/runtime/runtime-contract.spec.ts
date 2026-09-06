@@ -63,7 +63,6 @@ describe('runtime contract helper', () => {
       graphId: ' assistant ',
       name: ' Demo ',
       description: '   ',
-      assistantId: '   ',
       config: {
         recursion_limit: 8
       },
@@ -98,7 +97,7 @@ describe('runtime contract helper', () => {
     })
   })
 
-  it('builds chat submit options with typed platform runtime config', () => {
+  it('builds chat submit options without client-owned prompt or tool policy', () => {
     const options = buildChatRunSubmitOptions({
       modelId: 'gpt-4.1',
       systemPrompt: 'Keep answers concise.',
@@ -113,8 +112,6 @@ describe('runtime contract helper', () => {
         configurable: {
           platform_runtime: {
             model_id: 'gpt-4.1',
-            system_prompt: 'Keep answers concise.',
-            enable_tools: false,
             temperature: 0.3,
             max_tokens: 2048
           }

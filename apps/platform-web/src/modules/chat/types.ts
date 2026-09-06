@@ -83,6 +83,6 @@ export function resolveChatTarget(target?: ChatTargetPreference | null): ChatRes
     updatedAt: target.updatedAt,
     resolvedTargetId: assistantId,
     displayName,
-    label: `Assistant · ${displayName}`
+    label: `Agent · ${displayName}`
   }
 }

@@ -144,11 +144,9 @@ def create_runtime_delegation_token(
         raise ValueError("runtime delegation policy_version must not be empty")
     model_ids = _runtime_names(allowed_model_ids, "allowed_model_ids")
     tool_names = _runtime_names(allowed_tool_names, "allowed_tool_names")
-    if not model_ids:
-        raise ValueError("runtime delegation requires allowed_model_ids")
     if not isinstance(scope, Mapping):
         raise ValueError("runtime delegation scope must be an object")
-    scope_keys = {"tenant_id", "project_id", "assistant_id", "thread_id"}
+    scope_keys = {"tenant_id", "project_id", "assistant_id", "thread_id", "operation"}
     if set(scope) - scope_keys or not scope.get("tenant_id") or not scope.get("project_id"):
         raise ValueError("runtime delegation scope must contain tenant_id and project_id")
     normalized_scope = {
@@ -156,6 +154,9 @@ def create_runtime_delegation_token(
         for key, value in scope.items()
         if value is not None
     }
+    operation = normalized_scope.get("operation")
+    if operation is not None and operation not in {"read", "run-create"}:
+        raise ValueError("runtime delegation scope operation must be read or run-create")
     if (
         normalized_scope.get("tenant_id") != tenant_id
         or normalized_scope.get("project_id") != project_id

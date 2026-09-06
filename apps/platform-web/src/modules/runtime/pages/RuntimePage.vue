@@ -58,8 +58,8 @@ const entryCards = computed<RuntimeEntryCard[]>(() => [
     description: '这里负责看清 Runtime 当前暴露了哪些模型和工具，适合做目录核对、联调前检查和人工排障。',
     primaryLabel: '模型目录',
     primaryTo: '/workspace/runtime/models',
-    secondaryLabel: '工具目录',
-    secondaryTo: '/workspace/runtime/tools'
+    secondaryLabel: '运行策略',
+    secondaryTo: '/workspace/runtime/policies'
   },
   {
     title: '治理入口',
@@ -159,16 +159,6 @@ watch(
             size="sm"
           />
           模型目录
-        </router-link>
-        <router-link
-          class="pw-btn pw-btn-secondary"
-          to="/workspace/runtime/tools"
-        >
-          <BaseIcon
-            name="activity"
-            size="sm"
-          />
-          工具目录
         </router-link>
         <router-link
           class="pw-btn pw-btn-secondary"

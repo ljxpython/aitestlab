@@ -11,6 +11,20 @@ import {
 } from './helpers'
 
 export function createPlatformChatStreamActions(deps: PlatformChatStreamActionDeps) {
+  async function reportRunError(error: unknown, fallbackMessage: string) {
+    const normalized = normalizeRuntimeGatewayError(error, fallbackMessage)
+    if (normalized.status === 409) {
+      const threadId = deps.options.activeThreadId.value.trim()
+      if (threadId) {
+        await deps.options.onRefreshThread(threadId, { preserveInfo: true }).catch(() => undefined)
+      }
+      if (deps.interruptPayload.value !== undefined) {
+        deps.detailInfo.value = '线程中已有待处理事项，已同步最新状态，请先完成确认。'
+      }
+    }
+    deps.detailError.value = normalized.message
+  }
+
   function clearDetailFeedback(controlOptions: { preserveInfo?: boolean } = {}) {
     deps.detailError.value = ''
 
@@ -80,7 +94,7 @@ export function createPlatformChatStreamActions(deps: PlatformChatStreamActionDe
       deps.commandPending.value = false
       return true
     } catch (runError) {
-      deps.detailError.value = normalizeRuntimeGatewayError(runError, '对话发送失败').message
+      await reportRunError(runError, '对话发送失败')
       deps.commandPending.value = false
       deps.cancelling.value = false
       return false
@@ -99,6 +113,7 @@ export function createPlatformChatStreamActions(deps: PlatformChatStreamActionDe
 
     try {
       await deps.stream.stop()
+      deps.detailInfo.value = '已请求停止，正在同步运行状态。'
     } catch (stopError) {
       await deps.stream.stop({ cancel: false }).catch(() => undefined)
       deps.detailError.value = normalizeRuntimeGatewayError(stopError, '停止运行失败').message
@@ -129,7 +144,7 @@ export function createPlatformChatStreamActions(deps: PlatformChatStreamActionDe
       deps.commandPending.value = false
       return true
     } catch (runError) {
-      deps.detailError.value = normalizeRuntimeGatewayError(runError, '恢复中断失败').message
+      await reportRunError(runError, '恢复中断失败')
       deps.commandPending.value = false
       deps.cancelling.value = false
       return false
@@ -151,7 +166,7 @@ export function createPlatformChatStreamActions(deps: PlatformChatStreamActionDe
       deps.commandPending.value = false
       return true
     } catch (runError) {
-      deps.detailError.value = normalizeRuntimeGatewayError(runError, '批量恢复中断失败').message
+      await reportRunError(runError, '批量恢复中断失败')
       deps.commandPending.value = false
       deps.cancelling.value = false
       return false
@@ -188,7 +203,7 @@ export function createPlatformChatStreamActions(deps: PlatformChatStreamActionDe
       deps.commandPending.value = false
       return true
     } catch (runError) {
-      deps.detailError.value = normalizeRuntimeGatewayError(runError, '重新执行失败').message
+      await reportRunError(runError, '重新执行失败')
       deps.commandPending.value = false
       deps.cancelling.value = false
       return false
@@ -229,7 +244,7 @@ export function createPlatformChatStreamActions(deps: PlatformChatStreamActionDe
       deps.commandPending.value = false
       return true
     } catch (runError) {
-      deps.detailError.value = normalizeRuntimeGatewayError(runError, '编辑重发失败').message
+      await reportRunError(runError, '编辑重发失败')
       deps.commandPending.value = false
       deps.cancelling.value = false
       return false

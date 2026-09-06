@@ -100,16 +100,23 @@ describe('workspace account routes', () => {
   })
 })
 
+describe('workspace primary navigation routes', () => {
+  it('keeps Agent, Models, and Chat as distinct pages', () => {
+    const primary = ['workspace-assistants', 'workspace-models', 'workspace-chat'].map((name) =>
+      getWorkspaceChildren().find((route) => route.name === name)
+    )
+
+    expect(primary.map((route) => route?.path)).toEqual(['assistants', 'models', 'chat'])
+    expect(new Set(primary.map((route) => route?.component)).size).toBe(3)
+  })
+})
+
 describe('workspace runtime debug route', () => {
-  it('requires project runtime write permission without entering the formal chat route', () => {
+  it('does not expose the legacy debug surface', () => {
     const debugRoute = getWorkspaceChildren().find(
       (route) => route.name === 'workspace-chat-debug'
     )
 
-    expect(debugRoute?.path).toBe('chat/debug')
-    expect(debugRoute?.meta).toMatchObject({
-      requiredPermissions: ['project.runtime.write'],
-      permissionProjectSource: 'workspace'
-    })
+    expect(debugRoute).toBeUndefined()
   })
 })

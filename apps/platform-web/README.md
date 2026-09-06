@@ -28,6 +28,8 @@
 - 直接替代 `runtime-service` 的运行时调试入口
 - 绕过 `platform-api` 直连正式治理链路
 
+Chat 真实链路验收使用 [Chat 前端 Harness](./docs/chat-frontend-harness.md)，入口为 `pnpm harness:chat`。
+
 ## 推荐读路径
 
 1. [Control Plane 页面标准](./docs/control-plane-page-standard.md)

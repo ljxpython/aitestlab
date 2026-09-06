@@ -246,7 +246,10 @@ export function useChatThreadWorkspace(options: UseChatThreadWorkspaceOptions) {
     }
   }
 
-  async function loadThreadList(preferredThreadId = '') {
+  async function loadThreadList(
+    preferredThreadId = '',
+    loadOptions: { selectLatest?: boolean } = {}
+  ) {
     const projectId = options.projectId.value.trim()
     const target = options.target.value
 
@@ -279,6 +282,11 @@ export function useChatThreadWorkspace(options: UseChatThreadWorkspaceOptions) {
       threadItems.value = Array.isArray(payload.items)
         ? payload.items.filter((item) => !isLegacyDebugThread(item))
         : []
+
+      if (loadOptions.selectLatest === false) {
+        resetActiveThreadState()
+        return
+      }
 
       const requestedThreadId = preferredThreadId.trim() || options.activeThreadId.value.trim()
       const explicitPreferredThreadId = threadItems.value.some(

@@ -15,7 +15,7 @@
 它负责：
 
 - 平台级身份与授权
-- 项目、成员、assistant、catalog 等控制面主数据
+- 项目、成员、Agent、catalog 等控制面主数据
 - 受控访问 runtime upstream
 - 审计、公告、配置、operation/job
 - 对前端 `apps/platform-web` 提供稳定平台契约
@@ -112,7 +112,7 @@ app/
 - `iam`
 - `tenants`
 - `projects`
-- `assistants`
+- `agents`（实现目录当前保留 `assistants` 兼容路径）
 - `runtime_catalog`
 - `runtime_gateway`
 - `testcase`
@@ -193,13 +193,17 @@ module/
 - 项目成员关系
 - 项目级治理边界
 
-### 4.4 `assistants`
+### 4.4 Agent（公开模块名 `agents`，实现目录 `assistants` 兼容）
 
 负责：
 
-- 平台 assistant 主数据
-- assistant 配置与治理字段
-- 与 runtime assistant 的映射关系
+- 平台 Agent 主数据，稳定执行键为 `agent_key = graph_id`
+- Agent 配置与治理字段
+- 旧 `assistant` 字段和 URL 仅作有 fixture 支撑的读取兼容
+
+当前实现暂保留 `assistants` 目录和 Python 符号，避免历史导入与数据迁移产生无证据破坏；新接口
+统一使用 `/agents` 路径，且不再创建、更新或删除 GraphHarbor upstream Assistant。后续只有在历史
+fixture 和 migration 证据齐备后，才允许物理迁移目录和删除兼容字段。
 
 不负责：
 
@@ -310,7 +314,7 @@ action 必须语义化，例如：
 
 - `identity.login.succeeded`
 - `project.member.upserted`
-- `assistant.created`
+- `agent.created`（历史 `assistant.created` 仅作审计兼容）
 - `catalog.graph.refresh_requested`
 - `runtime.run.created`
 

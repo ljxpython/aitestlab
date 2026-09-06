@@ -49,7 +49,10 @@ def test_real_langfuse_workflow_trace_smoke(monkeypatch: pytest.MonkeyPatch) -> 
                         "request_id": request_id,
                         "thread_id": thread_id,
                     },
-                    "configurable": {"thread_id": thread_id},
+                "configurable": {
+                    "thread_id": thread_id,
+                    "_runtime_test_local_auth": True,
+                },
                 }
             )
         )

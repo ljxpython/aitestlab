@@ -34,7 +34,7 @@
 它负责：
 
 - 身份认证与平台权限
-- 项目、成员、用户、助手等控制面主数据
+- 项目、成员、用户、Agent 等控制面主数据
 - 平台配置、服务账号、公告、审计、操作中心
 - 受控访问 `runtime-service`
 - 给 `apps/platform-web` 提供稳定平台 API
@@ -103,7 +103,7 @@
 | 登录、当前用户资料、修改密码 | `identity` | 属于平台身份域 |
 | 用户、项目、成员管理 | `users` / `projects` | 属于平台治理主数据 |
 | 公告、审计、平台配置、服务账号 | `announcements` / `audit` / `platform_config` / `service_accounts` | 属于平台治理能力 |
-| 助手、graph、thread、chat、运行入口 | `assistants` + `runtime_gateway` + `runtime_catalog` | 平台负责受控访问和上下文注入，不直接替代 runtime |
+| Agent、graph、thread、chat、运行入口 | `agents`（当前由 `assistants` 兼容实现）+ `runtime_gateway` + `runtime_catalog` | 平台负责受控访问和上下文注入，不直接替代 runtime |
 | testcase 管理、导出、预览 | `testcase` | 结果数据仍在 `interaction-data-service` |
 | 长耗时刷新、导出、批处理 | `operations` | 通过 operation/job 跟踪状态，不在 HTTP 里硬等 |
 
@@ -288,7 +288,7 @@ module/
 | `identity` | 登录、刷新、当前用户 | 不直接承接项目权限 |
 | `iam` | 平台级 / 项目级权限模型 | 不让 handler 自己硬编码角色 |
 | `projects` | 项目与成员治理 | 不替代全局用户管理 |
-| `assistants` | assistant 平台主数据和映射 | 不直接执行 runtime run |
+| `agents`（实现目录 `assistants`） | Agent 平台主数据和治理字段；旧目录仅作迁移兼容 | 不直接执行 runtime run |
 | `runtime_catalog` | graph/model/tool 的受控目录视图 | 不篡改 runtime 真相源 |
 | `runtime_gateway` | 受控代理 runtime upstream | 不承接平台主数据 |
 | `testcase` | testcase 控制面接口、导出聚合 | 不持有结果域真实数据 |
@@ -340,7 +340,7 @@ module/
 
 - 项目资源读写
 - 项目成员
-- assistant project scope
+- Agent project scope
 - testcase project scope
 - runtime gateway 的项目边界
 
@@ -370,7 +370,7 @@ module/
 | 管理服务账号 | 可以 | 视策略开放 | 不可以 | 不可以 | 不可以 | 不可以 |
 | 查看项目成员 | 需要项目归属或额外授权 | 需要项目归属或额外授权 | 不可以 | 可以 | 可以 | 只读或受限 |
 | 修改项目成员 | 不自动拥有，仍需项目归属/授权 | 不自动拥有，仍需项目归属/授权 | 不可以 | 可以 | 一般不可以 | 不可以 |
-| 运行项目内 assistant / runtime 能力 | 不自动拥有，仍需项目归属/授权 | 不自动拥有，仍需项目归属/授权 | 不可以 | 可以 | 可以 | 受限执行 |
+| 运行项目内 Agent / runtime 能力 | 不自动拥有，仍需项目归属/授权 | 不自动拥有，仍需项目归属/授权 | 不可以 | 可以 | 可以 | 受限执行 |
 
 这里有个非常关键的原则：
 

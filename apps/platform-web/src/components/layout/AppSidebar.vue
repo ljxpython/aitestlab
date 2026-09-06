@@ -57,7 +57,7 @@ const groups = computed(() => {
     },
     {
       id: 'agent',
-      label: 'Agent',
+      label: 'Agent Workspace',
       items: [
         {
           to: '/workspace/assistants',
@@ -66,21 +66,9 @@ const groups = computed(() => {
           requiredPermissions: ['project.assistant.read']
         },
         {
-          to: '/workspace/graphs',
-          label: t('nav.graphs'),
-          icon: 'graph',
-          requiredPermissions: ['project.runtime.read']
-        },
-        {
-          to: '/workspace/runtime',
-          label: t('nav.runtime'),
+          to: '/workspace/models',
+          label: 'Models',
           icon: 'runtime',
-          requiredPermissions: ['project.runtime.read']
-        },
-        {
-          to: '/workspace/runtime/policies',
-          label: t('nav.runtimePolicies'),
-          icon: 'shield',
           requiredPermissions: ['project.runtime.read']
         },
         {

@@ -103,6 +103,36 @@ class IamProjectGovernanceTest(unittest.TestCase):
         self.assertEqual(candidates.status_code, 200, candidates.text)
         self.assertEqual(candidates.json()["items"][0]["username"], "viewer")
 
+    def test_project_runtime_operation_requires_and_accepts_project_scope(self) -> None:
+        created = self.client.post(
+            "/api/projects",
+            headers=self._headers(self.admin_id, "admin"),
+            json={"name": "Runtime Operation Project"},
+        )
+        self.assertEqual(created.status_code, 200, created.text)
+        project_id = created.json()["id"]
+        payload = {
+            "kind": "runtime.graphs.refresh",
+            "project_id": project_id,
+            "idempotency_key": "runtime-graphs-refresh-test",
+        }
+
+        missing_scope = self.client.post(
+            "/api/operations",
+            headers=self._headers(self.admin_id, "admin"),
+            json=payload,
+        )
+        self.assertEqual(missing_scope.status_code, 403, missing_scope.text)
+        self.assertEqual(missing_scope.json()["error"]["code"], "project_role_missing")
+
+        submitted = self.client.post(
+            "/api/operations",
+            headers=self._headers(self.admin_id, "admin", project_id),
+            json=payload,
+        )
+        self.assertEqual(submitted.status_code, 202, submitted.text)
+        self.assertEqual(submitted.json()["project_id"], project_id)
+
     def test_super_admin_needs_explicit_takeover_and_last_admin_is_protected(self) -> None:
         owner_id = self._create_user("owner", ())
         with session_scope(self._session_factory) as session:

@@ -1,23 +1,4 @@
-from app.modules.assistants.application import (
-    AssistantsService,
-    CreateAssistantCommand,
-    ListAssistantsQuery,
-    UpdateAssistantCommand,
-)
-from app.modules.assistants.domain import (
-    AssistantItem,
-    AssistantPage,
-    AssistantStatus,
-    AssistantSyncStatus,
-)
+"""Deprecated compatibility imports; use :mod:`app.modules.agents`."""
 
-__all__ = [
-    "AssistantItem",
-    "AssistantPage",
-    "AssistantStatus",
-    "AssistantSyncStatus",
-    "AssistantsService",
-    "CreateAssistantCommand",
-    "ListAssistantsQuery",
-    "UpdateAssistantCommand",
-]
+from app.modules.agents import *  # noqa: F401,F403
+

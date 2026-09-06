@@ -99,6 +99,36 @@ def test_graphharbor_runtime_context_unknown_field_fails_closed(
     asyncio.run(_test_unknown_context(durable_url))
 
 
+def test_graphharbor_invalid_delegation_has_no_persistence(
+    durable_url: str,
+) -> None:
+    """Auth failures must happen before GraphHarbor creates a Thread or Run."""
+    asyncio.run(_test_invalid_delegation_no_side_effect(durable_url))
+
+
+async def _test_invalid_delegation_no_side_effect(base_url: str) -> None:
+    thread_id = str(uuid.uuid4())
+    scope_claims = jwt.decode(_token(), SECRET, algorithms=["HS256"], options={"verify_signature": False})
+    scope_claims["scope"] = {
+        "tenant_id": "wrong-tenant",
+        "project_id": "integration-project",
+    }
+    invalid_token = jwt.encode(scope_claims, SECRET, algorithm="HS256")
+    client = get_client(url=base_url, headers={"Authorization": f"Bearer {invalid_token}"})
+    try:
+        with pytest.raises(Exception):
+            await client.threads.create(thread_id=thread_id, if_exists="raise")
+    finally:
+        await client.aclose()
+
+    valid = get_client(url=base_url, headers={"Authorization": f"Bearer {_token()}"})
+    try:
+        with pytest.raises(Exception):
+            await valid.threads.get(thread_id)
+    finally:
+        await valid.aclose()
+
+
 async def _test_unknown_context(base_url: str) -> None:
     context = {"future": True}
     client = get_client(
@@ -128,8 +158,6 @@ async def _test_unknown_context(base_url: str) -> None:
 def test_graphharbor_agent_server_executes_real_model_when_enabled(
     durable_url: str,
 ) -> None:
-    if os.getenv("RUNTIME_E2E") != "1":
-        pytest.skip("set RUNTIME_E2E=1 to run real-model GraphHarbor execution")
     asyncio.run(_run_real_model(durable_url))
 
 

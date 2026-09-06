@@ -148,6 +148,47 @@ describe('useChatThreadWorkspace', () => {
     expect(resetStreamView).toHaveBeenCalled()
   })
 
+  it('keeps a blank active thread when initialization explicitly starts a new conversation', async () => {
+    vi.clearAllMocks()
+    vi.mocked(listRuntimeThreadsPage).mockResolvedValueOnce({
+      items: [
+        { thread_id: 'recent-thread', status: 'idle', metadata: {} }
+      ],
+      total: 1,
+      limit: 100,
+      offset: 0
+    })
+    const activeThreadId = ref('')
+    const activeThread = ref(null)
+    const historyItems = ref<Record<string, unknown>[]>([])
+    const workspace = useChatThreadWorkspace({
+      projectId: computed(() => 'project-1'),
+      target: computed(() => ({
+        targetType: 'assistant' as const,
+        assistantId: 'assistant-1',
+        resolvedTargetId: 'assistant-1',
+        displayName: 'Assistant',
+        label: 'Agent · Assistant'
+      })),
+      activeThreadId,
+      activeThread,
+      selectedBranch: ref(''),
+      historyItems,
+      displayState: computed(() => null),
+      clearStreamDetailFeedback: vi.fn(),
+      resetStreamView: vi.fn(),
+      streamDetailError: ref(''),
+      streamDetailInfo: ref('')
+    })
+
+    await workspace.loadThreadList('', { selectLatest: false })
+
+    expect(workspace.threadItems.value.map((item) => item.thread_id)).toEqual(['recent-thread'])
+    expect(activeThreadId.value).toBe('')
+    expect(activeThread.value).toBeNull()
+    expect(getRuntimeThreadSnapshot).not.toHaveBeenCalled()
+  })
+
   it('does not let an older thread response overwrite the active thread', async () => {
     const first = deferred<RuntimeThreadSnapshot>()
     const second = deferred<RuntimeThreadSnapshot>()

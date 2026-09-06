@@ -3,7 +3,7 @@ import { computed, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useWorkspaceProjectContext } from '@/composables/useWorkspaceProjectContext'
 import EmptyState from '@/components/platform/EmptyState.vue'
-import { findAssistantByTargetId } from '@/services/assistants/assistants.service'
+import { findAgentByTargetId } from '@/services/assistants/assistants.service'
 import { getGraphCatalogItem } from '@/services/graphs/graphs.service'
 import {
   getRuntimeThreadDetail,
@@ -48,6 +48,9 @@ const recentTarget = computed(() => {
 const initialThreadId = computed(() =>
   typeof route.query.threadId === 'string' && route.query.threadId.trim() ? route.query.threadId.trim() : ''
 )
+const startNewThreadOnLoad = computed(
+  () => route.query.startNew === '1'
+)
 const shouldRestoreTargetFromThread = computed(() => !explicitTarget.value && Boolean(initialThreadId.value))
 const threadTargetPreference = ref<ChatTargetPreference | null>(null)
 const threadTargetLoading = ref(false)
@@ -77,15 +80,15 @@ const chatWorkspaceKey = computed(() => {
 
 const sourceNote = computed(() => {
   if (explicitTarget.value) {
-    return '当前目标来自页面显式参数。只要你从 Assistants、Graphs 或 Threads 带着目标进入，这里就会直接落到真正的对话工作台。'
+    return '当前目标来自页面显式参数。只要你从 Agents、Graphs 或 Threads 带着目标进入，这里就会直接落到对话工作台。'
   }
 
   if (threadTargetPreference.value) {
-    return '当前目标来自 Thread metadata。即使链接里只有 threadId，也会先反查线程所属的 assistant 或 graph。'
+    return '当前目标来自 Thread metadata。即使链接里只有 threadId，也会先反查线程所属的 Agent 或 Graph。'
   }
 
   if (recentTarget.value) {
-    return '当前目标来自当前项目最近一次使用的聊天偏好。第一次选过 assistant 或 graph 之后，再打开 Chat 就不再显示引导页。'
+    return '当前目标来自当前项目最近一次使用的聊天偏好。第一次选过 Agent 或 Graph 之后，再打开 Chat 就不再显示引导页。'
   }
 
   return ''
@@ -181,12 +184,12 @@ watch(
       }
 
       const assistantId = target.assistantId?.trim() || ''
-      const assistant = await findAssistantByTargetId(projectId, assistantId)
+      const assistant = await findAgentByTargetId(projectId, assistantId)
       if (!cancelled && assistant) {
         hydratedTargetPreference.value = mergeChatTargets(
           {
             ...target,
-            assistantName: assistant.name || assistant.langgraph_assistant_id || assistant.id
+            assistantName: assistant.name || assistant.graph_id || assistant.id
           },
           target
         )
@@ -222,14 +225,14 @@ function reloadThreadTarget() {
       v-if="!activeProject"
       icon="project"
       title="请先选择项目"
-      description="Chat 是项目级工作区。没有项目上下文，assistant、graph、thread 这些目标都不成立。"
+      description="Chat 是项目级工作区。没有项目上下文，Agent、Graph、Thread 这些目标都不成立。"
     />
 
     <EmptyState
       v-else-if="threadTargetLoading && !activeTarget"
       icon="threads"
       title="正在恢复聊天上下文"
-      description="正在根据当前 Thread 读取 assistant 或 graph 目标。"
+      description="正在根据当前 Thread 读取 Agent 或 Graph 目标。"
     />
 
     <EmptyState
@@ -251,12 +254,13 @@ function reloadThreadTarget() {
       :key="chatWorkspaceKey"
       :target="activeTarget"
       :initial-thread-id="initialThreadId"
+      :start-new-thread-on-load="startNewThreadOnLoad"
       allow-reset-target
       :source-note="sourceNote"
       :display="{
         title: 'Agent Chat',
         description:
-          '通用对话工作台已经接上真实 thread、run 和流式消息，不再是那个只会展示说明文案的半残页。',
+          '通用对话工作台已经接上真实 Thread、Run 和流式消息。',
         emptyTitle: '',
         emptyDescription: ''
       }"

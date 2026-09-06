@@ -16,6 +16,32 @@ class RuntimeModelCatalogItem(BaseModel):
     sync_status: str
     last_seen_at: datetime | None = None
     last_synced_at: datetime | None = None
+    provider: str | None = None
+    base_url: str | None = None
+    protocol: str | None = None
+    model: str | None = None
+    enabled: bool = True
+    credential_configured: bool = False
+
+
+class RuntimeModelCreate(BaseModel):
+    provider: str
+    display_name: str
+    base_url: str
+    protocol: str
+    model: str
+    api_key: str
+    enabled: bool = True
+
+
+class RuntimeModelUpdate(BaseModel):
+    provider: str | None = None
+    display_name: str | None = None
+    base_url: str | None = None
+    protocol: str | None = None
+    model: str | None = None
+    api_key: str | None = None
+    enabled: bool | None = None
 
 
 class RuntimeModelCatalogList(BaseModel):

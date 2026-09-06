@@ -13,8 +13,8 @@ import PageHeader from '@/components/layout/PageHeader.vue'
 import { createAssistant, getAssistantParameterSchema } from '@/services/assistants/assistants.service'
 import { listGraphsPage } from '@/services/graphs/graphs.service'
 import { buildAssistantDraftPayload } from '@/services/runtime/runtime-contract'
-import { listRuntimeModels, listRuntimeTools } from '@/services/runtime/runtime.service'
-import type { ManagementGraph, RuntimeModelItem, RuntimeToolItem } from '@/types/management'
+import { listRuntimeModels } from '@/services/runtime/runtime.service'
+import type { ManagementGraph, RuntimeModelItem } from '@/types/management'
 
 type SchemaProperty = {
   type?: string
@@ -43,7 +43,6 @@ const graphOptions = ref<ManagementGraph[]>([])
 const graphLoading = ref(false)
 const name = ref('')
 const description = ref('')
-const assistantId = ref('')
 const config = ref('{}')
 const context = ref('{}')
 const metadata = ref('{}')
@@ -55,12 +54,9 @@ const submitting = ref(false)
 const error = ref('')
 const notice = ref('')
 const runtimeModels = ref<RuntimeModelItem[]>([])
-const runtimeTools = ref<RuntimeToolItem[]>([])
 const runtimeLoading = ref(false)
 const runtimeError = ref('')
 const runtimeModelId = ref('')
-const runtimeEnableTools = ref(false)
-const runtimeToolNames = ref<string[]>([])
 
 function parseObjectJson(raw: string, fieldName: string): Record<string, unknown> {
   const normalized = raw.trim()
@@ -118,13 +114,6 @@ const stats = computed(() => [
     icon: 'runtime',
     tone: 'warning'
   },
-  {
-    label: 'Runtime Tools',
-    value: runtimeTools.value.length,
-    hint: runtimeEnableTools.value ? `${runtimeToolNames.value.length} 已选` : '默认关闭',
-    icon: 'sparkle',
-    tone: 'danger'
-  }
 ])
 
 const requestBodyPreview = computed(() => {
@@ -132,13 +121,10 @@ const requestBodyPreview = computed(() => {
     graphId: graphId.value,
     name: name.value,
     description: description.value,
-    assistantId: assistantId.value,
     config: parseObjectJson(config.value, 'config'),
     context: parseObjectJson(context.value, 'context'),
     metadata: parseObjectJson(metadata.value, 'metadata'),
     runtimeModelId: runtimeModelId.value,
-    runtimeEnableTools: runtimeEnableTools.value,
-    runtimeToolNames: runtimeToolNames.value
   })
 })
 
@@ -196,17 +182,6 @@ function applyConfigFieldValue(key: string, value: string, valueType: string) {
   }
 }
 
-function toggleRuntimeTool(toolKey: string) {
-  const normalized = toolKey.trim()
-  if (!normalized) {
-    return
-  }
-
-  runtimeToolNames.value = runtimeToolNames.value.includes(normalized)
-    ? runtimeToolNames.value.filter((item) => item !== normalized)
-    : [...runtimeToolNames.value, normalized]
-}
-
 async function loadGraphs() {
   const projectId = activeProjectId.value
   if (!projectId) {
@@ -234,18 +209,12 @@ async function loadRuntime() {
 
   try {
     const projectId = activeProjectId.value
-    const [modelsResponse, toolsResponse] = await Promise.all([
-      listRuntimeModels(projectId).catch(() => null),
-      listRuntimeTools(projectId).catch(() => null)
-    ])
+    const modelsResponse = await listRuntimeModels(projectId).catch(() => null)
 
     runtimeModels.value =
       modelsResponse && Array.isArray(modelsResponse.models) ? modelsResponse.models : []
-    runtimeTools.value =
-      toolsResponse && Array.isArray(toolsResponse.tools) ? toolsResponse.tools : []
   } catch (loadError) {
     runtimeModels.value = []
-    runtimeTools.value = []
     runtimeError.value =
       loadError instanceof Error ? loadError.message : '运行时目录加载失败'
   } finally {
@@ -302,11 +271,11 @@ async function handleSubmit() {
     const payload = requestBodyPreview.value
     const created = await createAssistant(projectId, payload)
 
-    notice.value = `已创建助手：${created.name}`
+    notice.value = `已创建 Agent：${created.name}`
     void router.replace(`/workspace/assistants/${created.id}`)
   } catch (submitError) {
     error.value =
-      submitError instanceof Error ? submitError.message : '助手创建失败'
+    submitError instanceof Error ? submitError.message : 'Agent 创建失败'
   } finally {
     submitting.value = false
   }
@@ -361,9 +330,9 @@ watch(
 <template>
   <section class="pw-page-shell">
     <PageHeader
-      eyebrow="Assistants"
-      title="新建助手"
-      description="按项目创建 assistant，并支持 graph 参数 schema 驱动配置。这里是旧版 `/workspace/assistants/new` 的正式 Vue 承接页。"
+      eyebrow="Agents"
+      title="新建 Agent"
+      description="按项目创建 Agent，并使用 graph 参数 schema 驱动配置。旧 Assistant 路由仅作为兼容入口。"
     >
       <template #actions>
         <BaseButton
@@ -379,13 +348,13 @@ watch(
       v-if="!currentProject"
       icon="project"
       title="请先选择项目"
-      description="助手创建页必须在项目上下文里工作。没有项目，graph 选择、参数校验和最终落库都不成立。"
+      description="Agent 创建页必须在项目上下文里工作。没有项目，graph 选择、参数校验和最终落库都不成立。"
     />
 
     <template v-else>
       <StateBanner
         v-if="error"
-        title="助手创建失败"
+          title="Agent 创建失败"
         :description="error"
         variant="danger"
       />
@@ -431,7 +400,7 @@ watch(
               :disabled="submitting"
               @click="handleSubmit"
             >
-              {{ submitting ? '创建中...' : '创建助手' }}
+              {{ submitting ? '创建中...' : '创建 Agent' }}
             </BaseButton>
           </div>
 
@@ -476,15 +445,6 @@ watch(
               class="pw-input min-h-[120px] resize-y"
               :disabled="submitting"
             />
-          </label>
-
-          <label class="block">
-            <span class="pw-input-label">上游 Assistant ID（可选）</span>
-            <input
-              v-model="assistantId"
-              class="pw-input"
-              :disabled="submitting"
-            >
           </label>
 
           <div
@@ -550,50 +510,6 @@ watch(
                   </option>
                 </BaseSelect>
               </label>
-
-              <label class="flex items-center justify-between gap-3 rounded-2xl border border-white/70 bg-white/80 px-4 py-4 text-sm dark:border-dark-700 dark:bg-dark-900/70">
-                <div>
-                  <div class="font-semibold text-gray-900 dark:text-white">
-                    启用工具
-                  </div>
-                  <div class="mt-1 text-xs text-gray-500 dark:text-dark-300">
-                    这里选择的模型和工具会写入 runtime `context`，不再进入 `configurable`。
-                  </div>
-                </div>
-                <input
-                  v-model="runtimeEnableTools"
-                  type="checkbox"
-                  class="pw-table-checkbox"
-                  :disabled="submitting"
-                >
-              </label>
-            </div>
-
-            <div
-              v-if="runtimeEnableTools"
-              class="grid gap-3 md:grid-cols-2"
-            >
-              <label
-                v-for="tool in runtimeTools"
-                :key="tool.id"
-                class="flex items-start gap-3 rounded-2xl border border-white/70 bg-white/80 px-4 py-4 text-sm dark:border-dark-700 dark:bg-dark-900/70"
-              >
-                <input
-                  :checked="runtimeToolNames.includes(tool.tool_key)"
-                  type="checkbox"
-                  class="pw-table-checkbox mt-1"
-                  :disabled="submitting"
-                  @change="toggleRuntimeTool(tool.tool_key)"
-                >
-                <div class="min-w-0">
-                  <div class="font-semibold text-gray-900 dark:text-white">
-                    {{ tool.name || tool.tool_key }}
-                  </div>
-                  <div class="mt-1 text-xs leading-6 text-gray-500 dark:text-dark-300">
-                    {{ tool.description || tool.source || '暂无描述' }}
-                  </div>
-                </div>
-              </label>
             </div>
           </div>
 
@@ -647,7 +563,7 @@ watch(
                   size="sm"
                   class="mt-1 text-primary-500"
                 />
-                <span>创建页会把 graph、基础信息和动态参数统一提交给平台侧，由后端完成项目隔离、参数校验与上游 assistant 创建。</span>
+                <span>创建页会把 graph、基础信息和动态参数统一提交给平台侧，由后端完成项目隔离和参数校验；GraphHarbor 只负责通用执行。</span>
               </div>
               <div class="flex items-start gap-3">
                 <BaseIcon

@@ -1,0 +1,52 @@
+{
+  "schema": "platform-runtime-integration/characterization-v1",
+  "formal_chat": {
+    "thread_create": {
+      "path": "/api/langgraph/threads",
+      "method": "POST",
+      "body": {"metadata": {"harness": "fixture"}}
+    },
+    "run_start": {
+      "path": "/api/langgraph/threads/{thread_id}/commands",
+      "method": "POST",
+      "body": {
+        "id": 1,
+        "method": "run.start",
+        "params": {
+          "assistant_id": "reference_agent",
+          "input": {"messages": [{"role": "human", "content": "fixture prompt"}]}
+        }
+      },
+      "required_headers": ["Authorization", "x-project-id", "Idempotency-Key"]
+    },
+    "event_stream": {
+      "path": "/api/langgraph/threads/{thread_id}/stream/events",
+      "method": "POST",
+      "body": {"channels": ["messages", "values", "lifecycle"], "since": 0}
+    }
+  },
+  "gateway_allowlist": [
+    "/api/langgraph/info",
+    "/api/langgraph/graphs/search",
+    "/api/langgraph/graphs/count",
+    "/api/langgraph/threads",
+    "/api/langgraph/threads/search",
+    "/api/langgraph/threads/count",
+    "/api/langgraph/threads/{thread_id}",
+    "/api/langgraph/threads/{thread_id}/state",
+    "/api/langgraph/threads/{thread_id}/history",
+    "/api/langgraph/threads/{thread_id}/runs",
+    "/api/langgraph/threads/{thread_id}/runs/stream",
+    "/api/langgraph/threads/{thread_id}/commands",
+    "/api/langgraph/threads/{thread_id}/stream/events",
+    "/api/langgraph/threads/{thread_id}/runs/{run_id}",
+    "/api/langgraph/threads/{thread_id}/runs/{run_id}/join",
+    "/api/langgraph/threads/{thread_id}/runs/{run_id}/stream",
+    "/api/langgraph/threads/{thread_id}/runs/{run_id}/cancel"
+  ],
+  "historical_thread": {
+    "thread_id": "legacy-thread-fixture",
+    "metadata": {"project_id": "project-fixture", "assistant_id": "legacy-assistant"},
+    "compatibility": "read-only"
+  }
+}

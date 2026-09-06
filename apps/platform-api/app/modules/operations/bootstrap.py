@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.adapters.interaction_data import InteractionDataClient
 from app.adapters.langgraph import GraphParameterSchemaProvider, LangGraphAssistantsClient
 from app.core.config import Settings
-from app.modules.assistants.application import AssistantsService
+from app.modules.agents.application import AssistantsService
 from app.modules.operations.application.artifacts import LocalOperationArtifactStore
 from app.modules.operations.application.executors import (
     AssistantResyncExecutor,
@@ -23,6 +23,9 @@ from app.modules.operations.application.ports import (
 )
 from app.modules.operations.application.service import OperationsService
 from app.modules.operations.application.worker import OperationWorker
+from app.modules.runtime_gateway.application.executor import RuntimeDurableRunReconciliationExecutor
+from app.modules.runtime_gateway.application.service import RuntimeGatewayService
+from app.adapters.langgraph.runtime_gateway_upstream import LangGraphRuntimeGatewayUpstream
 from app.modules.operations.infra import RedisListOperationQueue
 from app.modules.project_knowledge.application.operations import (
     ProjectKnowledgeDocumentsExecutor,
@@ -145,8 +148,19 @@ def build_operation_worker(
         session_factory=session_factory,
     )
     artifact_store = _build_operation_artifact_store(settings)
+    runtime_gateway = RuntimeGatewayService(
+        session_factory=session_factory,
+        upstream=LangGraphRuntimeGatewayUpstream(
+            base_url=settings.langgraph_upstream_url,
+            api_key=settings.langgraph_upstream_api_key,
+            timeout_seconds=settings.langgraph_upstream_timeout_seconds,
+            forwarded_headers={},
+        ),
+        runtime_base_url=settings.langgraph_upstream_url,
+    )
     registry = OperationExecutorRegistry(
         (
+            RuntimeDurableRunReconciliationExecutor(service=runtime_gateway),
             RuntimeCatalogRefreshExecutor(
                 kind="runtime.models.refresh",
                 resource="models",

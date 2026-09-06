@@ -28,6 +28,12 @@ def _to_runtime_model(record: RuntimeCatalogModelRecord) -> StoredRuntimeModel:
         sync_status=record.sync_status,
         last_seen_at=record.last_seen_at,
         last_synced_at=record.last_synced_at,
+        provider=record.provider,
+        base_url=record.base_url,
+        protocol=record.protocol,
+        model_name=record.model_name or record.model_key,
+        api_key_ciphertext=record.api_key_ciphertext,
+        enabled=record.enabled if record.enabled is not None else True,
     )
 
 
@@ -66,6 +72,47 @@ class SqlAlchemyRuntimeCatalogRepository:
     def get_model_by_id(self, model_id) -> StoredRuntimeModel | None:
         record = self.session.get(RuntimeCatalogModelRecord, model_id)
         return _to_runtime_model(record) if record is not None else None
+
+    def get_model_by_key(self, *, runtime_id: str, model_key: str) -> StoredRuntimeModel | None:
+        record = self.session.scalar(
+            select(RuntimeCatalogModelRecord).where(
+                RuntimeCatalogModelRecord.runtime_id == runtime_id,
+                RuntimeCatalogModelRecord.model_key == model_key,
+                RuntimeCatalogModelRecord.is_deleted.is_(False),
+            )
+        )
+        return _to_runtime_model(record) if record is not None else None
+
+    def create_configured_model(self, *, runtime_id: str, values: dict[str, Any]) -> StoredRuntimeModel:
+        record = self.session.scalar(
+            select(RuntimeCatalogModelRecord).where(
+                RuntimeCatalogModelRecord.runtime_id == runtime_id,
+                RuntimeCatalogModelRecord.model_key == values["model"],
+            )
+        )
+        if record is None:
+            record = RuntimeCatalogModelRecord(runtime_id=runtime_id, model_key=values["model"])
+            self.session.add(record)
+        record.display_name = values["display_name"]
+        record.provider = values["provider"]
+        record.base_url = values["base_url"]
+        record.protocol = values["protocol"]
+        record.model_name = values["model"]
+        record.api_key_ciphertext = values["api_key_ciphertext"]
+        record.enabled = values["enabled"]
+        record.is_deleted = False
+        record.sync_status = "ready"
+        self.session.flush()
+        return _to_runtime_model(record)
+
+    def update_configured_model(self, model_id, *, values: dict[str, Any]) -> StoredRuntimeModel | None:
+        record = self.session.get(RuntimeCatalogModelRecord, model_id)
+        if record is None or record.is_deleted:
+            return None
+        for key, value in values.items():
+            setattr(record, key, value)
+        self.session.flush()
+        return _to_runtime_model(record)
 
     def get_tool_by_id(self, tool_id) -> StoredRuntimeTool | None:
         record = self.session.get(RuntimeCatalogToolRecord, tool_id)

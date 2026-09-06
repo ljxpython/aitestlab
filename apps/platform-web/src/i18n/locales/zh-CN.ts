@@ -37,7 +37,7 @@ export const zhCN = {
     overview: '总览',
     projects: '项目',
     users: '用户',
-    assistants: '助手',
+    assistants: 'Agent',
     agentApps: 'Agent Apps',
     runtime: 'Runtime',
     runtimePolicies: '运行策略',

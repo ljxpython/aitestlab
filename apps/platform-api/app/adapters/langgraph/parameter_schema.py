@@ -27,6 +27,7 @@ _CONFIGURABLE_PLATFORM_PROPERTIES: dict[str, dict[str, Any]] = {
 
 _CONFIGURABLE_NOISE_KEYS = {
     "__pregel_scratchpad",
+    "langgraph_auth_user",
 }
 
 
@@ -44,7 +45,17 @@ class GraphParameterSchemaProvider:
         if graph_entry_file is None:
             return self._fallback_schema(graph_id, reason="graph_entry_not_found")
 
-        runtime_context_file = root / "runtime" / "context.py"
+        runtime_context_file = next(
+            (
+                candidate
+                for candidate in (
+                    root / "runtime" / "context.py",
+                    root / "src" / "runtime_service" / "runtime" / "contracts.py",
+                )
+                if candidate.exists()
+            ),
+            root / "runtime" / "context.py",
+        )
         config_properties = self._execution_config_properties()
         context_properties = self._extract_context_properties(runtime_context_file)
         configurable_properties = self._extract_configurable_properties(graph_entry_file)
@@ -89,12 +100,16 @@ class GraphParameterSchemaProvider:
         explicit = self._settings.langgraph_graph_source_root
         candidates: list[Path] = []
         if isinstance(explicit, str) and explicit.strip():
-            candidates.append(Path(explicit.strip()).expanduser())
+            explicit_path = Path(explicit.strip()).expanduser()
+            candidates.append(explicit_path)
+            if not (explicit_path / "langgraph.json").exists():
+                candidates.append(explicit_path.parent)
 
         repo_root = Path(__file__).resolve().parents[5]
         candidates.extend(
             [
                 repo_root / "apps" / "runtime-service" / "runtime_service",
+                repo_root / "apps" / "runtime-service",
             ]
         )
 
@@ -192,7 +207,10 @@ class GraphParameterSchemaProvider:
         return {
             key
             for key in keys
-            if key and key not in _CONFIGURABLE_NOISE_KEYS and len(key) < 128
+            if key
+            and key not in _CONFIGURABLE_NOISE_KEYS
+            and not key.startswith("_")
+            and len(key) < 128
         }
 
     def _extract_dataclass_fields(

@@ -1,23 +1,4 @@
-from app.modules.assistants.application.contracts import (
-    CreateAssistantCommand,
-    ListAssistantsQuery,
-    UpdateAssistantCommand,
-)
-from app.modules.assistants.application.ports import (
-    AssistantParameterSchemaProviderProtocol,
-    AssistantsRepositoryProtocol,
-    AssistantsUpstreamProtocol,
-    StoredAssistantAggregate,
-)
-from app.modules.assistants.application.service import AssistantsService
+"""Deprecated compatibility imports; use :mod:`app.modules.agents.application`."""
 
-__all__ = [
-    "AssistantParameterSchemaProviderProtocol",
-    "AssistantsRepositoryProtocol",
-    "AssistantsService",
-    "AssistantsUpstreamProtocol",
-    "CreateAssistantCommand",
-    "ListAssistantsQuery",
-    "StoredAssistantAggregate",
-    "UpdateAssistantCommand",
-]
+from app.modules.agents.application import *  # noqa: F401,F403
+

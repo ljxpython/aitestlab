@@ -19,7 +19,6 @@ export type AssistantRuntimePayload = {
   graph_id?: string
   name?: string
   description?: string
-  assistant_id?: string
   status?: 'active' | 'disabled'
   config?: RuntimeObject
   context?: RuntimeObject
@@ -30,7 +29,6 @@ type AssistantDraftPayloadInput = {
   graphId?: string
   name?: string
   description?: string
-  assistantId?: string
   status?: 'active' | 'disabled'
   config?: RuntimeObject
   context?: RuntimeObject
@@ -106,7 +104,7 @@ function parseNumericInput(raw: string, kind: 'float' | 'int'): number | undefin
 
 function assignTrimmedString(
   target: AssistantRuntimePayload,
-  key: 'graph_id' | 'name' | 'description' | 'assistant_id',
+  key: 'graph_id' | 'name' | 'description',
   value: string | undefined,
   options: { omitBlank?: boolean } = {}
 ) {
@@ -172,7 +170,6 @@ export function normalizeAssistantRuntimePayload(payload: AssistantRuntimePayloa
   assignTrimmedString(nextPayload, 'graph_id', payload.graph_id)
   assignTrimmedString(nextPayload, 'name', payload.name)
   assignTrimmedString(nextPayload, 'description', payload.description)
-  assignTrimmedString(nextPayload, 'assistant_id', payload.assistant_id)
 
   if (payload.status) {
     nextPayload.status = payload.status
@@ -234,7 +231,6 @@ export function buildAssistantDraftPayload(input: AssistantDraftPayloadInput): A
     graph_id: input.graphId,
     name: input.name,
     description: input.description,
-    assistant_id: input.assistantId,
     status: input.status,
     config: input.config,
     context: contextWithOverrides,
@@ -246,7 +242,6 @@ export function buildAssistantDraftPayload(input: AssistantDraftPayloadInput): A
   assignTrimmedString(nextPayload, 'graph_id', normalizedPayload.graph_id, { omitBlank: true })
   assignTrimmedString(nextPayload, 'name', normalizedPayload.name, { omitBlank: true })
   assignTrimmedString(nextPayload, 'description', normalizedPayload.description, { omitBlank: true })
-  assignTrimmedString(nextPayload, 'assistant_id', normalizedPayload.assistant_id, { omitBlank: true })
 
   if (normalizedPayload.status) {
     nextPayload.status = normalizedPayload.status
@@ -267,23 +262,11 @@ export function buildAssistantDraftPayload(input: AssistantDraftPayloadInput): A
 export function buildChatRunSubmitOptions(runOptions: RuntimeRunOptionsInput): {
   config?: RuntimeObject
 } {
-  const platformRuntime: RuntimeObject = {
-    enable_tools: runOptions.enableTools
-  }
+  const platformRuntime: RuntimeObject = {}
 
   const normalizedModelId = runOptions.modelId.trim()
   if (normalizedModelId) {
     platformRuntime.model_id = normalizedModelId
-  }
-
-  const systemPrompt = runOptions.systemPrompt.trim()
-  if (systemPrompt) {
-    platformRuntime.system_prompt = systemPrompt
-  }
-
-  const cleanedTools = runOptions.toolNames.map((item) => item.trim()).filter(Boolean)
-  if (runOptions.enableTools && cleanedTools.length > 0) {
-    platformRuntime.tools = cleanedTools
   }
 
   const temperature = parseNumericInput(runOptions.temperature, 'float')
@@ -296,23 +279,7 @@ export function buildChatRunSubmitOptions(runOptions: RuntimeRunOptionsInput): {
     platformRuntime.max_tokens = maxTokens
   }
 
-  return {
-    config: {
-      configurable: {
-        platform_runtime: platformRuntime
-      }
-    }
-  }
-}
-
-export function buildLegacyDebugRunContext(runOptions: RuntimeRunOptionsInput): RuntimeObject {
-  const configurable = buildChatRunSubmitOptions(runOptions).config?.configurable
-  if (!configurable || typeof configurable !== 'object' || Array.isArray(configurable)) {
-    return {}
-  }
-
-  const platformRuntime = (configurable as RuntimeObject).platform_runtime
-  return platformRuntime && typeof platformRuntime === 'object' && !Array.isArray(platformRuntime)
-    ? { ...(platformRuntime as RuntimeObject) }
-    : {}
+  return Object.keys(platformRuntime).length > 0
+    ? { config: { configurable: { platform_runtime: platformRuntime } } }
+    : { config: {} }
 }

@@ -39,6 +39,16 @@ class IamMigrationTest(unittest.TestCase):
                     );
                     CREATE TABLE projects (id CHAR(32) PRIMARY KEY);
                     CREATE TABLE service_accounts (id CHAR(32) PRIMARY KEY);
+                    CREATE TABLE agents (
+                        id CHAR(32) PRIMARY KEY,
+                        project_id CHAR(32) NOT NULL,
+                        name VARCHAR(128) NOT NULL,
+                        graph_id VARCHAR(128) NOT NULL,
+                        langgraph_assistant_id VARCHAR(128) NOT NULL
+                    );
+                    CREATE UNIQUE INDEX uq_agents_project_name ON agents(project_id, name);
+                    CREATE UNIQUE INDEX uq_agents_project_langgraph_assistant
+                        ON agents(project_id, langgraph_assistant_id);
                     INSERT INTO users VALUES (
                         '00000000000000000000000000000001', 'legacy', NULL, 'legacy',
                         'hash', 'active', 0, '[]', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
@@ -70,6 +80,14 @@ class IamMigrationTest(unittest.TestCase):
                 grant_table = connection.execute(
                     "SELECT name FROM sqlite_master WHERE type='table' AND name='service_account_project_grants'"
                 ).fetchone()
+                agent_indexes = {
+                    tuple(
+                        item[2]
+                        for item in connection.execute(f"PRAGMA index_info('{row[1]}')")
+                    )
+                    for row in connection.execute("PRAGMA index_list(agents)")
+                    if row[2]
+                }
             finally:
                 connection.close()
 
@@ -77,6 +95,7 @@ class IamMigrationTest(unittest.TestCase):
             self.assertTrue({"family_id", "consumed_at"} <= refresh_columns)
             self.assertEqual(family_id, "legacy-token")
             self.assertIsNotNone(grant_table)
+            self.assertIn(("project_id", "graph_id"), agent_indexes)
 
 
 if __name__ == "__main__":

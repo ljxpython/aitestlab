@@ -35,8 +35,11 @@ RUNTIME_CONTEXT_BUSINESS_KEYS = (
 )
 
 RUNTIME_OPTION_KEYS = (
-    *RUNTIME_CONTEXT_BUSINESS_KEYS,
-    "multimodal_parser_model_id",
+    "model_id",
+    "temperature",
+    "max_tokens",
+    "top_p",
+    "tools",
 )
 
 PROTOCOL_V2_EVENT_CHANNELS = {
@@ -68,6 +71,12 @@ def _validate_runtime_option_values(options: dict[str, Any]) -> None:
             isinstance(value, bool) or not isinstance(value, (int, float))
         ):
             raise ValueError(f"platform_runtime.{key} must be a number")
+        if value is not None:
+            lower, upper = (0, 2) if key == "temperature" else (0, 1)
+            if value < lower or value > upper:
+                raise ValueError(
+                    f"platform_runtime.{key} must be between {lower} and {upper}"
+                )
 
     max_tokens = options.get("max_tokens")
     if max_tokens is not None and (
@@ -150,7 +159,6 @@ def normalize_runtime_contract(
     project_id: str,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     next_context = strip_keys(context, TRUSTED_RUNTIME_CONTEXT_KEYS)
-    next_context["project_id"] = project_id
 
     next_config = strip_keys(config, PROJECT_SCOPE_ALIAS_KEYS)
     next_metadata = strip_keys(metadata, PROJECT_SCOPE_ALIAS_KEYS)
@@ -249,6 +257,7 @@ def normalize_protocol_v2_command(
             "assistant_id",
             "input",
             "config",
+            "context",
             "metadata",
             "durability",
             "stream_resumable",
@@ -275,6 +284,14 @@ def normalize_protocol_v2_command(
         raise ValueError("run.start on_disconnect must be cancel or continue")
 
     config = ensure_dict(run_params.get("config"))
+    context = ensure_dict(run_params.get("context"))
+    unknown_context_keys = sorted(
+        set(context) - {"model_id", "temperature", "max_tokens", "top_p", "tools"}
+    )
+    if unknown_context_keys:
+        raise ValueError(
+            "Unsupported run.start context fields: " + ", ".join(unknown_context_keys)
+        )
     configurable = ensure_dict(config.get("configurable"))
     raw_runtime_options = configurable.get("platform_runtime")
     if raw_runtime_options is not None and not isinstance(raw_runtime_options, dict):
@@ -395,3 +412,11 @@ def build_runtime_options_schema_properties() -> dict[str, dict[str, Any]]:
         key: {"type": value_type, "required": False}
         for key, value_type in RUNTIME_OPTION_PROPERTY_TYPES.items()
     }
+
+
+def validate_runtime_option_values(options: dict[str, Any]) -> None:
+    """Validate public Runtime options before any upstream call."""
+    unknown = sorted(set(options) - set(RUNTIME_OPTION_KEYS))
+    if unknown:
+        raise ValueError("Unsupported runtime fields: " + ", ".join(unknown))
+    _validate_runtime_option_values(options)

@@ -1,8 +1,8 @@
 # Platform API -> GraphHarbor 真实联调清单
 
 这份清单证明的是：真实的 `platform-api` HTTP 请求经过 Platform access token、项目权限和
-Runtime delegation JWT 后，到达 GraphHarbor Agent Server。它不把直连 GraphHarbor、mock upstream
-或旧 `langgraph dev` 当作 Platform 集成证据。
+按操作 scope 签发的 Runtime delegation JWT 后，到达 GraphHarbor Agent Server。它不把直连
+GraphHarbor、mock upstream 或旧 `langgraph dev` 当作 Platform 集成证据。
 
 ## 1. 前置条件
 

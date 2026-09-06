@@ -20,6 +20,7 @@ from app.core.errors import (
 from app.core.security import create_runtime_delegation_token, empty_runtime_context_hash
 from app.entrypoints.http.dependencies import get_actor_context
 from app.modules.runtime_gateway.application.service import RuntimeGatewayService
+from app.modules.operations.infra import RedisListOperationQueue
 from app.modules.runtime_policies.application import RuntimePolicyOverlayService
 
 router = APIRouter(prefix="/api/langgraph", tags=["runtime-gateway"])
@@ -105,6 +106,14 @@ def _require_project_id(request: Request) -> str:
     return normalized
 
 
+def _delegation_operation(request: Request) -> str:
+    """Keep read and run creation credentials separate at the gateway boundary."""
+    path = request.url.path
+    if request.method == "POST" and (path.endswith("/commands") or "/runs" in path):
+        return "run-create"
+    return "read"
+
+
 async def get_runtime_gateway_service(
     request: Request,
     actor: ActorContext = Depends(get_actor_context),
@@ -132,13 +141,18 @@ async def get_runtime_gateway_service(
             tenant_id=context.tenant.tenant_id or "__default",
             project_id=project_id,
             role=project_roles[0],
-            permissions=["project.runtime.read", "project.runtime.write"],
+            permissions=[
+                "project.runtime.read",
+                "project.runtime.write",
+                *policy["runtime_permissions"],
+            ],
             policy_version=str(policy["version"]),
             allowed_model_ids=policy["allowed_model_ids"],
             allowed_tool_names=policy["allowed_tool_names"],
             scope={
                 "tenant_id": context.tenant.tenant_id or "__default",
                 "project_id": project_id,
+                "operation": _delegation_operation(request),
             },
             context_hash=empty_runtime_context_hash(),
             settings=settings,
@@ -153,16 +167,59 @@ async def get_runtime_gateway_service(
     request_id = getattr(request.state, "request_id", None)
     if request_id:
         forwarded_headers["x-request-id"] = request_id
+
+    def delegation_headers_factory(
+        *,
+        project_id: str,
+        agent_key: str,
+        thread_id: str,
+        context_hash: str,
+    ) -> dict[str, str]:
+        scoped = create_runtime_delegation_token(
+            subject=subject,
+            tenant_id=context.tenant.tenant_id or "__default",
+            project_id=project_id,
+            role=project_roles[0],
+            permissions=[
+                "project.runtime.read",
+                "project.runtime.write",
+                *policy["runtime_permissions"],
+            ],
+            policy_version=str(policy["version"]),
+            allowed_model_ids=policy["allowed_model_ids"],
+            allowed_tool_names=policy["allowed_tool_names"],
+            scope={
+                "tenant_id": context.tenant.tenant_id or "__default",
+                "project_id": project_id,
+                "assistant_id": agent_key,
+                "thread_id": thread_id,
+                "operation": "run-create",
+            },
+            context_hash=context_hash,
+            settings=settings,
+        )
+        return {"authorization": f"Bearer {scoped}"}
     upstream = LangGraphRuntimeGatewayUpstream(
         base_url=settings.langgraph_upstream_url,
         api_key=settings.langgraph_upstream_api_key,
         timeout_seconds=settings.langgraph_upstream_timeout_seconds,
         forwarded_headers=forwarded_headers,
     )
+    operation_dispatcher = None
+    if settings.operations_queue_backend == "redis_list":
+        operation_dispatcher = RedisListOperationQueue(
+            redis_url=settings.operations_redis_url or "",
+            queue_name=settings.operations_redis_queue_name,
+        )
     return RuntimeGatewayService(
         session_factory=session_factory,
         upstream=upstream,
         runtime_base_url=settings.langgraph_upstream_url,
+        operation_dispatcher=operation_dispatcher,
+        delegation_headers_factory=delegation_headers_factory,
+        runtime_model_config_secret=(
+            settings.runtime_model_config_secret or settings.runtime_delegation_secret
+        ),
     )
 
 
@@ -251,22 +308,6 @@ async def count_threads(
     )
 
 
-@router.post("/threads/prune")
-async def prune_threads(
-    request: Request,
-    payload: dict[str, Any] = Body(...),
-    actor: ActorContext = Depends(get_actor_context),
-    service: RuntimeGatewayService = Depends(get_runtime_gateway_service),
-) -> Any:
-    project_id = _require_project_id(request)
-    result = await service.prune_threads(
-        actor=actor,
-        project_id=project_id,
-        payload=payload,
-    )
-    return _normalize_ack(result)
-
-
 @router.get("/threads/{thread_id}")
 async def get_thread(
     request: Request,
@@ -282,23 +323,6 @@ async def get_thread(
     )
 
 
-@router.patch("/threads/{thread_id}")
-async def update_thread(
-    request: Request,
-    thread_id: str,
-    payload: dict[str, Any] = Body(...),
-    actor: ActorContext = Depends(get_actor_context),
-    service: RuntimeGatewayService = Depends(get_runtime_gateway_service),
-) -> Any:
-    project_id = _require_project_id(request)
-    return await service.update_thread(
-        actor=actor,
-        project_id=project_id,
-        thread_id=thread_id,
-        payload=payload,
-    )
-
-
 @router.delete("/threads/{thread_id}")
 async def delete_thread(
     request: Request,
@@ -308,22 +332,6 @@ async def delete_thread(
 ) -> Any:
     project_id = _require_project_id(request)
     result = await service.delete_thread(
-        actor=actor,
-        project_id=project_id,
-        thread_id=thread_id,
-    )
-    return _normalize_ack(result)
-
-
-@router.post("/threads/{thread_id}/copy")
-async def copy_thread(
-    request: Request,
-    thread_id: str,
-    actor: ActorContext = Depends(get_actor_context),
-    service: RuntimeGatewayService = Depends(get_runtime_gateway_service),
-) -> Any:
-    project_id = _require_project_id(request)
-    result = await service.copy_thread(
         actor=actor,
         project_id=project_id,
         thread_id=thread_id,
@@ -371,23 +379,6 @@ async def update_thread_state(
     )
 
 
-@router.get("/threads/{thread_id}/state/{checkpoint_id}")
-async def get_thread_state_at_checkpoint(
-    request: Request,
-    thread_id: str,
-    checkpoint_id: str,
-    actor: ActorContext = Depends(get_actor_context),
-    service: RuntimeGatewayService = Depends(get_runtime_gateway_service),
-) -> Any:
-    project_id = _require_project_id(request)
-    return await service.get_thread_state_at_checkpoint(
-        actor=actor,
-        project_id=project_id,
-        thread_id=thread_id,
-        checkpoint_id=checkpoint_id,
-    )
-
-
 @router.post("/threads/{thread_id}/history")
 async def get_thread_history(
     request: Request,
@@ -403,199 +394,6 @@ async def get_thread_history(
         thread_id=thread_id,
         payload=payload,
     )
-
-
-@router.get("/threads/{thread_id}/history")
-async def get_thread_history_alias(
-    request: Request,
-    thread_id: str,
-    limit: int | None = Query(default=None),
-    before: str | None = Query(default=None),
-    actor: ActorContext = Depends(get_actor_context),
-    service: RuntimeGatewayService = Depends(get_runtime_gateway_service),
-) -> Any:
-    payload: dict[str, Any] = {}
-    if limit is not None:
-        payload["limit"] = limit
-    if before is not None:
-        payload["before"] = before
-    project_id = _require_project_id(request)
-    return await service.get_thread_history(
-        actor=actor,
-        project_id=project_id,
-        thread_id=thread_id,
-        payload=payload,
-    )
-
-
-@router.post("/runs")
-async def create_run(
-    request: Request,
-    payload: dict[str, Any] = Body(...),
-    actor: ActorContext = Depends(get_actor_context),
-    service: RuntimeGatewayService = Depends(get_runtime_gateway_service),
-) -> Any:
-    project_id = _require_project_id(request)
-    return await service.create_global_run(
-        actor=actor,
-        project_id=project_id,
-        payload=payload,
-    )
-
-
-@router.post("/runs/stream")
-async def stream_run(
-    request: Request,
-    payload: dict[str, Any] = Body(...),
-    actor: ActorContext = Depends(get_actor_context),
-    service: RuntimeGatewayService = Depends(get_runtime_gateway_service),
-) -> StreamingResponse:
-    project_id = _require_project_id(request)
-    stream = await service.stream_global_run(
-        actor=actor,
-        project_id=project_id,
-        payload=payload,
-    )
-    return StreamingResponse(stream, media_type="text/event-stream")
-
-
-@router.post("/runs/wait")
-async def wait_run(
-    request: Request,
-    payload: dict[str, Any] = Body(...),
-    actor: ActorContext = Depends(get_actor_context),
-    service: RuntimeGatewayService = Depends(get_runtime_gateway_service),
-) -> Any:
-    project_id = _require_project_id(request)
-    return await service.wait_global_run(
-        actor=actor,
-        project_id=project_id,
-        payload=payload,
-    )
-
-
-@router.post("/runs/batch")
-async def create_batch_runs(
-    request: Request,
-    payload: Any = Body(...),
-    actor: ActorContext = Depends(get_actor_context),
-    service: RuntimeGatewayService = Depends(get_runtime_gateway_service),
-) -> Any:
-    if isinstance(payload, list):
-        payloads = payload
-    elif isinstance(payload, dict) and isinstance(payload.get("payloads"), list):
-        payloads = payload["payloads"]
-    else:
-        raise BadRequestError(
-            code="invalid_batch_payload",
-            message="payload must be array or contain payloads array",
-        )
-    if any(not isinstance(item, dict) for item in payloads):
-        raise BadRequestError(
-            code="invalid_batch_payload_item",
-            message="each batch payload must be an object",
-        )
-
-    project_id = _require_project_id(request)
-    return await service.create_batch_runs(
-        actor=actor,
-        project_id=project_id,
-        payloads=payloads,
-    )
-
-
-@router.post("/runs/cancel")
-async def cancel_runs(
-    request: Request,
-    payload: dict[str, Any] = Body(...),
-    actor: ActorContext = Depends(get_actor_context),
-    service: RuntimeGatewayService = Depends(get_runtime_gateway_service),
-) -> Any:
-    project_id = _require_project_id(request)
-    result = await service.cancel_runs(
-        actor=actor,
-        project_id=project_id,
-        payload=payload,
-    )
-    return _normalize_ack(result)
-
-
-@router.post("/runs/crons")
-async def create_cron(
-    request: Request,
-    payload: dict[str, Any] = Body(...),
-    actor: ActorContext = Depends(get_actor_context),
-    service: RuntimeGatewayService = Depends(get_runtime_gateway_service),
-) -> Any:
-    project_id = _require_project_id(request)
-    return await service.create_cron(
-        actor=actor,
-        project_id=project_id,
-        payload=payload,
-    )
-
-
-@router.post("/runs/crons/search")
-async def search_crons(
-    request: Request,
-    payload: dict[str, Any] = Body(...),
-    actor: ActorContext = Depends(get_actor_context),
-    service: RuntimeGatewayService = Depends(get_runtime_gateway_service),
-) -> Any:
-    project_id = _require_project_id(request)
-    return await service.search_crons(
-        actor=actor,
-        project_id=project_id,
-        payload=payload,
-    )
-
-
-@router.post("/runs/crons/count")
-async def count_crons(
-    request: Request,
-    payload: dict[str, Any] = Body(...),
-    actor: ActorContext = Depends(get_actor_context),
-    service: RuntimeGatewayService = Depends(get_runtime_gateway_service),
-) -> Any:
-    project_id = _require_project_id(request)
-    return await service.count_crons(
-        actor=actor,
-        project_id=project_id,
-        payload=payload,
-    )
-
-
-@router.patch("/runs/crons/{cron_id}")
-async def update_cron(
-    request: Request,
-    cron_id: str,
-    payload: dict[str, Any] = Body(...),
-    actor: ActorContext = Depends(get_actor_context),
-    service: RuntimeGatewayService = Depends(get_runtime_gateway_service),
-) -> Any:
-    project_id = _require_project_id(request)
-    return await service.update_cron(
-        actor=actor,
-        project_id=project_id,
-        cron_id=cron_id,
-        payload=payload,
-    )
-
-
-@router.delete("/runs/crons/{cron_id}")
-async def delete_cron(
-    request: Request,
-    cron_id: str,
-    actor: ActorContext = Depends(get_actor_context),
-    service: RuntimeGatewayService = Depends(get_runtime_gateway_service),
-) -> Any:
-    project_id = _require_project_id(request)
-    result = await service.delete_cron(
-        actor=actor,
-        project_id=project_id,
-        cron_id=cron_id,
-    )
-    return _normalize_ack(result)
 
 
 @router.post("/threads/{thread_id}/runs")
@@ -669,23 +467,6 @@ async def stream_thread_events(
     return StreamingResponse(_redact_protocol_event_stream(stream), media_type="text/event-stream")
 
 
-@router.post("/threads/{thread_id}/runs/wait")
-async def wait_thread_run(
-    request: Request,
-    thread_id: str,
-    payload: dict[str, Any] = Body(...),
-    actor: ActorContext = Depends(get_actor_context),
-    service: RuntimeGatewayService = Depends(get_runtime_gateway_service),
-) -> Any:
-    project_id = _require_project_id(request)
-    return await service.wait_thread_run(
-        actor=actor,
-        project_id=project_id,
-        thread_id=thread_id,
-        payload=payload,
-    )
-
-
 @router.get("/threads/{thread_id}/runs/{run_id}")
 async def get_thread_run(
     request: Request,
@@ -732,24 +513,6 @@ async def list_thread_runs(
     )
 
 
-@router.delete("/threads/{thread_id}/runs/{run_id}")
-async def delete_thread_run(
-    request: Request,
-    thread_id: str,
-    run_id: str,
-    actor: ActorContext = Depends(get_actor_context),
-    service: RuntimeGatewayService = Depends(get_runtime_gateway_service),
-) -> Any:
-    project_id = _require_project_id(request)
-    result = await service.delete_thread_run(
-        actor=actor,
-        project_id=project_id,
-        thread_id=thread_id,
-        run_id=run_id,
-    )
-    return _normalize_ack(result)
-
-
 @router.get("/threads/{thread_id}/runs/{run_id}/join")
 async def join_thread_run(
     request: Request,
@@ -794,23 +557,6 @@ async def join_thread_run_stream(
         params=params,
     )
     return StreamingResponse(stream, media_type="text/event-stream")
-
-
-@router.post("/threads/{thread_id}/runs/crons")
-async def create_thread_run_cron(
-    request: Request,
-    thread_id: str,
-    payload: dict[str, Any] = Body(...),
-    actor: ActorContext = Depends(get_actor_context),
-    service: RuntimeGatewayService = Depends(get_runtime_gateway_service),
-) -> Any:
-    project_id = _require_project_id(request)
-    return await service.create_thread_run_cron(
-        actor=actor,
-        project_id=project_id,
-        thread_id=thread_id,
-        payload=payload,
-    )
 
 
 @router.post("/threads/{thread_id}/runs/{run_id}/cancel")

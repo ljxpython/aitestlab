@@ -75,6 +75,40 @@ function withCommandIdempotencyKey(
   }
 }
 
+async function normalizeProtocolErrorResponse(response: Response): Promise<Response> {
+  if (response.ok) {
+    return response
+  }
+
+  try {
+    const payload = (await response.clone().json()) as Record<string, unknown>
+    const errorBody = payload.error
+    if (errorBody && typeof errorBody === 'object' && !Array.isArray(errorBody)) {
+      const body = errorBody as Record<string, unknown>
+      const message = typeof body.message === 'string' ? body.message : ''
+      const code = typeof body.code === 'string' ? body.code : ''
+      if (message) {
+        const headers = new Headers(response.headers)
+        headers.delete('content-length')
+        headers.delete('content-encoding')
+        headers.delete('transfer-encoding')
+        return new Response(
+          JSON.stringify({ ...payload, message, code, error: message }),
+          {
+            status: response.status,
+            statusText: response.statusText,
+            headers
+          }
+        )
+      }
+    }
+  } catch {
+    // Preserve the original response when the body is not JSON.
+  }
+
+  return response
+}
+
 export function createLanggraphAuthorizedFetch(options: LanggraphAuthorizedFetchOptions = {}) {
   const fetchImpl = options.fetchImpl ?? fetch
   const readAccessToken = options.getAccessToken ?? getAccessToken
@@ -88,7 +122,7 @@ export function createLanggraphAuthorizedFetch(options: LanggraphAuthorizedFetch
       (await resolveAuthorizedAccessToken()).trim() || readAccessToken().trim()
     const initialResponse = await fetchImpl(input, withAccessToken(requestInit, initialToken))
     if (initialResponse.status !== 401) {
-      return initialResponse
+      return normalizeProtocolErrorResponse(initialResponse)
     }
 
     const nextAccessToken = (await renewAccessToken()).trim()
@@ -96,7 +130,7 @@ export function createLanggraphAuthorizedFetch(options: LanggraphAuthorizedFetch
       if (readStoredSession()) {
         expireSession()
       }
-      return initialResponse
+      return normalizeProtocolErrorResponse(initialResponse)
     }
 
     const retryResponse = await fetchImpl(input, withAccessToken(requestInit, nextAccessToken))
@@ -104,7 +138,7 @@ export function createLanggraphAuthorizedFetch(options: LanggraphAuthorizedFetch
       expireSession()
     }
 
-    return retryResponse
+    return normalizeProtocolErrorResponse(retryResponse)
   }
 }
 

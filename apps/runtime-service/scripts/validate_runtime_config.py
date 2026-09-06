@@ -11,17 +11,13 @@ from urllib.parse import urlparse
 from dotenv import dotenv_values
 
 
-REQUIRED = (
-    "PLATFORM_RUNTIME_DELEGATION_SECRET",
+BASE_REQUIRED = (
     "GRAPHHARBOR_RUNTIME_CONTEXT_SECRET",
     "PLATFORM_RUNTIME_DELEGATION_ISSUER",
     "PLATFORM_RUNTIME_DELEGATION_AUDIENCE",
     "GRAPHHARBOR_RUNTIME_CONTEXT_ISSUER",
     "GRAPHHARBOR_RUNTIME_CONTEXT_AUDIENCE",
     "GRAPHHARBOR_WORKSPACE_ROOT",
-    "DEEPSEEK_PROXY_URL",
-    "DEEPSEEK_PROXY_API_KEY",
-    "DEEPSEEK_PROXY_DEFAULT_MODEL",
 )
 NUMERIC = (
     "RUNTIME_WORKSPACE_MAX_FILE_BYTES",
@@ -30,7 +26,7 @@ NUMERIC = (
     "RUNTIME_WORKSPACE_TTL_SECONDS",
     "GRAPHHARBOR_RUN_TIMEOUT_SECONDS",
 )
-URLS = ("DEEPSEEK_PROXY_URL", "GPT_PROXY_URL", "GRAPHHARBOR_RUNTIME_CONTEXT_ISSUER")
+URLS = ("GRAPHHARBOR_RUNTIME_CONTEXT_ISSUER",)
 
 
 def _settings(path: Path) -> dict[str, str]:
@@ -51,7 +47,10 @@ def validate(path: Path) -> list[str]:
         return [f"deployment env file is missing: {path}"]
 
     settings = _settings(path)
-    errors = [f"{key} is empty" for key in REQUIRED if not _present(settings, key)]
+    errors: list[str] = []
+    required = BASE_REQUIRED
+    required += ("PLATFORM_RUNTIME_DELEGATION_SECRET",)
+    errors.extend(f"{key} is empty" for key in required if not _present(settings, key))
     for key in NUMERIC:
         if not _present(settings, key):
             errors.append(f"{key} is empty")

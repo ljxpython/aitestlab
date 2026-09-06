@@ -93,6 +93,7 @@ def test_unknown_claim_is_rejected() -> None:
         {"scope": {"tenant_id": "tenant-a", "project_id": "project-a", "thread_id": 1}},
         {"context_hash": "sha256:wrong"},
         {"scope": {"tenant_id": "tenant-a", "project_id": "project-a"}},
+        {"scope": {"tenant_id": "tenant-a", "project_id": "project-a", "operation": "admin"}},
     ],
 )
 def test_scope_and_context_hash_claims_fail_closed(overrides: dict[str, object]) -> None:
@@ -145,3 +146,20 @@ def test_scope_and_context_are_checked_against_execution_inputs() -> None:
             context=RuntimeContext(temperature=1),
         )
     assert context_error.value.code == "runtime.auth.context_hash_mismatch"
+
+
+def test_scope_operation_is_preserved() -> None:
+    token = _token(
+        scope={
+            "tenant_id": "tenant-a",
+            "project_id": "project-a",
+            "operation": "run-create",
+        }
+    )
+    verified = verify_delegation_claims(
+        token,
+        secret=SECRET,
+        issuer="runtime-test",
+        audience="runtime-service",
+    )
+    assert verified.scope.operation == "run-create"

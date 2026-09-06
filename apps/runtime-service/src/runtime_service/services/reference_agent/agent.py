@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+import os
+
+import httpx
 
 from langchain.agents import create_agent
 from langchain.agents.middleware import (
@@ -88,6 +91,12 @@ def _runtime_fallback_model(config: RunnableConfig) -> BaseChatModel | None:
     return candidate if isinstance(candidate, BaseChatModel) else None
 
 
+def _build_runtime_model(config: object, connection: Mapping[str, str] | None) -> BaseChatModel:
+    if connection is None:
+        return build_model(config)  # type: ignore[arg-type]
+    return build_model(config, connection=connection)  # type: ignore[arg-type]
+
+
 def _runtime_facts(config: RunnableConfig) -> VerifiedDelegation:
     configurable = config.get("configurable") or {}
     if not isinstance(configurable, Mapping):
@@ -99,6 +108,41 @@ def _runtime_facts(config: RunnableConfig) -> VerifiedDelegation:
     if configurable.get("_runtime_model") is not None:
         return _local_test_facts()
     raise RuntimeAuthError("runtime.auth.missing_principal")
+
+
+async def _runtime_model_connection(
+    config: RunnableConfig,
+    *,
+    model_id: str,
+    project_id: str,
+) -> dict[str, str] | None:
+    """Fetch the selected model connection; only the opaque reference crosses GraphHarbor."""
+    configurable = config.get("configurable") or {}
+    if not isinstance(configurable, Mapping):
+        return None
+    reference = configurable.get("_runtime_model_ref")
+    endpoint = os.getenv("PLATFORM_RUNTIME_MODEL_CONFIG_URL", "").strip()
+    if not reference or not endpoint or not project_id:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(
+                endpoint,
+                headers={
+                    "x-runtime-model-ref": str(reference),
+                    "x-project-id": project_id,
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        raise RuntimeResolutionError("runtime.model.initialization_failed", "model_id") from exc
+    if not isinstance(payload, dict) or payload.get("model_id") != model_id:
+        raise RuntimeResolutionError("runtime.model.initialization_failed", "model_id")
+    required = ("provider", "base_url", "protocol", "model", "api_key")
+    if any(not isinstance(payload.get(key), str) or not payload[key] for key in required):
+        raise RuntimeResolutionError("runtime.model.initialization_failed", "model_id")
+    return {key: payload[key] for key in required} | {"model_id": model_id}
 
 
 def _runtime_identity_and_policy(
@@ -130,7 +174,12 @@ async def get_agent(config: RunnableConfig) -> Pregel:
         defaults=_DEFAULTS,
         tool_permissions=_TOOL_PERMISSIONS,
     )
-    model = runtime_model or build_model(resolved)
+    connection = None if runtime_model is not None else await _runtime_model_connection(
+        config,
+        model_id=resolved.model_id,
+        project_id=principal.project_id,
+    )
+    model = runtime_model or _build_runtime_model(resolved, connection)
     fallback_model = _runtime_fallback_model(config) if runtime_model is not None else None
     model_retry_enabled = (
         runtime_model is not None
@@ -146,13 +195,17 @@ async def get_agent(config: RunnableConfig) -> Pregel:
             )
         return None
 
+    def model_builder(next_config):
+        next_connection = connection if next_config.model_id == resolved.model_id else None
+        return _build_runtime_model(next_config, next_connection)
+
     middleware = [
         RuntimeConfigMiddleware(
             principal=principal,
             policy=policy,
             defaults=_DEFAULTS,
             base_model=model,
-            model_builder=build_model,
+            model_builder=model_builder,
             tool_permissions=_TOOL_PERMISSIONS,
             local_fallback=runtime_model is not None or local_test_auth,
         ),

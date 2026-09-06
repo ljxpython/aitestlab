@@ -16,6 +16,12 @@ class StoredRuntimeModel:
     sync_status: str
     last_seen_at: datetime | None
     last_synced_at: datetime | None
+    provider: str | None = None
+    base_url: str | None = None
+    protocol: str | None = None
+    model_name: str | None = None
+    api_key_ciphertext: str | None = None
+    enabled: bool = True
 
 
 @dataclass(frozen=True, slots=True)

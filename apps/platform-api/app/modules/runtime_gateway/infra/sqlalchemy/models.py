@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, Uuid, func
+from sqlalchemy import JSON, DateTime, ForeignKey, String, UniqueConstraint, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db.base import Base
@@ -29,6 +29,10 @@ class DurableRunRecord(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     project_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     thread_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    agent_key: Mapped[str] = mapped_column(String(128), nullable=False, index=True, default="")
+    context_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    context_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    policy_version: Mapped[str | None] = mapped_column(String(255), nullable=True)
     idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
     request_digest: Mapped[str] = mapped_column(String(64), nullable=False)
     run_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)

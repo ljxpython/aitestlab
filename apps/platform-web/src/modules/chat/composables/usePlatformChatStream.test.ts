@@ -1,4 +1,5 @@
 import { computed, nextTick, ref } from 'vue'
+import { HumanMessage } from '@langchain/core/messages'
 import { usePlatformChatStream } from './usePlatformChatStream'
 
 const streamMock = vi.hoisted(() => ({
@@ -167,6 +168,37 @@ describe('usePlatformChatStream', () => {
     expect(adapter.interruptPayload.value).toEqual([interrupt])
   })
 
+  it('uses the refreshed persisted messages when the completed stream only has the user message', async () => {
+    const stream = createStream()
+    stream.messages.value = [new HumanMessage({ id: 'human-1', content: '你好' })]
+    streamMock.value = stream
+    const options = createOptions(
+      vi.fn(async () => {
+        options.historyItems.value = [
+          {
+            checkpoint: { checkpoint_id: 'checkpoint-2' },
+            values: {
+              messages: [
+                { id: 'human-1', type: 'human', content: '你好' },
+                { id: 'assistant-1', type: 'ai', content: 'workflow response: 你好' }
+              ]
+            }
+          }
+        ]
+      })
+    )
+    const adapter = usePlatformChatStream(options)
+
+    await (
+      streamMock.options?.onCompleted as (info: { reason: string }) => Promise<void>
+    )({ reason: 'stopped' })
+
+    expect(adapter.messages.value).toEqual([
+      { id: 'human-1', type: 'human', content: '你好' },
+      { id: 'assistant-1', type: 'ai', content: 'workflow response: 你好' }
+    ])
+  })
+
   it('keeps a completed run error visible after refreshing the persisted snapshot', async () => {
     const stream = createStream()
     stream.error.value = new Error('run failed')
@@ -185,7 +217,7 @@ describe('usePlatformChatStream', () => {
     expect(adapter.detailError.value).toContain('run failed')
   })
 
-  it('reports cancellation without claiming the submitted message remains in the composer', async () => {
+  it('does not infer cancellation from a stopped SDK subscription', async () => {
     const stream = createStream()
     streamMock.value = stream
     const options = createOptions()
@@ -199,11 +231,25 @@ describe('usePlatformChatStream', () => {
       reason: 'stopped'
     })
 
-    expect(adapter.detailInfo.value).toBe(
-      '本轮运行已取消。输入框已恢复可编辑，你可以继续发送消息。'
-    )
+    expect(adapter.detailInfo.value).toBe('')
     expect(options.onRefreshThread).toHaveBeenCalledWith('thread-1', {
       preserveInfo: true
     })
+  })
+
+  it('ignores an old stream completion after switching to a blank thread', async () => {
+    const stream = createStream()
+    streamMock.value = stream
+    const options = createOptions()
+    const adapter = usePlatformChatStream(options)
+
+    options.activeThreadId.value = ''
+    adapter.detailInfo.value = '已切换到空白对话。发送第一条消息时，系统才会创建新的 thread。'
+    await (
+      streamMock.options?.onCompleted as (info: { reason: string }) => Promise<void>
+    )({ reason: 'stopped' })
+
+    expect(adapter.detailInfo.value).toBe('已切换到空白对话。发送第一条消息时，系统才会创建新的 thread。')
+    expect(options.onRefreshThread).not.toHaveBeenCalled()
   })
 })

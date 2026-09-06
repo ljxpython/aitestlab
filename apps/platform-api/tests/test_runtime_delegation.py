@@ -108,6 +108,46 @@ class RuntimeDelegationTokenTest(unittest.TestCase):
                 settings=Settings(runtime_delegation_secret=""),
             )
 
+    def test_operation_scope_is_restricted_to_read_or_run_create(self) -> None:
+        settings = Settings(
+            runtime_delegation_secret="runtime-delegation-secret-at-least-32-bytes"
+        )
+        token = create_runtime_delegation_token(
+            subject="user-1",
+            tenant_id="__default",
+            project_id="project-1",
+            role="project_editor",
+            permissions=["project.runtime.read"],
+            policy_version="policy-1",
+            allowed_model_ids=[],
+            allowed_tool_names=[],
+            scope={
+                "tenant_id": "__default",
+                "project_id": "project-1",
+                "operation": "read",
+            },
+            settings=settings,
+        )
+        claims = jwt.decode(token, settings.runtime_delegation_secret, algorithms=["HS256"], options={"verify_signature": False})
+        self.assertEqual(claims["scope"]["operation"], "read")
+        with self.assertRaisesRegex(ValueError, "operation must be read or run-create"):
+            create_runtime_delegation_token(
+                subject="user-1",
+                tenant_id="__default",
+                project_id="project-1",
+                role="project_editor",
+                permissions=["project.runtime.read"],
+                policy_version="policy-1",
+                allowed_model_ids=[],
+                allowed_tool_names=[],
+                scope={
+                    "tenant_id": "__default",
+                    "project_id": "project-1",
+                    "operation": "admin",
+                },
+                settings=settings,
+            )
+
     def test_gateway_replaces_client_identity_headers_with_delegation(self) -> None:
         project_id = "project-1"
         app = FastAPI()
@@ -158,7 +198,8 @@ class RuntimeDelegationTokenTest(unittest.TestCase):
             policy_factory.return_value.build_delegation_policy.return_value = {
                 "version": "policy-1",
                 "allowed_model_ids": ["model-1"],
-                "allowed_tool_names": [],
+                "allowed_tool_names": ["read_reference"],
+                "runtime_permissions": ["runtime.tool.read"],
             }
             asyncio.run(get_runtime_gateway_service(request, actor))
 
@@ -176,6 +217,10 @@ class RuntimeDelegationTokenTest(unittest.TestCase):
         self.assertEqual(claims["sub"], "user-1")
         self.assertEqual(claims["project_id"], project_id)
         self.assertEqual(claims["policy_version"], "policy-1")
+        self.assertEqual(
+            claims["permissions"],
+            ["project.runtime.read", "project.runtime.write", "runtime.tool.read"],
+        )
 
 
 class ProtocolV2RuntimeNormalizationTest(unittest.TestCase):
@@ -248,6 +293,21 @@ class ProtocolV2RuntimeNormalizationTest(unittest.TestCase):
                                 "platform_runtime": {"tools": "utc_now"}
                             }
                         },
+                    },
+                }
+            )
+
+    def test_rejects_legacy_context_fields_before_upstream(self) -> None:
+        with self.assertRaisesRegex(
+            ValueError, "Unsupported run.start context fields: system_prompt"
+        ):
+            normalize_protocol_v2_command(
+                payload={
+                    "id": 15,
+                    "method": "run.start",
+                    "params": {
+                        "assistant_id": "assistant-1",
+                        "context": {"system_prompt": "legacy"},
                     },
                 }
             )

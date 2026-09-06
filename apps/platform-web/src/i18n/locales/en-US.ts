@@ -37,7 +37,7 @@ export const enUS = {
     overview: 'Overview',
     projects: 'Projects',
     users: 'Users',
-    assistants: 'Assistants',
+    assistants: 'Agents',
     agentApps: 'Agent Apps',
     runtime: 'Runtime',
     runtimePolicies: 'Runtime Policies',

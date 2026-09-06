@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     knowledge_upstream_url: str = "http://127.0.0.1:9621"
     knowledge_upstream_api_key: str | None = None
     knowledge_upstream_timeout_seconds: float = Field(default=60.0, gt=0, le=600)
+    model_config_master_key: str | None = None
+    runtime_model_config_secret: str | None = None
 
     platform_db_enabled: bool = False
     platform_db_auto_create: bool = False

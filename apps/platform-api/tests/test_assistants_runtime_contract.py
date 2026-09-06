@@ -2,12 +2,23 @@ from __future__ import annotations
 
 import unittest
 
+from pydantic import ValidationError
+
 from app.modules.assistants.application.service import (
     _normalize_assistant_runtime_contract,
 )
+from app.modules.assistants.application.contracts import CreateAssistantCommand
 
 
 class AssistantsRuntimeContractTest(unittest.TestCase):
+    def test_agent_create_rejects_legacy_execution_id(self) -> None:
+        with self.assertRaises(ValidationError):
+            CreateAssistantCommand(
+                graph_id="agent",
+                name="Agent",
+                assistant_id="legacy-upstream-id",
+            )
+
     def test_normalize_assistant_runtime_contract_moves_runtime_fields_into_context(self) -> None:
         config, context, metadata = _normalize_assistant_runtime_contract(
             project_id="project-1",
@@ -44,7 +55,6 @@ class AssistantsRuntimeContractTest(unittest.TestCase):
         self.assertEqual(
             context,
             {
-                "project_id": "project-1",
                 "system_prompt": "context prompt",
                 "model_id": "config-model",
                 "enable_tools": True,
@@ -73,7 +83,7 @@ class AssistantsRuntimeContractTest(unittest.TestCase):
         )
 
         self.assertEqual(config, {})
-        self.assertEqual(context, {"project_id": "project-1"})
+        self.assertEqual(context, {})
         self.assertEqual(metadata, {})
 
     def test_normalize_assistant_runtime_contract_prefers_explicit_context_over_legacy_config(self) -> None:
@@ -96,7 +106,6 @@ class AssistantsRuntimeContractTest(unittest.TestCase):
         self.assertEqual(
             context,
             {
-                "project_id": "project-1",
                 "temperature": 0.2,
                 "max_tokens": 4096,
             },

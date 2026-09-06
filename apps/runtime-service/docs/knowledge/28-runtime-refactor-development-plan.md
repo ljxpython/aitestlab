@@ -64,7 +64,7 @@ R0～R6 完成前不改 Platform 业务代码。P1 不是 Runtime 的前置条�
 | R4 | [19 Tool/MCP/副作用](./19-runtime-tool-capability-mcp-and-side-effect-design.md)、[20 Backend/Workspace/Skills/Subagents](./20-runtime-backend-workspace-skills-and-subagents-design.md) | [11 Service 目录规范](./11-agent-service-directory-architecture.md)、[23 生命周期](./23-graph-thread-backend-checkpoint-lifecycle-design.md)、[14 Contracts](./14-runtime-contracts-and-resolution-design.md) | 显式工具装配、权限隔离、资源生命周期和子 Agent |
 | R5 | [16 可观测与 Langfuse](./16-runtime-observability-and-langfuse-design.md) | [15 Middleware 生命周期](./15-runtime-middleware-lifecycle-and-failure-semantics.md)、[25 测试契约](./25-runtime-testing-and-cross-service-contract-design.md) | Runtime Trace、日志、指标、脱敏和 fail-soft |
 | R6 | [23 Graph/Thread/Checkpoint 生命周期](./23-graph-thread-backend-checkpoint-lifecycle-design.md)、[24 启停设计](./24-package-langgraph-startup-shutdown-design.md)、[25 测试契约](./25-runtime-testing-and-cross-service-contract-design.md)、[30 Agent Server 替代研究](./30-agent-server-replacement-research.md) | [18 事件与 Run Explorer](./18-open-swe-to-runtime-event-and-run-explorer-design.md)、[22 Platform/Runtime 契约](./22-platform-runtime-contract-design.md) | Durable Run、恢复、重连、重启和终态收敛 |
-| P1 | [22 Platform/Runtime 契约](./22-platform-runtime-contract-design.md)、[27 分阶段整合](./27-platform-runtime-integration-phased-design.md) | [10 总路线](./10-production-agent-platform-roadmap.md)、[18 事件与 Run Explorer](./18-open-swe-to-runtime-event-and-run-explorer-design.md)、[25 测试契约](./25-runtime-testing-and-cross-service-contract-design.md) | 配置快照、Gateway、权限、幂等和跨服务契约 |
+| P1 | [Platform Runtime Integration 专项](./platform-runtime-integration/README.md)、[OpenSpec change](../../../../openspec/changes/redesign-platform-runtime-integration/) | 22、27 号文档仅作 Superseded 历史参考；[25 测试契约](./25-runtime-testing-and-cross-service-contract-design.md) | SDK-compatible Gateway、Agent 执行标识、模型配置、Context/delegation、事实源、权限和跨服务验收 |
 
 文档冲突时，28 号只决定“何时做、做到什么门槛”；14、15、19、20、22、23、24、25 等领域
 文档决定“具体怎么做”。旧目录和旧契约仍然不属于任何阶段的参考输入。
@@ -404,25 +404,25 @@ API 与 Worker readiness、唯一 Worker、真实 `recovery_demo` 功能探针�
 
 ## 10. P1：Platform 控制面整合
 
-### 前置条件
+P1 已完成 owner pre-apply review，`GATE-13` 已确认，尚未进入 apply。详细架构、模块改造、旧内容处置、测试矩阵
+和最终确认清单统一从
+[`platform-runtime-integration/`](./platform-runtime-integration/README.md)
+进入；规范、任务和证据统一由
+[`redesign-platform-runtime-integration`](../../../../openspec/changes/redesign-platform-runtime-integration/)
+维护。22、27 号文档已经 Superseded，不得继续扩写成第二份 P1 设计。
 
-R0～R6 全部通过，Runtime 的 Context、错误码、事件和模型执行边界已经冻结。
+P1 的最短目标链固定为：
 
-### 产物
+```text
+platform-web LangGraph SDK
+  -> platform-api /api/langgraph
+  -> GraphHarbor API -> Redis -> GraphHarbor Worker
+  -> runtime-service graph -> GraphHarbor PostgreSQL
+```
 
-- 新建 Model Catalog、Project Model Policy、Assistant Runtime Config 和 Durable Run schema；
-- Platform 侧配置合并和不可变 `RuntimeContext` snapshot；
-- `context_hash` 与 Delegation Token 绑定；
-- Gateway 统一注入 Context、durable 默认值和幂等键；
-- Platform/Runtime 双端独立契约测试；
-- 最后接入配置页面和 Run Explorer。
-
-### 禁止事项
-
-- 不把模型调用、Graph、Tool、Checkpoint 搬入 Platform；
-- 不让 Platform 访问 Provider 凭据；
-- 不增加 Runtime Custom Route、Model Registry、Route Registry 或第二套 Run API；
-- 不读取或迁移旧 Platform 数据；新配置通过新管理 API 或部署清单创建。
+实施前必须由 owner 冻结 Context transport、Platform Assistant 到 `graph_id` 的映射、Thread/Run
+事实源、Gateway endpoint allowlist 和旧资料处置矩阵。未批准前不得修改 Platform 业务代码、数据库
+migration 或物理归档旧文件。
 
 ## 11. 每个开发任务的执行模板
 

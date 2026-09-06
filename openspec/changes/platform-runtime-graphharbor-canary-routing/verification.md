@@ -1,5 +1,13 @@
 # Verification
 
+## Lifecycle disposition
+
+- Harness verification schema: v1
+- Status: Complete
+- Disposition: Abandoned
+- Pre-apply review: Waived (superseded by the single-upstream owner decision)
+- Owner decision: 2026-09-05；不 sync delta spec，待 archive without sync。
+
 ## Pre-apply review
 
 - Status: `Pending`

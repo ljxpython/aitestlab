@@ -66,6 +66,29 @@ def test_build_openai_uses_gpt_proxy_settings(monkeypatch: pytest.MonkeyPatch) -
     assert calls["base_url"] == "https://gpt.test/v1"
 
 
+def test_build_model_uses_catalog_connection(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: dict[str, object] = {}
+
+    def fake_constructor(**kwargs: object) -> object:
+        calls.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(modeling, "ChatDeepSeek", fake_constructor)
+    modeling.build_model(
+        _resolved("deepseek:catalog-chat"),
+        env={},
+        connection={
+            "provider": "deepseek",
+            "base_url": "https://catalog.test/v1",
+            "protocol": "deepseek",
+            "model": "catalog-chat",
+            "api_key": "catalog-key",
+        },
+    )
+    assert calls["api_key"] == "catalog-key"
+    assert calls["base_url"] == "https://catalog.test/v1"
+
+
 def test_build_model_rejects_missing_provider_settings() -> None:
     with pytest.raises(RuntimeResolutionError) as error:
         modeling.build_model(_resolved("deepseek:deepseek-chat"), env={})

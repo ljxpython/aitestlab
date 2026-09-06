@@ -323,11 +323,14 @@ class LangGraphRunsSdkAdapter:
         run_id: str,
         payload: dict[str, Any] | None = None,
     ) -> AsyncIterator[bytes]:
+        if payload is not None and payload.get("cancel_on_disconnect") is True:
+            raise ValueError("cancel_on_disconnect=true is not supported")
         join_stream_payload = {
             key: payload[key]
             for key in self._JOIN_STREAM_FIELDS
             if payload is not None and key in payload
         }
+        join_stream_payload["cancel_on_disconnect"] = False
         try:
             event_iter = self._client.runs.join_stream(thread_id, run_id, **join_stream_payload)
         except Exception as exc:

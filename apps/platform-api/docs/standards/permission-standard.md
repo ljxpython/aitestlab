@@ -31,7 +31,7 @@
 
 - project
 - project member
-- assistant project policy
+- Agent project policy（历史权限代码中的 `assistant` 名称仅作兼容）
 - testcase project data
 - project audit
 - runtime gateway project scope

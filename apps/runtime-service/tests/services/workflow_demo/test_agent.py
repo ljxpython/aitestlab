@@ -5,12 +5,23 @@ import asyncio
 import pytest
 from langgraph.pregel import Pregel
 from langgraph.types import Command
+from support import BindableFakeChatModel
 
 from runtime_service.graphs.workflow_demo import get_agent
 
 
-def _graph() -> Pregel:
-    return asyncio.run(get_agent({}))
+def _graph(*responses: str) -> Pregel:
+    return asyncio.run(
+        get_agent(
+            {
+                "configurable": {
+                    "_runtime_model": BindableFakeChatModel(
+                        responses=list(responses or ("model response",))
+                    )
+                }
+            }
+        )
+    )
 
 
 def _config(thread_id: str) -> dict[str, object]:
@@ -30,13 +41,47 @@ def test_workflow_demo_routes_to_one_conditional_branch(route: str, expected: st
     assert result["response"] == expected
 
 
+def test_workflow_demo_accepts_standard_chat_messages() -> None:
+    result = asyncio.run(
+        _graph().ainvoke(
+            {"messages": [{"role": "user", "content": "hello from chat"}]},
+            _config("workflow-chat-input"),
+        )
+    )
+
+    assert result["response"] == "model response"
+    assert result["messages"][-1].content == "model response"
+
+
+def test_workflow_demo_uses_latest_user_message_in_same_thread() -> None:
+    graph = _graph("first model response", "second model response")
+    config = _config("workflow-multi-turn-test")
+
+    first = asyncio.run(
+        graph.ainvoke(
+            {"messages": [{"role": "user", "content": "你好"}]},
+            config,
+        )
+    )
+    second = asyncio.run(
+        graph.ainvoke(
+            {"messages": [{"role": "user", "content": "你好啊，你是谁呀？"}]},
+            config,
+        )
+    )
+
+    assert first["response"] == "first model response"
+    assert second["message"] == "你好啊，你是谁呀？"
+    assert second["response"] == "second model response"
+
+
 def test_workflow_demo_static_topology_is_stable() -> None:
     first = _graph()
     second = _graph()
     first_graph = first.get_graph()
     second_graph = second.get_graph()
 
-    assert first is second
+    assert first is not second
     assert set(first_graph.nodes) == set(second_graph.nodes)
     assert {(edge.source, edge.target) for edge in first_graph.edges} == {
         (edge.source, edge.target) for edge in second_graph.edges

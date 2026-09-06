@@ -5,7 +5,10 @@ import {
   createLanggraphAuthorizedFetch,
   getLanggraphApiUrl
 } from '@/services/langgraph/client'
-import { normalizeRuntimeGatewayError } from '@/services/runtime-gateway/workspace.service'
+import {
+  getRuntimeRunStatus,
+  normalizeRuntimeGatewayError
+} from '@/services/runtime-gateway/workspace.service'
 import { summarizeMessageContent, type ChatAttachmentBlock } from '@/utils/chat-content'
 import {
   buildChatMessageMetadata,
@@ -27,6 +30,29 @@ export function usePlatformChatStream(options: UsePlatformChatStreamOptions) {
   const detailInfo = ref('')
   const lastRunId = ref('')
   const lastEventAt = ref('')
+  const reconciledTerminal = ref(false)
+  const preferPersistedProjection = ref(false)
+
+  const reconcileMissedTerminal = async (runId: string) => {
+    const projectId = options.projectId.value.trim()
+    const threadId = options.activeThreadId.value.trim()
+    if (!projectId || !threadId || !runId) return
+
+    for (let attempt = 0; attempt < 20 && stream.isLoading.value; attempt += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, 250))
+      const status = await getRuntimeRunStatus(projectId, threadId, runId).catch(() => '')
+      if (!['success', 'succeeded', 'completed', 'error', 'failed', 'cancelled', 'canceled'].includes(status)) {
+        continue
+      }
+      if (options.activeThreadId.value.trim() !== threadId) {
+        return
+      }
+      reconciledTerminal.value = true
+      await stream.stop({ cancel: false })
+      await options.onRefreshThread(threadId)
+      return
+    }
+  }
 
   const authorizedFetch = createLanggraphAuthorizedFetch()
   const scopedFetch: typeof fetch = (input, init) => {
@@ -53,13 +79,22 @@ export function usePlatformChatStream(options: UsePlatformChatStreamOptions) {
     onThreadId: (threadId) => {
       options.activeThreadId.value = threadId
       lastRunId.value = ''
+      preferPersistedProjection.value = false
       detailInfo.value = ''
     },
     onCreated: ({ runId }) => {
       commandPending.value = false
       lastRunId.value = runId.trim()
+      preferPersistedProjection.value = false
+      void reconcileMissedTerminal(lastRunId.value)
     },
     onCompleted: async ({ reason }) => {
+      const completedThreadId = stream.threadId.value?.trim() || options.activeThreadId.value.trim()
+      if (!completedThreadId || completedThreadId !== options.activeThreadId.value.trim()) {
+        reconciledTerminal.value = false
+        return
+      }
+
       const completedError =
         reason === 'error' && stream.error.value !== undefined && stream.error.value !== null
           ? normalizeRuntimeGatewayError(stream.error.value, '对话运行失败').message
@@ -68,13 +103,17 @@ export function usePlatformChatStream(options: UsePlatformChatStreamOptions) {
       cancelling.value = false
       lastEventAt.value = new Date().toISOString()
 
-      if (reason === 'stopped') {
-        detailInfo.value = '本轮运行已取消。输入框已恢复可编辑，你可以继续发送消息。'
+      if (reason === 'stopped' && reconciledTerminal.value) {
+        detailInfo.value = '本轮运行已完成，页面已同步服务端结果。'
       }
+
+      reconciledTerminal.value = false
 
       await options.onRefreshThread(options.activeThreadId.value, {
         preserveInfo: reason === 'stopped'
       })
+
+      preferPersistedProjection.value = true
 
       if (completedError) {
         detailError.value = completedError
@@ -129,11 +168,14 @@ export function usePlatformChatStream(options: UsePlatformChatStreamOptions) {
     const liveMessages = streamMatchesActiveThread.value
       ? stream.messages.value.map((message) => toLegacyMessage(message))
       : []
+    const persistedMessages = persistedHeadState.value?.messages
+    if (preferPersistedProjection.value && Array.isArray(persistedMessages)) {
+      return persistedMessages as Message[]
+    }
     if (stream.isLoading.value || liveMessages.length > 0) {
       return liveMessages
     }
 
-    const persistedMessages = persistedHeadState.value?.messages
     return Array.isArray(persistedMessages) ? (persistedMessages as Message[]) : liveMessages
   })
   const messageMetadataById = computed(() =>
@@ -177,6 +219,13 @@ export function usePlatformChatStream(options: UsePlatformChatStreamOptions) {
     messageMetadataById,
     interruptPayload
   })
+
+  watch(
+    () => options.activeThreadId.value,
+    () => {
+      preferPersistedProjection.value = false
+    }
+  )
 
   watch(
     () => stream.isLoading.value,

@@ -11,6 +11,8 @@ service/state/permission/audit 规则仍由 `control-plane-page-standard.md` 管
 - 功能、路由和当前实现：`apps/platform-web`
 - 视觉与交互基线：当前 `apps/platform-web` 壳层和共享组件
 - `platform-web-sub2api-base`：仅作历史参考，不是开发宿主
+- Chat 的 live messages/tools/interrupt/loading/error/lifecycle 由官方 SDK controller 维护；线程
+  列表、历史快照和当前流订阅分离，页面不得再建立第二套运行状态机。
 
 ## 2. 先选页面 Archetype
 

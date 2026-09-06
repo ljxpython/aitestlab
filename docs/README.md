@@ -58,6 +58,8 @@ Harness。
 
 当前 Draft 方案：
 
+- [Platform Runtime Integration 项目文档](./platform-runtime-integration/README.md)：Harness intake、决策记录、实施计划和证据状态。
+- [Platform Runtime Integration 专项](../apps/runtime-service/docs/knowledge/platform-runtime-integration/README.md)
 - [React Agent Web 重设计](./agent-web-redesign/README.md)
 
 ## 5. 文档状态

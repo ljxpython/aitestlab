@@ -132,8 +132,8 @@ const workspaceChildren: RouteRecordRaw[] = [
     name: 'workspace-assistants',
     component: () => import('@/modules/assistants/pages/AssistantsPage.vue'),
     meta: {
-      title: '助手',
-      eyebrow: 'Assistants',
+      title: 'Agent',
+      eyebrow: 'Agents',
       requiredPermissions: ['project.assistant.read'],
       permissionProjectSource: 'workspace',
       allowWithoutProject: true
@@ -144,8 +144,8 @@ const workspaceChildren: RouteRecordRaw[] = [
     name: 'workspace-assistant-create',
     component: () => import('@/modules/assistants/pages/AssistantCreatePage.vue'),
     meta: {
-      title: '新建助手',
-      eyebrow: 'Assistants',
+      title: '新建 Agent',
+      eyebrow: 'Agents',
       requiredPermissions: ['project.assistant.write'],
       permissionProjectSource: 'workspace',
       allowWithoutProject: true
@@ -156,9 +156,21 @@ const workspaceChildren: RouteRecordRaw[] = [
     name: 'workspace-assistant-detail',
     component: () => import('@/modules/assistants/pages/AssistantDetailPage.vue'),
     meta: {
-      title: '助手详情',
-      eyebrow: 'Assistants',
+      title: 'Agent 详情',
+      eyebrow: 'Agents',
       requiredPermissions: ['project.assistant.read'],
+      permissionProjectSource: 'workspace',
+      allowWithoutProject: true
+    }
+  },
+  {
+    path: 'models',
+    name: 'workspace-models',
+    component: () => import('@/modules/runtime/pages/RuntimeModelsPage.vue'),
+    meta: {
+      title: 'Models',
+      eyebrow: 'Models',
+      requiredPermissions: ['project.runtime.read'],
       permissionProjectSource: 'workspace',
       allowWithoutProject: true
     }
@@ -185,18 +197,6 @@ const workspaceChildren: RouteRecordRaw[] = [
         component: () => import('@/modules/runtime/pages/RuntimeModelsPage.vue'),
         meta: {
           title: 'Runtime Models',
-          eyebrow: 'Runtime',
-          requiredPermissions: ['project.runtime.read'],
-          permissionProjectSource: 'workspace',
-          allowWithoutProject: true
-        }
-      },
-      {
-        path: 'tools',
-        name: 'workspace-runtime-tools',
-        component: () => import('@/modules/runtime/pages/RuntimeToolsPage.vue'),
-        meta: {
-          title: 'Runtime Tools',
           eyebrow: 'Runtime',
           requiredPermissions: ['project.runtime.read'],
           permissionProjectSource: 'workspace',
@@ -285,18 +285,6 @@ const workspaceChildren: RouteRecordRaw[] = [
       title: 'Chat',
       eyebrow: 'Chat',
       requiredPermissions: ['project.runtime.read'],
-      permissionProjectSource: 'workspace',
-      allowWithoutProject: true
-    }
-  },
-  {
-    path: 'chat/debug',
-    name: 'workspace-chat-debug',
-    component: () => import('@/modules/chat/pages/ChatDebugPage.vue'),
-    meta: {
-      title: 'Runtime Debug',
-      eyebrow: 'Legacy Debug',
-      requiredPermissions: ['project.runtime.write'],
       permissionProjectSource: 'workspace',
       allowWithoutProject: true
     }

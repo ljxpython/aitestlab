@@ -23,8 +23,14 @@ class LangGraphRuntimeClient:
         self._api_key = api_key
         self._forwarded_headers = dict(forwarded_headers or {})
 
-    def _headers(self, *, accept: str | None = None) -> dict[str, str]:
+    def _headers(
+        self,
+        *,
+        accept: str | None = None,
+        forwarded_headers: Mapping[str, str] | None = None,
+    ) -> dict[str, str]:
         headers = dict(self._forwarded_headers)
+        headers.update(forwarded_headers or {})
         if self._api_key:
             headers["x-api-key"] = self._api_key
         if accept:
@@ -62,6 +68,7 @@ class LangGraphRuntimeClient:
         *,
         payload: Any = None,
         params: Mapping[str, Any] | None = None,
+        forwarded_headers: Mapping[str, str] | None = None,
     ) -> Any:
         json_payload = (
             dict(payload)
@@ -75,7 +82,10 @@ class LangGraphRuntimeClient:
                     url=self._url(path),
                     json=json_payload,
                     params=dict(params) if params is not None else None,
-                    headers=self._headers(accept="application/json"),
+                    headers=self._headers(
+                        accept="application/json",
+                        forwarded_headers=forwarded_headers,
+                    ),
                 )
         except httpx.TimeoutException as exc:
             raise UpstreamServiceError(
@@ -155,8 +165,15 @@ class LangGraphRuntimeClient:
         *,
         payload: Any = None,
         params: Mapping[str, Any] | None = None,
+        forwarded_headers: Mapping[str, str] | None = None,
     ) -> dict[str, Any]:
-        value = await self.request_json(method, path, payload=payload, params=params)
+        value = await self.request_json(
+            method,
+            path,
+            payload=payload,
+            params=params,
+            forwarded_headers=forwarded_headers,
+        )
         if isinstance(value, dict):
             return value
         raise PlatformApiError(
